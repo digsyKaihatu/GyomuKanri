@@ -1,4 +1,4 @@
-// eslint.config.js
+// eslint.config.js aaaaaa
 // @ts-check <- VSCodeなどで型チェックを有効にする場合
 
 import globals from "globals";

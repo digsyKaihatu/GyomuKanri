@@ -4,7 +4,7 @@
 import { db, allTaskObjects, handleGoBack, showView, VIEWS, escapeHtml } from "../../main.js";
 import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 // ★修正: js/views/progress/ から js/components/ は ../../components/
-import { openGoalModal, showHelpModal } from "../../components/modal.js";
+import { openGoalModal, showHelpModal } from "../../components/modal/index.js";
 import { destroyCharts } from "../../components/chart.js";
 
 import {
@@ -215,7 +215,7 @@ function renderDetailsAndSummary() {
     }
 
     const task = allTaskObjects.find((t) => t.name === selectedProgressTaskName);
-    const goal = task?.goals.find((g) => g.id === selectedProgressGoalId);
+    const goal = task?.goals.find((g) => g.id === selectedProgressGoalId || g.title === selectedProgressGoalId);
 
     if (!goal || goal.isComplete) {
         clearGoalDetailsAndSummary(goalDetailsContainer, chartContainer, weeklySummaryContainer, [progressLineChartInstance]);
@@ -233,7 +233,8 @@ function renderDetailsAndSummary() {
     const weekDates = calculateDateRange(progressWeekOffset, progressMonthOffset);
 
     // ★ allUserLogs ではなく selectedTaskLogs を渡す
-    const chartAndTableData = aggregateWeeklyData(selectedTaskLogs, goal.id, weekDates);
+    const finalGoalIdForFilter = goal.id || goal.title;
+    const chartAndTableData = aggregateWeeklyData(selectedTaskLogs, finalGoalIdForFilter, weekDates);
 
     destroyCharts([progressLineChartInstance]);
     progressLineChartInstance = renderChartAndTable(

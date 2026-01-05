@@ -193,3 +193,53 @@ function generateRandomColor() {
     const lightness = 60; 
     return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
 }
+
+// ★追加部分
+export function renderChart(canvas, labels, dataPoints, title) {
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    
+    const backgroundColors = labels.map(() => generateRandomColor());
+
+    return new Chart(ctx, {
+        type: 'doughnut', 
+        data: {
+            labels: labels,
+            datasets: [{
+                data: dataPoints,
+                backgroundColor: backgroundColors,
+                borderColor: '#ffffff',
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false, // ★修正: ここを false にして凡例を消す
+                },
+                title: {
+                    display: false, 
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.parsed !== null) {
+                                label += context.parsed + ' 時間';
+                            }
+                            return label;
+                        }
+                    }
+                },
+                datalabels: {
+                    display: false
+                }
+            }
+        }
+    });
+}

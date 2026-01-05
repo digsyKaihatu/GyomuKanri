@@ -1,127 +1,166 @@
 // js/views/modeSelection.js
-// ★修正: js/views/modeSelection.js から見て main.js は ../main.js
-import { db, userId, userName, authLevel, showView, VIEWS, setAdminLoginDestination } from "../main.js"; 
-import { handleOktaLogout } from "../okta.js"; // Import logout function from okta.js
-import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; // Import Firestore functions
-// ★追加: adminPasswordView を modal.js からインポート
-import { adminPasswordView } from "../components/modal.js";
 
-// --- DOM Element references ---
-const userNameDisplay = document.getElementById("user-name-display"); // User name in selection view
-const wordOfTheDayInput = document.getElementById("word-of-the-day-input");
-const saveWordButton = document.getElementById("save-word-btn");
-const selectHostButton = document.getElementById("select-host-btn");
-const selectClientButton = document.getElementById("select-client-btn");
-const taskSettingsButton = document.getElementById("task-settings-btn");
-const logoutButton = document.getElementById("logout-btn-selection");
+import { showView, VIEWS, userId, userName, db } from "../main.js";
+import { showPasswordModal } from "../components/modal/index.js";
+import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+// DOM要素
+const clientBtn = document.getElementById("select-client-btn");
+const hostBtn = document.getElementById("select-host-btn");
+const settingsBtn = document.getElementById("task-settings-btn");
+const logoutBtn = document.getElementById("logout-btn-selection");
+const userNameDisplay = document.getElementById("user-name-display");
+const wordInput = document.getElementById("word-of-the-day-input");
+const saveWordBtn = document.getElementById("save-word-btn");
 
 /**
- * Initializes the Mode Selection view when it becomes active.
- * Displays the username and fetches/displays the word of the day.
+ * モード選択画面の初期化
  */
-export function initializeModeSelectionView() {
-    // console.log("Initializing Mode Selection View..."); // 修正 2: console.log を削除
-    if (userNameDisplay && userName) {
-        userNameDisplay.textContent = userName; // Display the logged-in username
-    } else if (userNameDisplay) {
-        userNameDisplay.textContent = '取得エラー'; // Fallback text
+export async function initializeModeSelectionView() {
+    console.log("Initializing Mode Selection View...");
+    
+    // ユーザー名の表示
+    if (userNameDisplay) {
+        userNameDisplay.textContent = userName || "ユーザー";
     }
-    fetchAndDisplayWordOfTheDay(); // Fetch and show the current word of the day
+
+    // 今日の一言の初期表示（ローカルストレージ優先、無ければFirestore）
+    if (wordInput) {
+        const localWord = localStorage.getItem('wordOfTheDay');
+        if (localWord) {
+            wordInput.value = localWord;
+        }
+
+        // Firestoreから最新を取得して上書き（もしあれば）
+        if (userId) {
+            try {
+                const statusDoc = await getDoc(doc(db, "work_status", userId));
+                if (statusDoc.exists() && statusDoc.data().wordOfTheDay) {
+                    const serverWord = statusDoc.data().wordOfTheDay;
+                    wordInput.value = serverWord;
+                    // ローカルも更新しておく
+                    localStorage.setItem('wordOfTheDay', serverWord);
+                }
+            } catch (error) {
+                console.error("Error fetching word of the day:", error);
+            }
+        }
+    }
 }
 
 /**
- * Sets up event listeners for the Mode Selection view.
- * Should be called once during application initialization.
+ * クリーンアップ（今回はリスナーを使っていないので特に処理なし）
+ */
+export function cleanupModeSelectionView() {
+    // 特になし
+}
+
+/**
+ * イベントリスナーの設定
  */
 export function setupModeSelectionEventListeners() {
-    // console.log("Setting up Mode Selection event listeners..."); // 修正 3: console.log を削除
+    console.log("Setting up Mode Selection event listeners...");
 
-    // Mode selection buttons
-    selectHostButton?.addEventListener("click", () => {
-        if (authLevel === "admin") {
-            showView(VIEWS.HOST); // Go directly to host view if admin
-        } else {
-            // Ask for admin password first
-            setAdminLoginDestination(VIEWS.HOST); // Tell main.js where to go after login
-            if (adminPasswordView) adminPasswordView.classList.remove("hidden");
-            // else console.error("Admin password view element not found."); // 修正 4: console.error を削除
+    clientBtn?.addEventListener("click", () => handleModeSelect(VIEWS.CLIENT));
+    hostBtn?.addEventListener("click", () => handleModeSelect(VIEWS.HOST));
+    settingsBtn?.addEventListener("click", () => showView(VIEWS.TASK_SETTINGS));
+
+    logoutBtn?.addEventListener("click", () => {
+        if(confirm("ログアウトしますか？")) {
+             location.reload(); 
         }
     });
 
-    selectClientButton?.addEventListener("click", () => showView(VIEWS.CLIENT));
-
-    taskSettingsButton?.addEventListener("click", () => {
-        if (authLevel === "admin" || authLevel === "task_editor") {
-            showView(VIEWS.TASK_SETTINGS); // Go directly if authorized
-        } else {
-            // Ask for password first (admin or task editor allowed)
-            setAdminLoginDestination(VIEWS.TASK_SETTINGS); // Tell main.js where to go after login
-            if (adminPasswordView) adminPasswordView.classList.remove("hidden");
-            // else console.error("Admin password view element not found."); // 修正 5: console.error を削除
-        }
-    });
-
-    // Word of the Day
-    saveWordButton?.addEventListener("click", handleSaveWordOfTheDay);
-
-    // Logout Button
-    // 修正 6: handleLogout ではなく handleOktaLogout を呼ぶ（これはインポート修正で解決）
-    logoutButton?.addEventListener("click", handleOktaLogout); // Call imported logout function
+    // 今日の一言保存ボタン
+    saveWordBtn?.addEventListener("click", handleSaveWordOfTheDay);
 }
 
-
 /**
- * Saves the "Word of the Day" entered by the user to their status document in Firestore.
+ * 今日の一言を保存する (ユーザー提示コードを踏襲)
  */
 async function handleSaveWordOfTheDay() {
-    if (!userId || !wordOfTheDayInput) {
-        // console.error("Cannot save word of the day: userId or input element missing."); // 修正 7: console.error を削除
-        alert("ユーザー情報が見つからないため、保存できません。");
+    if (!wordInput) return;
+
+    const word = wordInput.value.trim();
+
+    // ★修正2: ローカルストレージに保存（次回即座に表示するため）
+    localStorage.setItem('wordOfTheDay', word);
+
+    if (!userId) {
+        // ユーザーIDがまだ無い場合でも、ローカル保存はできたのでアラートは控えめにするか、
+        // ローカルだけで動作するように振る舞う
+        alert("一時的に保存しました。（サーバーへの同期はログイン後に行われます）");
         return;
     }
 
-    const word = wordOfTheDayInput.value.trim();
     const statusRef = doc(db, "work_status", userId);
 
     try {
+        const btnOriginalText = saveWordBtn.textContent;
+        saveWordBtn.textContent = "保存中...";
+        saveWordBtn.disabled = true;
+
         // Update the 'wordOfTheDay' field in the user's status document.
         // Use setDoc with merge:true to create the document if it doesn't exist,
         // or update the field without overwriting other status info.
         await setDoc(statusRef, { wordOfTheDay: word }, { merge: true });
-        // console.log("Word of the day saved:", word); // 修正 8: console.log を削除
-        // Optionally show a success message to the user (e.g., using a temporary notification)
+        
+        // Optionally show a success message to the user
         alert("今日の一言を保存しました。");
     } catch (error) {
-        // console.error("Error saving word of the day:", error); // 修正 9: console.error を削除
-        alert("今日の一言の保存中にエラーが発生しました。");
+        // console.error("Error saving word of the day:", error); 
+        alert("サーバーへの保存中にエラーが発生しましたが、ブラウザには保存されました。");
+    } finally {
+        if (saveWordBtn) {
+            saveWordBtn.textContent = "保存";
+            saveWordBtn.disabled = false;
+        }
     }
 }
 
 /**
- * Fetches the current user's "Word of the Day" from Firestore and displays it in the input field.
+ * モード選択時の処理
  */
-async function fetchAndDisplayWordOfTheDay() {
-    if (!userId || !wordOfTheDayInput) {
-        // console.warn("Cannot fetch word of the day: userId or input element missing.");
-        if(wordOfTheDayInput) wordOfTheDayInput.value = ""; // Clear input if no user ID
+async function handleModeSelect(mode) {
+    if (mode === VIEWS.CLIENT) {
+        showView(VIEWS.CLIENT);
         return;
     }
 
-    const statusRef = doc(db, "work_status", userId);
-    try {
-        const docSnap = await getDoc(statusRef);
+    const hasPermission = await checkUserPermission(mode);
 
-        if (docSnap.exists() && docSnap.data().wordOfTheDay !== undefined) {
-             // If document exists and has the field, display it
-            wordOfTheDayInput.value = docSnap.data().wordOfTheDay;
-        } else {
-            // Otherwise, clear the input field
-            wordOfTheDayInput.value = "";
+    if (hasPermission) {
+        console.log(`Permission granted for ${mode} via user role.`);
+        showView(mode);
+        return;
+    }
+
+    if (mode === VIEWS.HOST) {
+        showPasswordModal("host", () => showView(VIEWS.HOST));
+    } 
+}
+
+/**
+ * ユーザーの権限を確認する関数
+ */
+async function checkUserPermission(targetView) {
+    if (!userId) return false;
+
+    try {
+        const userRef = doc(db, "user_profiles", userId);
+        const userSnap = await getDoc(userRef);
+
+        if (!userSnap.exists()) return false;
+
+        const role = userSnap.data().role;
+
+        if (targetView === VIEWS.HOST) {
+            return role === "host" || role === "manager";
         }
+
+        return false;
     } catch (error) {
-        // console.error("Error fetching word of the day:", error); // 修正 10: console.error を削除
-        wordOfTheDayInput.value = ""; // Clear input on error
-        // Optionally inform the user about the fetch error
+        console.error("Permission check failed:", error);
+        return false;
     }
 }

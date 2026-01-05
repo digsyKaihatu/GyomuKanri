@@ -1,292 +1,302 @@
 // js/views/host/userManagement.js
-import { db, userName, showView, VIEWS } from "../../main.js"; // Import global state and functions
-import { collection, query, onSnapshot, addDoc, where, getDocs, writeBatch, Timestamp, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; // Import Firestore functions
-import { openAddUserModal, closeAddUserModal, addUserModal, showConfirmationModal, hideConfirmationModal } from "../../components/modal.js"; // Import modal functions/elements
+
+import { db, showView, VIEWS } from "../../main.js";
+// ★修正: setDoc をインポートに追加
+import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, query, getDocs, writeBatch, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { showConfirmationModal, hideConfirmationModal, closeModal } from "../../components/modal/index.js";
 
 // --- Module State ---
-let allUsers = []; // Local cache of user profile data { name, createdBy, createdAt }
-let usersListenerUnsubscribe = null; // Firestore listener unsubscribe function
-let currentAllStatuses = []; // Local cache of statuses (might be needed for word of the day) - imported or passed
+let userListUnsubscribe = null;
+let currentStatuses = []; // ステータス情報を保持するキャッシュ
 
-// --- DOM Element references ---
-const userListContainer = document.getElementById("summary-list"); // Container for the user account list
-const addUserModalNameInput = document.getElementById("add-user-modal-name-input");
-const addUserModalError = document.getElementById("add-user-modal-error");
+// --- Exported Functions ---
 
 /**
- * Updates the local cache of statuses. Called by host.js when statuses change.
- * @param {Array} statuses - The latest array of status objects.
+ * ステータス情報のキャッシュを更新する (statusDisplay.jsから呼ばれる)
  */
-export function updateStatusesCache(statuses) {
-    currentAllStatuses = statuses;
-    // Re-render the user list if statuses (like word of the day) might affect its display
-    renderUserAccountList();
+export function updateStatusesCache(newStatuses) {
+    currentStatuses = newStatuses;
+    // リストが既に表示されている場合、再描画して最新ステータスを反映
+    const container = document.getElementById("summary-list");
+    if (container && userListUnsubscribe) {
+        // 簡易的な再反映: 現在のDOMに対してクラス操作を行う手もあるが、
+        // ここでは安全に statusDisplay.js 側の更新処理に任せるか、
+        // もし即時反映したいならここで renderUserList を呼ぶ方法もある。
+        // 今回は statusDisplay.js が主導でDOMを書き換えるため、ここはキャッシュ更新のみでOK。
+    }
 }
 
-
 /**
- * Starts the Firestore listener for the 'user_profiles' collection.
- * Updates the `allUsers` cache and renders the user list on changes.
+ * ユーザーリストの監視を開始する
  */
 export function startListeningForUsers() {
-    stopListeningForUsers(); // Stop previous listener if any
+    console.log("【UserMng】① ユーザー監視機能を開始します");
 
+    const userListContainer = document.getElementById("summary-list");
+    
     if (!userListContainer) {
-        console.error("Host view user list container ('summary-list') not found.");
+        console.error("【UserMng】エラー: 表示先の要素(summary-list)が見つかりません。HTMLを確認してください。");
         return;
     }
 
-    console.log("Starting listener for user profiles...");
-    const qUsers = query(collection(db, "user_profiles"));
+    userListContainer.innerHTML = '<p class="text-center text-gray-500 py-4">ユーザー情報を読み込み中... (データ取得待ち)</p>';
 
-    usersListenerUnsubscribe = onSnapshot(qUsers, (snapshot) => {
-        allUsers = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })); // Store id along with data
-        console.log("User profiles updated:", allUsers);
-        renderUserAccountList(); // Re-render the list when user data changes
+    // コレクション参照の作成
+    console.log("【UserMng】② DB接続(user_profiles)を試みます...");
+    const q = collection(db, "user_profiles");
+    
+    // データ監視の登録
+    userListUnsubscribe = onSnapshot(q, (snapshot) => {
+        // ★ここが表示されない場合、DBからデータが返ってきていません
+        console.log(`【UserMng】③ データ受信成功！ ドキュメント数: ${snapshot.size}`);
+
+        if (snapshot.empty) {
+            console.warn("【UserMng】データが0件です。DBの user_profiles コレクションは空ではありませんか？");
+        }
+
+        const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        console.log("【UserMng】④ 取得データ中身:", users);
+
+        // 描画関数の呼び出し
+        try {
+            renderUserList(users, userListContainer);
+            console.log("【UserMng】⑤ 描画処理(renderUserList)が完了しました");
+        } catch (e) {
+            console.error("【UserMng】描画エラー: renderUserList内でエラーが発生しました", e);
+        }
+
     }, (error) => {
-        console.error("Error listening for user profiles:", error);
-        userListContainer.innerHTML = '<p class="text-red-500">ユーザーリストの読み込み中にエラーが発生しました。</p>';
-        allUsers = []; // Clear local cache on error
+        console.error("【UserMng】DB読み込みエラー:", error);
+        userListContainer.innerHTML = `<p class="text-center text-red-500 py-4">読み込みエラー: ${error.message}</p>`;
     });
 }
 
 /**
- * Stops the Firestore listener for the 'user_profiles' collection.
+ * ユーザーリストの監視を停止する
  */
 export function stopListeningForUsers() {
-    if (usersListenerUnsubscribe) {
-        console.log("Stopping listener for user profiles.");
-        usersListenerUnsubscribe();
-        usersListenerUnsubscribe = null;
+    if (userListUnsubscribe) {
+        console.log("Stopping user list listener...");
+        userListUnsubscribe();
+        userListUnsubscribe = null;
     }
-    // Optionally clear the list when stopping
-    // if (userListContainer) userListContainer.innerHTML = '';
 }
 
 /**
- * Renders the list of user accounts in the host view.
- * Incorporates data from `allUsers` and `currentAllStatuses`.
- */
-export function renderUserAccountList() {
-    // Ensure the container exists and we have the necessary data
-    if (!userListContainer || !Array.isArray(allUsers) || !Array.isArray(currentAllStatuses)) {
-        // console.warn("Cannot render user list: container or data missing/invalid.", {userListContainer, allUsers, currentAllStatuses});
-        if(userListContainer) userListContainer.innerHTML = '<p class="text-gray-500">ユーザー情報を待っています...</p>';
-        return;
-    }
-
-
-    // Sort users by name (Japanese locale)
-    const sortedUsers = [...allUsers].sort((a, b) => {
-        const nameA = a.name || "";
-        const nameB = b.name || "";
-        return nameA.localeCompare(nameB, "ja");
-    });
-
-    userListContainer.innerHTML = ""; // Clear previous list
-
-    if (sortedUsers.length === 0) {
-        userListContainer.innerHTML = '<p class="text-gray-500">登録されているユーザーがいません。「ユーザーを追加」ボタンから追加してください。</p>';
-        return;
-    }
-
-    // Create and append list items for each user
-    sortedUsers.forEach((user) => {
-        if (!user.name) return; // Skip users without a name
-
-        const card = document.createElement("div");
-        card.className = "p-4 bg-gray-50 rounded-lg border user-detail-card"; // Add class for event delegation
-        card.dataset.username = user.name; // Store username in dataset for click handler
-
-        // Find the corresponding status to get the word of the day
-        const userStatus = currentAllStatuses.find(status => status.userName === user.name);
-        const wordOfTheDay = userStatus?.wordOfTheDay || ""; // Safely access wordOfTheDay
-
-        card.innerHTML = `
-            <button data-username="${escapeHtml(user.name)}" class="user-detail-btn w-full text-left focus:outline-none focus:ring-2 focus:ring-indigo-300 rounded">
-                <div class="flex justify-between items-center">
-                    <p class="font-semibold text-gray-800">${escapeHtml(user.name)}</p>
-                    <span class="text-xs text-gray-400 hover:text-indigo-600">詳細を見る &rarr;</span>
-                </div>
-                <p class="text-sm text-gray-500 mt-1 truncate" title="${escapeHtml(wordOfTheDay)}">${escapeHtml(wordOfTheDay) || "今日の一言 未設定"}</p>
-            </button>`;
-        userListContainer.appendChild(card);
-    });
-
-     // Event listener for user detail buttons is now handled in host.js using delegation
-}
-
-/**
- * Handles clicks on the user list to navigate to the detail view.
- * This function should be called via event delegation in host.js.
- * @param {EventTarget} target - The element that was clicked.
+ * ユーザー詳細画面への遷移処理
  */
 export function handleUserDetailClick(target) {
-     const button = target.closest('.user-detail-btn');
-     if (button && button.dataset.username) {
-        console.log(`Navigating to details for user: ${button.dataset.username}`);
-        showView(VIEWS.PERSONAL_DETAIL, { userName: button.dataset.username });
-     } else {
-        // Handle clicks on the card but outside the button if needed, or ignore
-        const card = target.closest('.user-detail-card');
-        if (card && card.dataset.username) {
-            console.log(`Navigating to details for user: ${card.dataset.username} (clicked card area)`);
-            showView(VIEWS.PERSONAL_DETAIL, { userName: card.dataset.username });
+    const trigger = target.closest(".user-detail-trigger");
+
+    if (trigger) {
+        const userId = trigger.dataset.id;
+        const userName = trigger.dataset.name;
+        if (userId) {
+            console.log(`Navigating to details for ${userName} (${userId})`);
+            showView(VIEWS.PERSONAL_DETAIL, { userId: userId, userName: userName });
         }
-     }
+    }
 }
 
-
 /**
- * Handles the process of adding a new user profile via the modal.
- * Validates input, checks for existing names, and adds to Firestore.
+ * 新規ユーザー追加処理
  */
 export async function handleAddNewUser() {
-    if (!addUserModalNameInput || !addUserModalError || !userName) {
-        console.error("Add user modal elements or current admin userName not found.");
+    const nameInput = document.getElementById("add-user-modal-name-input");
+    const nameInputFallback = document.getElementById("new-user-name");
+    
+    const input = nameInput || nameInputFallback;
+
+    if (!input || !input.value.trim()) {
+        alert("ユーザー名を入力してください。");
         return;
     }
 
-    const newName = addUserModalNameInput.value.trim();
-    addUserModalError.textContent = ""; // Clear previous errors
+    const name = input.value.trim();
 
-    // --- Input Validation ---
-    if (!newName) {
-        addUserModalError.textContent = "ユーザー名を入力してください。";
-        addUserModalNameInput.focus();
-        return;
-    }
-    if (/\s/.test(newName)) { // Check for whitespace
-        addUserModalError.textContent = "ユーザー名に空白は使用できません。";
-        addUserModalNameInput.focus();
-        return;
-    }
-    // Basic length check (optional)
-    if (newName.length > 50) {
-        addUserModalError.textContent = "ユーザー名は50文字以内で入力してください。";
-        addUserModalNameInput.focus();
-        return;
-    }
-    // --- End Validation ---
-
-
-    // --- Check for Existing User ---
-    // Query user_profiles collection for a document where 'name' field equals newName
-    const q = query(collection(db, "user_profiles"), where("name", "==", newName));
     try {
-        const querySnapshot = await getDocs(q);
+        const newUserId = "user_" + Date.now();
+        // ★修正: 上でインポートした setDoc を使用
+        await setDoc(doc(db, "user_profiles", newUserId), {
+            displayName: name,
+            role: "client",
+            createdAt: new Date().toISOString()
+        });
 
-        if (!querySnapshot.empty) {
-            addUserModalError.textContent = `ユーザー名「${escapeHtml(newName)}」は既に使用されています。`;
-            addUserModalNameInput.select(); // Select existing text for easy replacement
-            return; // Stop execution if name exists
-        }
-    } catch (error) {
-        console.error("Error checking for existing user name:", error);
-        addUserModalError.textContent = "ユーザー名の確認中にエラーが発生しました。";
-        return; // Stop execution on error
-    }
-    // --- End Check ---
+        input.value = "";
+        console.log(`User ${name} added.`);
+        
+        const modal = document.getElementById("add-user-modal");
+        if(modal) closeModal(modal);
 
-
-    // --- Add New User to Firestore ---
-    try {
-        const newUserProfile = {
-            name: newName,
-            createdBy: userName, // Record who added the user (current admin)
-            createdAt: Timestamp.now(), // Record creation timestamp
-        };
-        const docRef = await addDoc(collection(db, "user_profiles"), newUserProfile);
-        console.log("New user added successfully with ID:", docRef.id);
-
-        closeAddUserModal(); // Close modal on success
-        // No need to manually update `allUsers` here, the listener will catch the change.
+        alert(`${name} さんを追加しました。`);
 
     } catch (error) {
-        console.error("Error adding new user to Firestore:", error);
-        addUserModalError.textContent = "ユーザーの追加中にエラーが発生しました。";
+        console.error("Error adding new user:", error);
+        alert("ユーザー追加に失敗しました。");
     }
-    // --- End Add User ---
 }
 
-
 /**
- * Handles the deletion of ALL work log entries for ALL users.
- * Prompts for confirmation before proceeding.
- * Note: User profiles are NOT deleted by this action.
+ * 全ログ削除処理
  */
-export function handleDeleteAllLogs() {
+export async function handleDeleteAllLogs() {
     showConfirmationModal(
-        `本当に全従業員の全ての業務記録（work_logs）を削除しますか？\n\nユーザープロフィール自体は削除されません。\n\nこの操作は元に戻せません。`,
+        "全従業員の全業務記録を削除しますか？\nこの操作は絶対に元に戻せません！",
         async () => {
-            console.warn("Attempting to delete all work logs...");
-            hideConfirmationModal(); // Hide modal immediately
-
+            hideConfirmationModal();
             try {
-                const logsCollectionRef = collection(db, "work_logs");
-                const snapshot = await getDocs(logsCollectionRef); // Get all documents in the collection
+                console.log("Deleting all work logs...");
+                const q = query(collection(db, "work_logs"));
+                const snapshot = await getDocs(q);
 
                 if (snapshot.empty) {
-                     console.log("No work logs found to delete.");
-                     alert("削除対象の業務記録はありませんでした。");
-                     return;
+                    alert("削除対象の記録はありませんでした。");
+                    return;
                 }
 
-                // Firestore batch writes are limited (e.g., 500 operations).
-                // If there could be many logs, process in smaller batches.
-                const batchSize = 400; // Keep slightly under limit
-                let batch = writeBatch(db);
-                let count = 0;
-                let totalDeleted = 0;
-
-                console.log(`Found ${snapshot.size} log documents to delete.`);
-
-                for (const docSnapshot of snapshot.docs) {
-                    batch.delete(docSnapshot.ref);
-                    count++;
-                    if (count >= batchSize) {
-                        console.log(`Committing batch delete of ${count} logs...`);
-                        await batch.commit();
-                        totalDeleted += count;
-                        batch = writeBatch(db); // Start a new batch
-                        count = 0;
-                        // Optional: Add a small delay between batches if hitting rate limits
-                        // await new Promise(resolve => setTimeout(resolve, 100));
-                    }
+                // FirestoreのBatchは一度に500件までなので分割処理
+                const BATCH_SIZE = 450;
+                const chunks = [];
+                for (let i = 0; i < snapshot.docs.length; i += BATCH_SIZE) {
+                    chunks.push(snapshot.docs.slice(i, i + BATCH_SIZE));
                 }
 
-                // Commit any remaining deletes in the last batch
-                if (count > 0) {
-                    console.log(`Committing final batch delete of ${count} logs...`);
+                for (const chunk of chunks) {
+                    const batch = writeBatch(db);
+                    chunk.forEach((doc) => {
+                        batch.delete(doc.ref);
+                    });
                     await batch.commit();
-                    totalDeleted += count;
                 }
-
-                console.log(`Successfully deleted ${totalDeleted} work log documents.`);
-                alert("全ての業務記録を削除しました。");
+                
+                alert("全業務記録を削除しました。");
 
             } catch (error) {
-                console.error("Error deleting all work logs:", error);
-                alert("業務記録の削除中にエラーが発生しました。");
+                console.error("Error deleting all logs:", error);
+                alert("ログの削除中にエラーが発生しました。");
             }
-        },
-        () => {
-             console.log("Deletion of all logs cancelled by user."); // Log cancellation
         }
     );
 }
 
-/**
- * Simple HTML escaping function to prevent XSS.
- * @param {string | null | undefined} unsafe - The potentially unsafe string.
- * @returns {string} The escaped string.
- */
+// --- Internal Helper Functions ---
+
+function renderUserList(users, container) {
+    if (!container) return;
+    
+    users.sort((a, b) => (a.displayName || a.name || "").localeCompare((b.displayName || b.name || ""), "ja"));
+
+    let html = `
+    <div class="overflow-x-auto">
+        <table class="min-w-full bg-white border border-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="py-2 px-3 border-b text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">名前</th>
+                    <th class="py-2 px-3 border-b text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">状態</th>
+                    <th class="py-2 px-3 border-b text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">現在の業務</th>
+                    <th class="py-2 px-3 border-b text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">権限</th>
+                    <th class="py-2 px-3 border-b text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">操作</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200">
+    `;
+
+    users.forEach(user => {
+        const userName = user.displayName || user.name || "名称未設定";
+        
+        // currentStatusesから情報を探す
+        const status = currentStatuses.find(s => s.userId === user.id); // ※プロパティ名をuserIdに合わせる
+        const isWorking = status ? (status.isWorking === 1) : false;
+        const currentTask = status ? (status.currentTask || "---") : "---";
+
+        // ★重要: statusDisplay.js が探せるようにクラス名を付与
+        const statusBadgeClass = isWorking 
+            ? "status-badge inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800"
+            : "status-badge inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800";
+        
+        const statusText = isWorking ? "稼働中" : "未稼働";
+
+        const currentRole = user.role || 'client';
+        const roleOptions = `
+            <select class="role-select text-xs border border-gray-300 rounded p-1 bg-white focus:ring-indigo-500 focus:border-indigo-500" data-id="${user.id}">
+                <option value="client" ${currentRole === 'client' ? 'selected' : ''}>一般</option>
+                <option value="manager" ${currentRole === 'manager' ? 'selected' : ''}>業務管理者</option>
+                <option value="host" ${currentRole === 'host' ? 'selected' : ''}>管理者</option>
+            </select>
+        `;
+
+        // ★重要: TRタグにIDを付与 (user-row-{userId})
+        html += `
+            <tr id="user-row-${user.id}" class="hover:bg-gray-50 transition">
+                <td class="py-2 px-3 text-sm font-medium text-gray-900 whitespace-nowrap cursor-pointer user-detail-trigger" data-id="${user.id}" data-name="${escapeHtml(userName)}">
+                    ${escapeHtml(userName)}
+                </td>
+                <td class="py-2 px-3 text-sm">
+                    <span class="${statusBadgeClass}">${statusText}</span>
+                </td>
+                <td class="py-2 px-3 text-sm text-gray-600 current-task">
+                    ${escapeHtml(currentTask)}
+                </td>
+                <td class="py-2 px-3 text-sm">
+                    ${roleOptions}
+                </td>
+                <td class="py-2 px-3 text-sm text-center">
+                    <button class="delete-user-btn text-red-600 hover:text-red-900 text-xs border border-red-200 px-2 py-1 rounded hover:bg-red-50" data-id="${user.id}" data-name="${escapeHtml(userName)}">削除</button>
+                </td>
+            </tr>
+        `;
+    });
+
+    html += `</tbody></table></div>`;
+    container.innerHTML = html;
+
+    // イベントリスナー設定
+    container.querySelectorAll(".role-select").forEach(select => {
+        select.addEventListener("change", async (e) => {
+            const userId = e.target.dataset.id;
+            const newRole = e.target.value;
+            try {
+                await updateDoc(doc(db, "user_profiles", userId), { role: newRole });
+                console.log(`Role updated for ${userId} to ${newRole}`);
+            } catch (err) {
+                console.error("Error updating role:", err);
+                alert("権限の更新に失敗しました。");
+            }
+        });
+    });
+
+    container.querySelectorAll(".delete-user-btn").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+            const userId = e.target.dataset.id;
+            const userName = e.target.dataset.name;
+            handleDeleteUser(userId, userName);
+        });
+    });
+}
+
+async function handleDeleteUser(uid, name) {
+    showConfirmationModal(
+        `ユーザー「${name}」を削除しますか？\n(この操作は元に戻せません)`,
+        async () => {
+            hideConfirmationModal();
+            try {
+                await deleteDoc(doc(db, "user_profiles", uid));
+                alert(`ユーザー「${name}」を削除しました。`);
+            } catch (error) {
+                console.error("Error deleting user:", error);
+                alert("削除に失敗しました。");
+            }
+        }
+    );
+}
+
 function escapeHtml(unsafe) {
     if (typeof unsafe !== 'string') return '';
     return unsafe
-         .replace(/&/g, "&amp;")
-         .replace(/</g, "&lt;")
-         .replace(/>/g, "&gt;")
-         .replace(/"/g, "&quot;")
-         .replace(/'/g, "&#039;");
- }
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/"/g, "&#039;");
+}

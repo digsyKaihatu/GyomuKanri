@@ -1,8 +1,20 @@
-// js/views/archive.js
-import { db, allTaskObjects, handleGoBack } from "../main.js"; 
-import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { 
+    db, 
+    allTaskObjects, 
+    handleGoBack,
+    // ★追加: リロードなし更新用
+    updateGlobalTaskObjects,
+    refreshUIBasedOnTaskUpdate
+} from "../main.js"; 
+import { 
+    collection, 
+    query, 
+    where, 
+    getDocs,
+    doc,
+    setDoc // ★追加: 保存用
+} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { formatHoursMinutes, escapeHtml } from "../utils.js";
-// ★修正: chart.js からは汎用関数のみをインポート
 import { createLineChart, destroyCharts } from "../components/chart.js";
 
 let selectedArchiveTaskName = null;
@@ -59,12 +71,11 @@ export function setupArchiveEventListeners() {
 
         if (!taskName || !goalId) return;
 
+        // ★修正: リロードなしの内部関数を呼び出し
         if (target.classList.contains('restore-goal-btn')) {
-            const { handleRestoreGoalClick } = await import('../components/modal.js');
-            handleRestoreGoalClick(taskName, goalId);
+            await handleRestoreGoal(taskName, goalId);
         } else if (target.classList.contains('delete-goal-btn')) {
-            const { handleDeleteGoal } = await import('../components/modal.js');
-            handleDeleteGoal(taskName, goalId);
+            await handleDeleteGoal(taskName, goalId);
         }
      });
 
@@ -104,6 +115,84 @@ export function setupArchiveEventListeners() {
             renderArchiveGoalList();
          }
     });
+}
+
+/**
+ * ★追加: 工数を進行中に戻す処理（リロードなし）
+ */
+async function handleRestoreGoal(taskName, goalId) {
+    if (!confirm(`「${taskName}」のこの工数を進行中に戻しますか？`)) return;
+
+    try {
+        const currentTasks = allTaskObjects;
+        const taskIndex = currentTasks.findIndex(t => t.name === taskName);
+        if (taskIndex === -1) return;
+
+        const updatedTasks = JSON.parse(JSON.stringify(currentTasks));
+        const task = updatedTasks[taskIndex];
+        const goal = task.goals.find(g => g.id === goalId || g.title === goalId);
+
+        if (goal) {
+            goal.isComplete = false;
+            // 必要なら completedAt を削除する場合は以下を有効化
+            // delete goal.completedAt; 
+        } else {
+            alert("エラー: 工数が見つかりませんでした。");
+            return;
+        }
+
+        const tasksRef = doc(db, "settings", "tasks");
+        await setDoc(tasksRef, { list: updatedTasks });
+
+        updateGlobalTaskObjects(updatedTasks);
+        await refreshUIBasedOnTaskUpdate();
+        
+        // 画面更新後に選択状態がリセットされるため、完了リストから消えたことを考慮して初期化
+        selectedArchiveGoalId = null;
+        renderArchiveTaskList();
+        renderArchiveGoalList();
+
+        alert("進行中の工数に戻しました。");
+
+    } catch (error) {
+        console.error("Error restoring goal:", error);
+        alert("処理中にエラーが発生しました。");
+    }
+}
+
+/**
+ * ★追加: 工数を削除する処理（リロードなし）
+ */
+async function handleDeleteGoal(taskName, goalId) {
+    if (!confirm(`この工数を完全に削除しますか？\nこの操作は元に戻せません。`)) return;
+
+    try {
+        const currentTasks = allTaskObjects;
+        const taskIndex = currentTasks.findIndex(t => t.name === taskName);
+        if (taskIndex === -1) return;
+
+        const updatedTasks = JSON.parse(JSON.stringify(currentTasks));
+        const task = updatedTasks[taskIndex];
+        
+        // 該当の工数を除外
+        task.goals = task.goals.filter(g => g.id !== goalId && g.title !== goalId);
+
+        const tasksRef = doc(db, "settings", "tasks");
+        await setDoc(tasksRef, { list: updatedTasks });
+
+        updateGlobalTaskObjects(updatedTasks);
+        await refreshUIBasedOnTaskUpdate();
+        
+        selectedArchiveGoalId = null;
+        renderArchiveTaskList();
+        renderArchiveGoalList();
+
+        alert("工数を削除しました。");
+
+    } catch (error) {
+        console.error("Error deleting goal:", error);
+        alert("処理中にエラーが発生しました。");
+    }
 }
 
 async function fetchLogsForGoal(goalId) {
@@ -174,6 +263,9 @@ function renderArchiveTaskList() {
   }
 }
 
+/**
+ * アーカイブされた（完了済み）工数リストを描画する
+ */
 function renderArchiveGoalList() {
   if (!archiveGoalListContainer) return;
   archiveGoalListContainer.innerHTML = ""; 
@@ -184,49 +276,68 @@ function renderArchiveGoalList() {
     return;
   }
 
+  // ★ 日付を安全に数値(ミリ秒)に変換する内部ヘルパー
+  const getMillis = (val) => {
+    if (!val) return 0;
+    if (typeof val.toMillis === 'function') return val.toMillis(); // Firestore Timestamp
+    if (val instanceof Date) return val.getTime(); // Date object
+    if (val.seconds) return val.seconds * 1000; // Plain object with seconds
+    return new Date(val).getTime(); // String or others
+  };
+
+  // 完了フラグが立っており、かつ完了日時がある工数を抽出
   const completedGoals = (task.goals || [])
     .filter((g) => g.isComplete && g.completedAt)
-    .sort((a, b) => (b.completedAt?.getTime() || 0) - (a.completedAt?.getTime() || 0));
+    // ★ getTime() の代わりに getMillis を使用して安全に降順ソート（最新が上）
+    .sort((a, b) => getMillis(b.completedAt) - getMillis(a.completedAt));
 
   if (completedGoals.length === 0) {
     archiveGoalListContainer.innerHTML = '<p class="text-gray-500">この業務に完了済みの工数はありません。</p>';
-     selectedArchiveGoalId = null;
-     if(archiveGoalDetailsContainer) archiveGoalDetailsContainer.classList.add("hidden");
-     if(archiveChartContainer) archiveChartContainer.classList.add("hidden");
-     if(archiveWeeklySummaryContainer) archiveWeeklySummaryContainer.classList.add("hidden");
-     destroyCharts([archiveChartInstance]);
-     archiveChartInstance = null;
+    selectedArchiveGoalId = null;
+    if (archiveGoalDetailsContainer) archiveGoalDetailsContainer.classList.add("hidden");
+    if (archiveChartContainer) archiveChartContainer.classList.add("hidden");
+    if (archiveWeeklySummaryContainer) archiveWeeklySummaryContainer.classList.add("hidden");
+    destroyCharts([archiveChartInstance]);
+    archiveChartInstance = null;
     return;
   }
 
   completedGoals.forEach((goal) => {
     const button = document.createElement("button");
+    // IDまたはタイトルを識別子として使用（selected状態の判定用）
+    const tid = goal.id || goal.title;
+    
     button.className = `w-full text-left p-2 rounded-lg list-item hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-300 ${
-      selectedArchiveGoalId === goal.id ? "selected bg-indigo-100" : "" 
+      selectedArchiveGoalId === tid ? "selected bg-indigo-100" : "" 
     }`;
-    const completedDate = (goal.completedAt instanceof Date && !isNaN(goal.completedAt))
-      ? goal.completedAt.toLocaleDateString("ja-JP")
+
+    // ★ 表示用の日付変換ロジック：Timestamp なら toDate()、それ以外なら new Date() で変換
+    const d = goal.completedAt?.toDate ? goal.completedAt.toDate() : new Date(goal.completedAt);
+    const completedDate = (d instanceof Date && !isNaN(d))
+      ? d.toLocaleDateString("ja-JP")
       : "不明";
+
     button.innerHTML = `
             <div>${escapeHtml(goal.title || '無題')}</div>
             <div class="text-xs text-gray-500">完了日: ${completedDate}</div>
         `;
-    button.dataset.goalId = goal.id;
+    button.dataset.goalId = tid;
     archiveGoalListContainer.appendChild(button);
   });
 
-   if (selectedArchiveGoalId) {
-    const goalExists = completedGoals.some(g => g.id === selectedArchiveGoalId);
-    if(goalExists){
+  // 既に工数が選択されている場合の状態維持
+  if (selectedArchiveGoalId) {
+    const goalExists = completedGoals.some(g => (g.id || g.title) === selectedArchiveGoalId);
+    if (goalExists) {
         renderArchiveGoalDetails();
         renderArchiveWeeklySummary();
         const selectedButton = archiveGoalListContainer.querySelector(`.list-item[data-goal-id="${selectedArchiveGoalId}"]`);
-        if(selectedButton) selectedButton.classList.add('selected', 'bg-indigo-100');
+        if (selectedButton) selectedButton.classList.add('selected', 'bg-indigo-100');
     } else {
         selectedArchiveGoalId = null;
-        if(archiveGoalDetailsContainer) archiveGoalDetailsContainer.classList.add("hidden");
-        if(archiveWeeklySummaryContainer) archiveWeeklySummaryContainer.classList.add("hidden");
-        if(archiveChartContainer) archiveChartContainer.classList.add("hidden");
+        if (archiveGoalDetailsContainer) archiveGoalDetailsContainer.classList.add("hidden");
+        if (archiveWeeklySummaryContainer) archiveWeeklySummaryContainer.classList.add("hidden");
+        if (archiveChartContainer) archiveChartContainer.classList.add("hidden");
         destroyCharts([archiveChartInstance]);
         archiveChartInstance = null;
     }
@@ -249,10 +360,12 @@ function renderArchiveGoalDetails() {
     return;
   }
 
-  const completedDate = (goal.completedAt instanceof Date && !isNaN(goal.completedAt))
-    ? goal.completedAt.toLocaleString("ja-JP")
+  // ★ 表示用日時の変換を安全に行う
+  const d = goal.completedAt?.toDate ? goal.completedAt.toDate() : new Date(goal.completedAt);
+  const completedDate = (d instanceof Date && !isNaN(d))
+    ? d.toLocaleString("ja-JP")
     : "不明";
-
+    
   const readOnlyMode = window.isProgressViewReadOnly === true;
   const buttonsHtml = readOnlyMode ? "" : `
     <div class="flex-shrink-0 ml-4 space-x-2">
@@ -355,9 +468,7 @@ function renderArchiveWeeklySummary() {
        renderArchiveTableNavigation(datesToShow, archiveDatePageIndex + 1, totalPages);
 
        if (weeklyData.length > 0) {
-           // ★修正: 汎用の createLineChart を使用して描画ロジックを実装
            _renderArchiveChart(archiveChartContainer, datesToShow, weeklyData); 
-           // ★修正: 内部関数 _renderArchiveTable を呼び出し
            _renderArchiveTable(archiveWeeklySummaryContainer, datesToShow, weeklyData); 
            archiveChartContainer.classList.remove("hidden");
        } else {
@@ -374,7 +485,6 @@ function renderArchiveWeeklySummary() {
 
 }
 
-// ★新規: 内部関数として実装
 function _renderArchiveChart(container, activeDates, data) {
     container.innerHTML = "";
     const canvas = document.createElement("canvas");
@@ -402,7 +512,6 @@ function _renderArchiveChart(container, activeDates, data) {
     archiveChartInstance = createLineChart(canvas.getContext("2d"), labels, datasets, "日別貢献件数", "合計件数");
 }
 
-// ★新規: 内部関数として実装
 function _renderArchiveTable(container, activeDates, data) {
     let tableHtml = '<div class="overflow-x-auto mt-4"><table class="w-full text-sm text-left text-gray-500">';
     tableHtml += '<thead class="text-xs text-gray-700 uppercase bg-gray-50"><tr><th scope="col" class="px-4 py-3">名前</th>';

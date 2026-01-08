@@ -37,6 +37,7 @@ export function stopListeningForStatusUpdates() {
 }
 
 async function fetchAndRefreshStatus() {
+    if (document.hidden) return;
     try {
         // ユーザー一覧取得
         const response = await fetch(`${WORKER_URL}/get-all-status`);

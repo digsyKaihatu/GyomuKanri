@@ -80,22 +80,36 @@ function injectApprovalButton() {
 
         // リストの最後に追加
         buttonList.appendChild(btn);
+    }
+}
 
-        // --- バッジの件数監視ロジック ---
-        const q = query(collection(db, "work_log_requests"), where("status", "==", "pending"));
-        onSnapshot(q, (snap) => {
-            const badge = document.getElementById("approval-badge");
-            if (badge) {
-                if (snap.size > 0) {
-                    badge.textContent = `${snap.size}件`;
-                    badge.classList.remove("hidden");
-                    btn.classList.add("animate-pulse"); 
-                } else {
-                    badge.classList.add("hidden");
-                    btn.classList.remove("animate-pulse");
-                }
+let approvalListenerUnsubscribe = null;
+
+function startListeningForApprovals() {
+    if (approvalListenerUnsubscribe) return;
+    const btn = document.getElementById("view-approval-btn");
+    if (!btn) return;
+
+    const q = query(collection(db, "work_log_requests"), where("status", "==", "pending"));
+    approvalListenerUnsubscribe = onSnapshot(q, (snap) => {
+        const badge = document.getElementById("approval-badge");
+        if (badge) {
+            if (snap.size > 0) {
+                badge.textContent = `${snap.size}件`;
+                badge.classList.remove("hidden");
+                btn.classList.add("animate-pulse");
+            } else {
+                badge.classList.add("hidden");
+                btn.classList.remove("animate-pulse");
             }
-        });
+        }
+    });
+}
+
+function stopListeningForApprovals() {
+    if (approvalListenerUnsubscribe) {
+        approvalListenerUnsubscribe();
+        approvalListenerUnsubscribe = null;
     }
 }
 
@@ -109,12 +123,14 @@ export function initializeHostView() {
     startListeningForStatusUpdates(); 
     startListeningForUsers();      
     listenForTomuraStatus();
+    startListeningForApprovals();
 }
 
 export function cleanupHostView() {
     console.log("Cleaning up Host View...");
     stopListeningForStatusUpdates(); 
     stopListeningForUsers();      
+    stopListeningForApprovals();
 }
 
 export function setupHostEventListeners() {
@@ -226,9 +242,16 @@ async function listenForTomuraStatus() {
 // 【節約対策4】タブがアクティブになった瞬間に即座に最新を確認する
 // これにより、ポーリング間隔を長くしても、ユーザーが画面を見た瞬間は常に最新になります
 document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) {
-        // 他の初期化が終わっていることを想定して、直接関数を叩く
+    const isHostViewActive = document.getElementById(VIEWS.HOST)?.classList.contains('active-view');
+    if (!isHostViewActive) return;
+
+    if (document.hidden) {
+        stopListeningForUsers();
+        stopListeningForApprovals();
+    } else {
         listenForTomuraStatus();
+        startListeningForUsers();
+        startListeningForApprovals();
     }
 });
 // --- メッセージ機能の実装 ---

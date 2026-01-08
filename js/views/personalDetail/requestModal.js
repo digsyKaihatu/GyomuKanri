@@ -122,7 +122,13 @@ export function openAddRequestModal(dateStr) {
     
     document.getElementById("req-type").value = "add";
     document.getElementById("request-modal-title").textContent = "業務追加申請";
-    document.getElementById("req-date").value = dateStr;
+    
+    // ★修正: 日付を入力可能にする (readonly属性削除とグレー背景解除)
+    const dateInput = document.getElementById("req-date");
+    dateInput.value = dateStr;
+    dateInput.removeAttribute("readonly");
+    dateInput.classList.remove("bg-gray-100");
+
     document.getElementById("req-time-container").style.display = "grid";
     document.getElementById("req-start-time").value = "";
     document.getElementById("req-end-time").value = "";
@@ -141,7 +147,12 @@ export function openUpdateRequestModal(log) {
     document.getElementById("req-type").value = "update";
     document.getElementById("request-modal-title").textContent = "業務変更申請";
     document.getElementById("req-target-log-id").value = log.id;
-    document.getElementById("req-date").value = log.date;
+    
+    // ★修正: 変更申請の場合は日付を固定に戻す (readonly属性付与とグレー背景追加)
+    const dateInput = document.getElementById("req-date");
+    dateInput.value = log.date;
+    dateInput.setAttribute("readonly", "true");
+    dateInput.classList.add("bg-gray-100");
     
     document.getElementById("req-time-container").style.display = "none";
 

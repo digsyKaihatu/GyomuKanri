@@ -66,6 +66,14 @@ export function listenForMessages() {
     console.log("listenForMessages を開始しました");
     onMessage(messaging, (payload) => {
         console.log('フォアグラウンド通知受信:', payload);
+
+        // ★追加: Workerからの通知かを判定
+        if (payload.data && payload.data.source === 'worker') {
+            console.log("Workerからの通知を検出。ステータスの強制更新を試みます。");
+            // カスタムイベントを発火させて host.js に処理を依頼
+            document.dispatchEvent(new CustomEvent('force-fetch-status'));
+        }
+
         const { title, body } = payload.notification;
         
         // ブラウザ通知を表示

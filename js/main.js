@@ -4,6 +4,7 @@ import { db, isFirebaseConfigValid } from './firebase.js';
 import { checkOktaAuthentication, handleOktaLogout } from './okta.js';
 import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { initMessaging, listenForMessages } from './fcm.js';
+import { injectAllTemplates } from './domInjector.js';
 import { initializeModeSelectionView, setupModeSelectionEventListeners } from './views/modeSelection.js';
 import { initializeTaskSettingsView, setupTaskSettingsEventListeners } from './views/taskSettings.js';
 import { initializeHostView, cleanupHostView, setupHostEventListeners } from './views/host/host.js';
@@ -56,30 +57,11 @@ const viewLifecycle = {
     [VIEWS.APPROVAL]: { init: initializeApprovalView, cleanup: cleanupApprovalView },
 };
 
-function injectApprovalViewHTML() {
-    if (document.getElementById(VIEWS.APPROVAL)) return;
-    const div = document.createElement("div");
-    div.id = VIEWS.APPROVAL;
-    div.className = "view p-6 max-w-5xl mx-auto"; 
-    div.innerHTML = `
-        <div class="flex items-center justify-between mb-6">
-            <h2 class="text-2xl font-bold text-gray-800">業務時間追加・変更承認</h2>
-            <button id="back-from-approval" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded shadow">
-                戻る
-            </button>
-        </div>
-        <div id="approval-list-content" class="space-y-4"></div>
-    `;
-    document.getElementById("app-container").appendChild(div);
-    
-    document.getElementById("back-from-approval").addEventListener("click", () => {
-        showView(VIEWS.HOST);
-    });
-}
-
 async function initialize() {
     console.log("Initializing application...");
     setupVisibilityReload();
+
+    injectAllTemplates();
 
     const appContainer = document.getElementById('app-container');
 
@@ -88,7 +70,6 @@ async function initialize() {
         return;
     }
     
-    injectApprovalViewHTML();
     setupGlobalEventListeners();
 
     try {
@@ -370,5 +351,11 @@ export function getAllTaskObjects() {
 }
     
 export { db, escapeHtml, getJSTDateString };
-document.addEventListener("DOMContentLoaded", initialize);
+
+// Ensure the initialize function is called reliably, whether the script is loaded before or after DOMContentLoaded.
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initialize);
+} else {
+    initialize();
+}
 

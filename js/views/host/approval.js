@@ -6,10 +6,15 @@ import { escapeHtml } from "../../utils.js";
 const approvalListEl = document.getElementById("approval-list");
 let unsubscribe = null;
 
+const handleBackClick = () => showView(VIEWS.HOST);
+
 export function initializeApprovalView() {
     console.log("Initializing Approval View...");
-    const container = document.getElementById("approval-view");
+    const container = document.getElementById(VIEWS.APPROVAL);
     if (!container) return; 
+
+    const backBtn = document.getElementById("back-from-approval");
+    backBtn?.addEventListener("click", handleBackClick);
     
     const q = query(
         collection(db, "work_log_requests"),
@@ -24,6 +29,8 @@ export function initializeApprovalView() {
 
 export function cleanupApprovalView() {
     if (unsubscribe) unsubscribe();
+    const backBtn = document.getElementById("back-from-approval");
+    backBtn?.removeEventListener("click", handleBackClick);
 }
 
 function renderApprovalList(docs) {

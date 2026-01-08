@@ -80,22 +80,36 @@ function injectApprovalButton() {
 
         // リストの最後に追加
         buttonList.appendChild(btn);
+    }
+}
 
-        // --- バッジの件数監視ロジック ---
-        const q = query(collection(db, "work_log_requests"), where("status", "==", "pending"));
-        onSnapshot(q, (snap) => {
-            const badge = document.getElementById("approval-badge");
-            if (badge) {
-                if (snap.size > 0) {
-                    badge.textContent = `${snap.size}件`;
-                    badge.classList.remove("hidden");
-                    btn.classList.add("animate-pulse"); 
-                } else {
-                    badge.classList.add("hidden");
-                    btn.classList.remove("animate-pulse");
-                }
+let approvalListenerUnsubscribe = null;
+
+function startListeningForApprovals() {
+    if (approvalListenerUnsubscribe) return;
+    const btn = document.getElementById("view-approval-btn");
+    if (!btn) return;
+
+    const q = query(collection(db, "work_log_requests"), where("status", "==", "pending"));
+    approvalListenerUnsubscribe = onSnapshot(q, (snap) => {
+        const badge = document.getElementById("approval-badge");
+        if (badge) {
+            if (snap.size > 0) {
+                badge.textContent = `${snap.size}件`;
+                badge.classList.remove("hidden");
+                btn.classList.add("animate-pulse");
+            } else {
+                badge.classList.add("hidden");
+                btn.classList.remove("animate-pulse");
             }
-        });
+        }
+    });
+}
+
+function stopListeningForApprovals() {
+    if (approvalListenerUnsubscribe) {
+        approvalListenerUnsubscribe();
+        approvalListenerUnsubscribe = null;
     }
 }
 
@@ -109,12 +123,14 @@ export function initializeHostView() {
     startListeningForStatusUpdates(); 
     startListeningForUsers();      
     listenForTomuraStatus();
+    startListeningForApprovals();
 }
 
 export function cleanupHostView() {
     console.log("Cleaning up Host View...");
     stopListeningForStatusUpdates(); 
     stopListeningForUsers();      
+    stopListeningForApprovals();
 }
 
 export function setupHostEventListeners() {
@@ -185,51 +201,64 @@ function updateUI(data) {
 let tomuraPollingInterval = null;
 let lastTomuraDataCache = null;
 
-async function listenForTomuraStatus() {
-    // 既存のタイマーをクリア
-    if (tomuraPollingInterval) clearInterval(tomuraPollingInterval);
+// WorkerのURLを定数化
+const TOMURA_WORKER_URL = "https://muddy-night-4bd4.sora-yamashita.workers.dev";
 
-    const WORKER_URL = "https://muddy-night-4bd4.sora-yamashita.workers.dev";
+// ★修正: 読み込み処理を独立させ、強制取得オプションを追加
+async function fetchTomuraStatus(force = false) {
+    // タブが非アクティブ、かつ強制取得フラグがなければ処理を中断
+    if (document.hidden && !force) {
+        return;
+    }
 
-    // 読み込み処理の本体
-    const fetchStatus = async () => {
-        // 【節約対策1】タブが隠れている（非アクティブ）時はWorkerを叩かない
-        // これだけで、PC放置中や別タブ閲覧中の読み取りをゼロにできます
-        if (document.hidden) return;
+    try {
+        const resp = await fetch(`${TOMURA_WORKER_URL}/get-tomura-status`);
+        if (resp.ok) {
+            const data = await resp.json();
+            const dataStr = JSON.stringify(data);
 
-        try {
-            const resp = await fetch(`${WORKER_URL}/get-tomura-status`);
-            if (resp.ok) {
-                const data = await resp.json();
-                const dataStr = JSON.stringify(data);
-
-                // 【節約対策2】前回取得したデータと全く同じなら、UI更新(DOM操作)をスキップ
-                if (dataStr === lastTomuraDataCache) return;
-
-                // データの変化があった時だけ反映
-                updateUI(data); 
+            if (dataStr !== lastTomuraDataCache) {
+                updateUI(data);
                 lastTomuraDataCache = dataStr;
             }
-        } catch (error) {
-            console.error("D1 戸村ステータス取得エラー:", error);
         }
-    };
+    } catch (error) {
+        console.error("D1 戸村ステータス取得エラー:", error);
+    }
+}
 
-    // 1. ページ読み込み時に初回実行
-    fetchStatus();
+async function listenForTomuraStatus() {
+    if (tomuraPollingInterval) clearInterval(tomuraPollingInterval);
 
-    // 2. 【節約対策3】定期取得の間隔（先ほどのご要望通り 30〜60秒）
-    // 30秒 = 30000ms / 60秒 = 60000ms
-    tomuraPollingInterval = setInterval(fetchStatus, 30000);
+    // 初回実行
+    fetchTomuraStatus();
+
+    // 定期実行
+    tomuraPollingInterval = setInterval(fetchTomuraStatus, 30000);
 }
 
 // 【節約対策4】タブがアクティブになった瞬間に即座に最新を確認する
-// これにより、ポーリング間隔を長くしても、ユーザーが画面を見た瞬間は常に最新になります
 document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) {
-        // 他の初期化が終わっていることを想定して、直接関数を叩く
-        listenForTomuraStatus();
+    const isHostViewActive = document.getElementById(VIEWS.HOST)?.classList.contains('active-view');
+    if (!isHostViewActive) return;
+
+    if (document.hidden) {
+        // 非アクティブになったら、リアルタイム系のリスナーを停止
+        stopListeningForUsers();
+        stopListeningForApprovals();
+    } else {
+        // アクティブになったら、ポーリングとリアルタイムリスナーを再開
+        fetchTomuraStatus(); // ★修正: listenの再呼び出しではなく、単発のfetchに
+        startListeningForUsers();
+        startListeningForApprovals();
     }
+});
+
+// ★追加: 外部からの強制取得トリガー
+// これにより、FCMプッシュ通知などを受けた際に、タブが非アクティブでも情報を更新できる
+document.addEventListener('force-fetch-status', () => {
+    console.log("Event 'force-fetch-status' received. Forcing status fetch.");
+    fetchTomuraStatus(true);
 });
 // --- メッセージ機能の実装 ---
 

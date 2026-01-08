@@ -247,11 +247,9 @@ document.addEventListener("visibilitychange", () => {
 
     if (document.hidden) {
         stopListeningForUsers();
-        stopListeningForApprovals();
     } else {
         listenForTomuraStatus();
         startListeningForUsers();
-        startListeningForApprovals();
     }
 });
 // --- メッセージ機能の実装 ---

@@ -4,7 +4,7 @@
 import { db, setUserId, setUserName, setAuthLevel, showView, VIEWS, fetchDisplayPreferences, updateGlobalTaskObjects } from './main.js'; 
 import { checkForCheckoutCorrection } from './utils.js'; 
 import { collection, query, where, getDocs, doc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { oktaConfig } from "./config.js";
+import { oktaConfig } from "../config.js";
 
 // --- Okta Configuration ---
 const OKTA_DOMAIN = oktaConfig.domain; 

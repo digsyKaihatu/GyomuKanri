@@ -5,7 +5,7 @@ import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/fireb
 import { app, db, auth } from "./firebase.js";
 import { doc, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 // ★修正: firebaseConfig をインポート
-import { fcmConfig, firebaseConfig } from "../config.js";
+import { fcmConfig, firebaseConfig } from "./config.js";
 
 const messaging = getMessaging(app);
 const VAPID_KEY = fcmConfig.vapidKey;

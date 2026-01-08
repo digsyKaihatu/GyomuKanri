@@ -14,9 +14,6 @@ import { initializeReportView, cleanupReportView, setupReportEventListeners } fr
 import { initializeProgressView, setupProgressEventListeners } from './views/progress/progress.js';
 import { initializeArchiveView, setupArchiveEventListeners } from './views/archive.js';
 const LAST_VIEW_KEY = "gyomu_timer_last_view";
-export const worker = new Worker('/timer-worker.js'); // export をつける
-
-
 import { initializeApprovalView, cleanupApprovalView } from './views/host/approval.js';
 
 import { setupModalEventListeners, adminPasswordView, closeModal } from './components/modal/index.js';
@@ -367,26 +364,6 @@ function setupVisibilityReload() {
         }
     });
 }
-
-// Workerからメッセージが来た時の処理
-worker.onmessage = function(e) {
-  const data = e.data;
-
-  if (data.type === 'tick') {
-    // 【画面更新】ここでDOMを書き換える
-    document.getElementById('timer-display').innerText = data.time + '秒';
-  } 
-  
-  if (data.type === 'notify') {
-    // 【通知】ブラウザ通知を出す
-    new Notification('タイマー', { body: data.message });
-  }
-};
-
-// 開始ボタンでWorkerに指令を送る
-document.getElementById('start-btn').onclick = function() {
-  worker.postMessage('start');
-};
 
 export function getAllTaskObjects() {
     return allTaskObjects;

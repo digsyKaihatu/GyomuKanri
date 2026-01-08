@@ -4,7 +4,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebas
 import { getFirestore, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 // ローカル設定の読み込み（フォールバック用）
-import { firebaseConfig as localConfig } from "./config.js";
+import { firebaseConfig as localConfig } from "../config.js";
 
 // --- Configuration Setup ---
 let firebaseConfig;

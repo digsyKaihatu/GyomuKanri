@@ -72,10 +72,7 @@ export function cleanupClientView() {
         tomuraStatusInterval = null;
     }
     // 2. ★追加: 自分自身のステータス監視を止める
-    if (myStatusUnsubscribe) {
-        myStatusUnsubscribe();
-        myStatusUnsubscribe = null;
-    }
+    stopListeningForMyStatus();
     
     // 3. 同僚の監視を止める
     stopColleaguesListener();
@@ -117,11 +114,7 @@ export async function initializeClientView() {
  */
 // ★追加: 自分自身のステータスをリアルタイム監視する関数
 function listenForMyStatus() {
-    if (!userId) return;
-    
-    if (myStatusUnsubscribe) {
-        myStatusUnsubscribe();
-    }
+    if (!userId || myStatusUnsubscribe) return;
 
     // Firestoreの自分のドキュメントを監視
     myStatusUnsubscribe = onSnapshot(doc(db, "work_status", userId), async (docSnap) => { // asyncにする
@@ -318,6 +311,13 @@ if (isWorkerUpdate) {
     });
 }
 
+function stopListeningForMyStatus() {
+    if (myStatusUnsubscribe) {
+        myStatusUnsubscribe();
+        myStatusUnsubscribe = null;
+    }
+}
+
 /**
  * イベントリスナーの設定
  */
@@ -411,6 +411,17 @@ if (breakBtn) breakBtn.onclick = () => handleBreakClick(false);
     // Help Button
     helpButton?.addEventListener('click', () => showHelpModal('client'));
 
+    document.addEventListener("visibilitychange", () => {
+        const isClientViewActive = document.getElementById(VIEWS.CLIENT)?.classList.contains('active-view');
+        if (!isClientViewActive) return;
+
+        if (document.hidden) {
+            stopListeningForMyStatus();
+        } else {
+            listenForMyStatus();
+        }
+    });
+
     console.log("Client View event listeners set up complete.");
 }
 
@@ -425,6 +436,7 @@ function listenForTomuraStatus() {
     const todayStr = new Date().toISOString().split("T")[0];
 
     const fetchStatus = async () => {
+        if (document.hidden) return;
         try {
             const resp = await fetch(`${WORKER_URL}/get-tomura-status`);
             if (resp.ok) {

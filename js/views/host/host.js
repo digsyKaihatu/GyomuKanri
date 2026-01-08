@@ -254,11 +254,29 @@ document.addEventListener("visibilitychange", () => {
     }
 });
 
-// ★追加: 外部からの強制取得トリガー
-// これにより、FCMプッシュ通知などを受けた際に、タブが非アクティブでも情報を更新できる
-document.addEventListener('force-fetch-status', () => {
-    console.log("Event 'force-fetch-status' received. Forcing status fetch.");
+// ★追加: Service Worker / FCMからの強制取得トリガー
+function handleForceFetch() {
+    const isHostViewActive = document.getElementById(VIEWS.HOST)?.classList.contains('active-view');
+    if (!isHostViewActive) {
+        console.log("Host view is not active, skipping force fetch.");
+        return;
+    }
+    console.log("Forcing status fetch because host view is active.");
     fetchTomuraStatus(true);
+}
+
+// FCM (フォアグラウンド) からのイベント
+document.addEventListener('force-fetch-status', () => {
+    console.log("Event 'force-fetch-status' received.");
+    handleForceFetch();
+});
+
+// Service Worker (バックグラウンド) からのメッセージ
+navigator.serviceWorker.addEventListener('message', event => {
+    if (event.data && event.data.type === 'FORCE_STATUS_UPDATE') {
+        console.log('Service Workerから強制更新メッセージを受信しました。');
+        handleForceFetch();
+    }
 });
 // --- メッセージ機能の実装 ---
 

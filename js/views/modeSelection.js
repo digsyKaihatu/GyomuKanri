@@ -51,30 +51,40 @@ export async function initializeModeSelectionView() {
             }
         }
     }
+
+    setupModeSelectionEventListeners();
 }
 
 /**
  * クリーンアップ（今回はリスナーを使っていないので特に処理なし）
  */
 export function cleanupModeSelectionView() {
-    // 特になし
+    clientBtn?.removeEventListener("click", handleClientBtnClick);
+    hostBtn?.removeEventListener("click", handleHostBtnClick);
+    settingsBtn?.removeEventListener("click", handleSettingsBtnClick);
+    logoutBtn?.removeEventListener("click", handleLogoutBtnClick);
+    saveWordBtn?.removeEventListener("click", handleSaveWordOfTheDay);
 }
 
 /**
  * イベントリスナーの設定
  */
+const handleClientBtnClick = () => handleModeSelect(VIEWS.CLIENT);
+const handleHostBtnClick = () => handleModeSelect(VIEWS.HOST);
+const handleSettingsBtnClick = () => showView(VIEWS.TASK_SETTINGS);
+const handleLogoutBtnClick = () => {
+    if(confirm("ログアウトしますか？")) {
+         location.reload();
+    }
+};
+
 export function setupModeSelectionEventListeners() {
     console.log("Setting up Mode Selection event listeners...");
 
-    clientBtn?.addEventListener("click", () => handleModeSelect(VIEWS.CLIENT));
-    hostBtn?.addEventListener("click", () => handleModeSelect(VIEWS.HOST));
-    settingsBtn?.addEventListener("click", () => showView(VIEWS.TASK_SETTINGS));
-
-    logoutBtn?.addEventListener("click", () => {
-        if(confirm("ログアウトしますか？")) {
-             location.reload(); 
-        }
-    });
+    clientBtn?.addEventListener("click", handleClientBtnClick);
+    hostBtn?.addEventListener("click", handleHostBtnClick);
+    settingsBtn?.addEventListener("click", handleSettingsBtnClick);
+    logoutBtn?.addEventListener("click", handleLogoutBtnClick);
 
     // 今日の一言保存ボタン
     saveWordBtn?.addEventListener("click", handleSaveWordOfTheDay);

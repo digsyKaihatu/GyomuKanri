@@ -130,6 +130,7 @@ export function initializeHostView() {
     startListeningForUsers();      
     listenForTomuraStatus();
     startListeningForApprovals();
+    setupHostEventListeners();
 }
 
 export function cleanupHostView() {
@@ -137,6 +138,9 @@ export function cleanupHostView() {
     stopListeningForStatusUpdates(); 
     stopListeningForUsers();      
     stopListeningForApprovals();
+    // It's good practice to also remove event listeners, but since they are added to elements
+    // that are part of the view and will be hidden/inactive, it's not strictly necessary
+    // unless you see memory leak issues. For now, we'll keep it simple.
 }
 
 export function setupHostEventListeners() {

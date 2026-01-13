@@ -116,6 +116,9 @@ export async function initializeClientView() {
     
     // 前の画面のリスナーを停止
     stopColleaguesListener();
+
+    // Setup event listeners for the client view
+    setupClientEventListeners();
 }
 
 /**

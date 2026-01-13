@@ -51,6 +51,7 @@ export async function initializeArchiveView() {
     if(archiveWeeklySummaryContainer) archiveWeeklySummaryContainer.classList.add("hidden");
      destroyCharts([archiveChartInstance]);
      archiveChartInstance = null;
+    setupArchiveEventListeners();
 }
 
 export function setupArchiveEventListeners() {

@@ -29,6 +29,7 @@ export let allTaskObjects = [];
 export let userDisplayPreferences = { hiddenTasks: [] }; 
 export let viewHistory = []; 
 export let adminLoginDestination = null; 
+let initialDataLoaded = null;
 
 export const VIEWS = {
     OKTA_WIDGET: "okta-signin-widget-container",
@@ -155,7 +156,8 @@ export function showView(viewId, data = {}) {
     const newLifecycle = viewLifecycle[viewId];
     if (newLifecycle?.init) {
          try {
-             (async () => await newLifecycle.init(data))();
+            await initialDataLoaded; // Wait for initial data to be loaded
+            await newLifecycle.init(data);
          } catch (error) {
               console.error(`Error during initialization of view ${viewId}:`, error);
          }
@@ -310,14 +312,13 @@ async function handleAdminLogin() {
     }
 }
 
-export async function startAppAfterLogin() {
+export function startAppAfterLogin() {
     console.log("Authentication successful. Starting data sync...");
     initMessaging(userId);
     listenForMessages();
 
     // 【改善】常時監視を止め、初期化時に1回だけ取得する
-    await fetchTasks();
-    await fetchDisplayPreferences();
+    initialDataLoaded = Promise.all([fetchTasks(), fetchDisplayPreferences()]);
 }
 
 function setupVisibilityReload() {

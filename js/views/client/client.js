@@ -70,6 +70,7 @@ function initClientViewDOM() {
 // リスナー解除用変数
 let tomuraStatusInterval = null; // Unsubscribe から Interval に変更
 let myStatusUnsubscribe = null;
+let areClientEventListenersSetup = false; // ★リスナー重複登録防止フラグ
 /**
  * クライアント画面を離れる際、または初期化前のクリーンアップ処理
  */
@@ -339,10 +340,13 @@ function stopListeningForMyStatus() {
  * イベントリスナーの設定
  */
 export function setupClientEventListeners() {
-    console.log("Setting up Client View event listeners...");
+    if (areClientEventListenersSetup) {
+        return; // リスナーが既にセットアップされていれば何もしない
+    }
+    console.log("Setting up Client View event listeners for the first time...");
 
     // Timer control buttons
-if (startBtn) startBtn.onclick = handleStartClick;
+    if (startBtn) startBtn.onclick = handleStartClick;
 if (stopBtn) stopBtn.onclick = () => handleStopClick(false);
 if (breakBtn) breakBtn.onclick = () => handleBreakClick(false);
     
@@ -439,6 +443,7 @@ if (breakBtn) breakBtn.onclick = () => handleBreakClick(false);
         }
     });
 
+    areClientEventListenersSetup = true; // ★フラグを立てる
     console.log("Client View event listeners set up complete.");
 }
 

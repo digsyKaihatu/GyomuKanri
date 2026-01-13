@@ -23,7 +23,8 @@ import {
     renderTaskOptions, 
     renderTaskDisplaySettings, 
     updateTomuraStatusDisplay,
-    injectMessageHistoryButton 
+    injectMessageHistoryButton,
+    initializeDOMElements as initializeClientUIDOMElements
 } from "./clientUI.js";
 
 import { handleFixCheckout } from "./clientActions.js";
@@ -97,6 +98,8 @@ export async function initializeClientView({ tasks }) {
     console.log("Initializing Client View...");
     
     initClientViewDOM();
+    initializeClientUIDOMElements();
+
     // 以前のリスナーが残っている場合に備えて掃除を行う
     cleanupClientView();
 

@@ -1,6 +1,6 @@
 // js/views/client/timerLogic.js
 
-import { db, userId, userName, userDisplayPreferences } from "../../main.js";
+import { db, userId, userName, userDisplayPreferences, allTaskObjects } from "../../main.js";
 import { doc, setDoc, addDoc, updateDoc, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { formatDuration, getJSTDateString } from "../../utils.js";
 import { triggerEncouragementNotification, triggerReservationNotification, triggerBreakNotification } from "../../components/notification.js";
@@ -270,8 +270,8 @@ export function startTimerLoop() {
     if (State.getTimerInterval()) clearInterval(State.getTimerInterval());
     
     import("./clientUI.js").then(({ renderTaskOptions, renderTaskDisplaySettings }) => {
-        renderTaskOptions();
-        renderTaskDisplaySettings(); 
+        renderTaskOptions(allTaskObjects);
+        renderTaskDisplaySettings(allTaskObjects, userDisplayPreferences);
     });
 
     const interval = setInterval(async () => {

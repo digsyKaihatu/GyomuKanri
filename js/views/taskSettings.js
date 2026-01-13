@@ -29,25 +29,32 @@ import {
 } from "../components/modal/index.js";
 import { formatHoursMinutes, escapeHtml } from "../utils.js";
 
-// DOM要素
-const goalModal = document.getElementById("goal-modal");
-const goalModalTaskNameInput = document.getElementById("goal-modal-task-name");
-const goalModalGoalIdInput = document.getElementById("goal-modal-goal-id");
-const goalModalTitleInput = document.getElementById("goal-modal-title-input");
-const goalModalTargetInput = document.getElementById("goal-modal-target-input");
-const goalModalDeadlineInput = document.getElementById("goal-modal-deadline-input");
-const goalModalEffortDeadlineInput = document.getElementById("goal-modal-effort-deadline-input");
-const goalModalMemoInput = document.getElementById("goal-modal-memo-input");
-const goalModalSaveBtn = document.getElementById("goal-modal-save-btn");
-const goalModalCancelBtn = document.getElementById("goal-modal-cancel-btn");
+// DOM要素 (遅延初期化)
+let goalModal, goalModalTaskNameInput, goalModalGoalIdInput, goalModalTitleInput,
+    goalModalTargetInput, goalModalDeadlineInput, goalModalEffortDeadlineInput,
+    goalModalMemoInput, goalModalSaveBtn, goalModalCancelBtn;
 
 let currentUserRole = "general";
+
+function initializeDOMElements() {
+    goalModal = document.getElementById("goal-modal");
+    goalModalTaskNameInput = document.getElementById("goal-modal-task-name");
+    goalModalGoalIdInput = document.getElementById("goal-modal-goal-id");
+    goalModalTitleInput = document.getElementById("goal-modal-title-input");
+    goalModalTargetInput = document.getElementById("goal-modal-target-input");
+    goalModalDeadlineInput = document.getElementById("goal-modal-deadline-input");
+    goalModalEffortDeadlineInput = document.getElementById("goal-modal-effort-deadline-input");
+    goalModalMemoInput = document.getElementById("goal-modal-memo-input");
+    goalModalSaveBtn = document.getElementById("goal-modal-save-btn");
+    goalModalCancelBtn = document.getElementById("goal-modal-cancel-btn");
+}
 
 /**
  * 画面の初期化
  */
 export async function initializeTaskSettingsView() {
     console.log("Initializing Task Settings View...");
+    initializeDOMElements();
     
     if (userId) {
         try {

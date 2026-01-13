@@ -4,20 +4,25 @@ import { showView, VIEWS, userId, userName, db } from "../main.js";
 import { showPasswordModal } from "../components/modal/index.js";
 import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// DOM要素
-const clientBtn = document.getElementById("select-client-btn");
-const hostBtn = document.getElementById("select-host-btn");
-const settingsBtn = document.getElementById("task-settings-btn");
-const logoutBtn = document.getElementById("logout-btn-selection");
-const userNameDisplay = document.getElementById("user-name-display");
-const wordInput = document.getElementById("word-of-the-day-input");
-const saveWordBtn = document.getElementById("save-word-btn");
+// DOM要素 (遅延初期化)
+let clientBtn, hostBtn, settingsBtn, logoutBtn, userNameDisplay, wordInput, saveWordBtn;
+
+function initializeDOMElements() {
+    clientBtn = document.getElementById("select-client-btn");
+    hostBtn = document.getElementById("select-host-btn");
+    settingsBtn = document.getElementById("task-settings-btn");
+    logoutBtn = document.getElementById("logout-btn-selection");
+    userNameDisplay = document.getElementById("user-name-display");
+    wordInput = document.getElementById("word-of-the-day-input");
+    saveWordBtn = document.getElementById("save-word-btn");
+}
 
 /**
  * モード選択画面の初期化
  */
 export async function initializeModeSelectionView() {
     console.log("Initializing Mode Selection View...");
+    initializeDOMElements();
     
     // ユーザー名の表示
     if (userNameDisplay) {

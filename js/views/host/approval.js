@@ -3,7 +3,6 @@ import { db, showView, VIEWS, allTaskObjects, updateGlobalTaskObjects } from "..
 import { collection, query, where, orderBy, onSnapshot, doc, writeBatch, Timestamp, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { escapeHtml } from "../../utils.js";
 
-const approvalListEl = document.getElementById("approval-list");
 let unsubscribe = null;
 
 const handleBackClick = () => showView(VIEWS.HOST);

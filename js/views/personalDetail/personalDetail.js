@@ -17,23 +17,27 @@ let currentCalendarDate = new Date();
 let selectedDateStr = null; 
 let currentUserForDetailView = null; 
 
-// --- DOM References ---
-const detailTitle = document.getElementById("personal-detail-title");
-const calendarEl = document.getElementById("calendar");
-const monthYearEl = document.getElementById("calendar-month-year");
-const prevMonthBtn = document.getElementById("prev-month-btn");
-const nextMonthBtn = document.getElementById("next-month-btn");
-const detailsTitleEl = document.getElementById("details-title");
-const detailsContentEl = document.getElementById("details-content");
-const deleteUserContainer = document.getElementById("delete-user-container");
-const deleteUserBtn = document.getElementById("delete-user-btn");
-const backButton = document.getElementById("back-from-detail-btn");
-const editLogSaveBtn = document.getElementById("edit-log-save-btn");
-const editMemoSaveBtn = document.getElementById("edit-memo-save-btn");
-const editContributionSaveBtn = document.getElementById("edit-contribution-save-btn");
-const editLogCancelBtn = document.getElementById("edit-log-cancel-btn");
-const editMemoCancelBtn = document.getElementById("edit-memo-cancel-btn");
-const editContributionCancelBtn = document.getElementById("edit-contribution-cancel-btn");
+// DOM要素 (遅延初期化)
+let detailTitle, calendarEl, monthYearEl, prevMonthBtn, nextMonthBtn, detailsTitleEl, detailsContentEl, deleteUserContainer, deleteUserBtn, backButton, editLogSaveBtn, editMemoSaveBtn, editContributionSaveBtn, editLogCancelBtn, editMemoCancelBtn, editContributionCancelBtn;
+
+function initializeDOMElements() {
+    detailTitle = document.getElementById("personal-detail-title");
+    calendarEl = document.getElementById("calendar");
+    monthYearEl = document.getElementById("calendar-month-year");
+    prevMonthBtn = document.getElementById("prev-month-btn");
+    nextMonthBtn = document.getElementById("next-month-btn");
+    detailsTitleEl = document.getElementById("details-title");
+    detailsContentEl = document.getElementById("details-content");
+    deleteUserContainer = document.getElementById("delete-user-container");
+    deleteUserBtn = document.getElementById("delete-user-btn");
+    backButton = document.getElementById("back-from-detail-btn");
+    editLogSaveBtn = document.getElementById("edit-log-save-btn");
+    editMemoSaveBtn = document.getElementById("edit-memo-save-btn");
+    editContributionSaveBtn = document.getElementById("edit-contribution-save-btn");
+    editLogCancelBtn = document.getElementById("edit-log-cancel-btn");
+    editMemoCancelBtn = document.getElementById("edit-memo-cancel-btn");
+    editContributionCancelBtn = document.getElementById("edit-contribution-cancel-btn");
+}
 
 // ★追加: タイムライン追加申請ボタン
 function injectAddRequestButton() {
@@ -58,6 +62,7 @@ function injectAddRequestButton() {
 }
 
 export function initializePersonalDetailView(data) {
+    initializeDOMElements();
     const name = data?.userName;
     if (!name) {
         console.error("Cannot initialize Personal Detail View: Username missing in data.");

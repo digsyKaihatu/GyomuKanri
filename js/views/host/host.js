@@ -9,14 +9,19 @@ import { openExportExcelModal } from "../../excelExport.js";
 import { startListeningForStatusUpdates, stopListeningForStatusUpdates, forceStopUser } from "./statusDisplay.js";
 import { startListeningForUsers, stopListeningForUsers, handleUserDetailClick, handleDeleteAllLogs } from "./userManagement.js";
 
-const backButton = document.getElementById("back-to-selection-host");
-const exportExcelButton = document.getElementById("export-excel-btn");
-const viewProgressButton = document.getElementById("view-progress-btn");
-const viewReportButton = document.getElementById("view-report-btn");
-const deleteAllLogsButton = document.getElementById("delete-all-logs-btn");
-const userListContainer = document.getElementById("summary-list"); 
-const helpButton = document.querySelector('#host-view .help-btn');
-const tomuraStatusRadios = document.querySelectorAll('input[name="tomura-status"]');
+// DOM要素 (遅延初期化)
+let backButton, exportExcelButton, viewProgressButton, viewReportButton, deleteAllLogsButton, userListContainer, helpButton, tomuraStatusRadios;
+
+function initializeDOMElements() {
+    backButton = document.getElementById("back-to-selection-host");
+    exportExcelButton = document.getElementById("export-excel-btn");
+    viewProgressButton = document.getElementById("view-progress-btn");
+    viewReportButton = document.getElementById("view-report-btn");
+    deleteAllLogsButton = document.getElementById("delete-all-logs-btn");
+    userListContainer = document.getElementById("summary-list"); 
+    helpButton = document.querySelector('#host-view .help-btn');
+    tomuraStatusRadios = document.querySelectorAll('input[name="tomura-status"]');
+}
 
 // --- 既存機能: 戸村さんステータスUI ---
 function injectTomuraLocationUI() {
@@ -115,6 +120,7 @@ function stopListeningForApprovals() {
 
 export function initializeHostView() {
     console.log("Initializing Host View...");
+    initializeDOMElements();
     
     injectTomuraLocationUI();
     injectApprovalButton();
@@ -254,29 +260,11 @@ document.addEventListener("visibilitychange", () => {
     }
 });
 
-// ★追加: Service Worker / FCMからの強制取得トリガー
-function handleForceFetch() {
-    const isHostViewActive = document.getElementById(VIEWS.HOST)?.classList.contains('active-view');
-    if (!isHostViewActive) {
-        console.log("Host view is not active, skipping force fetch.");
-        return;
-    }
-    console.log("Forcing status fetch because host view is active.");
-    fetchTomuraStatus(true);
-}
-
-// FCM (フォアグラウンド) からのイベント
+// ★追加: 外部からの強制取得トリガー
+// これにより、FCMプッシュ通知などを受けた際に、タブが非アクティブでも情報を更新できる
 document.addEventListener('force-fetch-status', () => {
-    console.log("Event 'force-fetch-status' received.");
-    handleForceFetch();
-});
-
-// Service Worker (バックグラウンド) からのメッセージ
-navigator.serviceWorker.addEventListener('message', event => {
-    if (event.data && event.data.type === 'FORCE_STATUS_UPDATE') {
-        console.log('Service Workerから強制更新メッセージを受信しました。');
-        handleForceFetch();
-    }
+    console.log("Event 'force-fetch-status' received. Forcing status fetch.");
+    fetchTomuraStatus(true);
 });
 // --- メッセージ機能の実装 ---
 

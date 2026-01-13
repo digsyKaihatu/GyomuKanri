@@ -5,6 +5,7 @@ import { checkOktaAuthentication, handleOktaLogout } from './okta.js';
 import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { initMessaging, listenForMessages } from './fcm.js';
 import { injectAllTemplates } from './domInjector.js';
+import { initModals } from './components/modal/core.js';
 import { initializeModeSelectionView, setupModeSelectionEventListeners } from './views/modeSelection.js';
 import { initializeTaskSettingsView, setupTaskSettingsEventListeners } from './views/taskSettings.js';
 import { initializeHostView, cleanupHostView, setupHostEventListeners } from './views/host/host.js';
@@ -62,6 +63,7 @@ async function initialize() {
     setupVisibilityReload();
 
     injectAllTemplates();
+    initModals();
 
     const appContainer = document.getElementById('app-container');
 

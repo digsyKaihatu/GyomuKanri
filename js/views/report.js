@@ -11,18 +11,24 @@ let activeReportCharts = [];
 let selectedReportDateStr = null;
 let currentMonthLogs = []; 
 
-const reportCalendarEl = document.getElementById("report-calendar");
-const reportMonthYearEl = document.getElementById("report-calendar-month-year");
-const reportPrevMonthBtn = document.getElementById("report-prev-month-btn");
-const reportNextMonthBtn = document.getElementById("report-next-month-btn");
-const reportTitleEl = document.getElementById("report-title");
-const reportChartsContainer = document.getElementById("report-charts-container");
-const backButton = document.getElementById("back-to-host-from-report");
+// DOM要素 (遅延初期化)
+let reportCalendarEl, reportMonthYearEl, reportPrevMonthBtn, reportNextMonthBtn, reportTitleEl, reportChartsContainer, backButton;
+
+function initializeDOMElements() {
+    reportCalendarEl = document.getElementById("report-calendar");
+    reportMonthYearEl = document.getElementById("report-calendar-month-year");
+    reportPrevMonthBtn = document.getElementById("report-prev-month-btn");
+    reportNextMonthBtn = document.getElementById("report-next-month-btn");
+    reportTitleEl = document.getElementById("report-title");
+    reportChartsContainer = document.getElementById("report-charts-container");
+    backButton = document.getElementById("back-to-host-from-report");
+}
 
 // --- 初期化・クリーンアップ関数 ---
 
 export async function initializeReportView() {
     console.log("Initializing Report View...");
+    initializeDOMElements();
     currentReportDate = new Date();
     selectedReportDateStr = null;
     

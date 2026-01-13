@@ -37,14 +37,16 @@ export function setupClientUI() {
 /**
  * 業務プルダウンの選択肢を描画
  */
-export function renderTaskOptions() {
-    if (!taskSelect) return;
-    const currentValue = taskSelect.value;
-    taskSelect.innerHTML = '<option value="">業務を選択...</option>';
+export function renderTaskOptions(tasks, selectElement) {
+    const targetElement = selectElement || taskSelect;
+    if (!targetElement) return;
+
+    const currentValue = targetElement.value;
+    targetElement.innerHTML = '<option value="">業務を選択...</option>';
 
     const hiddenTasks = userDisplayPreferences?.hiddenTasks || [];
 
-    const dropdownTasks = allTaskObjects.filter(
+    const dropdownTasks = tasks.filter(
         (task) => task.name !== "休憩" && !hiddenTasks.includes(task.name)
     );
 
@@ -52,17 +54,17 @@ export function renderTaskOptions() {
 
     dropdownTasks.forEach(
         (task) =>
-        (taskSelect.innerHTML += `<option value="${escapeHtml(task.name)}">${escapeHtml(task.name)}</option>`)
+        (targetElement.innerHTML += `<option value="${escapeHtml(task.name)}">${escapeHtml(task.name)}</option>`)
     );
 
-    taskSelect.value = currentValue;
+    targetElement.value = currentValue;
     updateTaskDisplaysForSelection();
 }
 
 /**
  * 表示設定（チェックボックス、ミニ表示ボタンなど）を描画
  */
-export function renderTaskDisplaySettings() {
+export function renderTaskDisplaySettings(tasks) {
     if (!taskDisplaySettingsList) return;
 
     taskDisplaySettingsList.innerHTML = "";
@@ -84,7 +86,7 @@ export function renderTaskDisplaySettings() {
     taskDisplaySettingsList.appendChild(miniDisplayDiv);
 
     // 2. 業務の表示/非表示設定
-    const configurableTasks = allTaskObjects.filter(
+    const configurableTasks = tasks.filter(
         (task) => task.name !== "休憩"
     );
 
@@ -172,7 +174,7 @@ export async function handleDisplaySettingChange(event) {
     }
 
     await updateDisplayPreferences({ hiddenTasks });
-    renderTaskOptions(); 
+    renderTaskOptions(allTaskObjects, taskSelect);
 }
 
 // 通知間隔設定の変更ハンドラ

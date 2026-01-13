@@ -93,7 +93,7 @@ export function cleanupClientView() {
 /**
  * クライアント画面の初期化
  */
-export async function initializeClientView() {
+export async function initializeClientView({ tasks }) {
     console.log("Initializing Client View...");
     
     initClientViewDOM();
@@ -107,8 +107,9 @@ export async function initializeClientView() {
 
     listenForUserReservations();
     
-    renderTaskOptions();
-    renderTaskDisplaySettings(); 
+    const taskSelect = document.getElementById("task-select");
+    renderTaskOptions(tasks, taskSelect);
+    renderTaskDisplaySettings(tasks);
     
     injectMessageHistoryButton();
     

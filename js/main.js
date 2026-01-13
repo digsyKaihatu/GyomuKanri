@@ -29,7 +29,6 @@ export let allTaskObjects = [];
 export let userDisplayPreferences = { hiddenTasks: [] }; 
 export let viewHistory = []; 
 export let adminLoginDestination = null; 
-let initialDataLoaded = null;
 
 export const VIEWS = {
     OKTA_WIDGET: "okta-signin-widget-container",
@@ -94,14 +93,14 @@ async function initialize() {
             if (lastLoginDate !== today) {
                 console.log("本日最初のログインです。モード選択画面を表示します。");
                 localStorage.setItem("last_login_date", today);
-                await showView(VIEWS.MODE_SELECTION);
+                showView(VIEWS.MODE_SELECTION);
             } else {
                 const savedViewJson = localStorage.getItem(LAST_VIEW_KEY);
                 if (savedViewJson) {
                     const { name, params } = JSON.parse(savedViewJson);
-                    await showView(name, params);
+                    showView(name, params);
                 } else {
-                    await showView(VIEWS.MODE_SELECTION);
+                    showView(VIEWS.MODE_SELECTION);
                 }
             }
         });
@@ -125,7 +124,7 @@ function displayInitializationError(message) {
     }
 }
 
-export async function showView(viewId, data = {}) {
+export function showView(viewId, data = {}) {
     console.log(`Showing view: ${viewId}`, data);
     const targetViewElement = document.getElementById(viewId);
     const appContainer = document.getElementById('app-container');
@@ -156,8 +155,7 @@ export async function showView(viewId, data = {}) {
     const newLifecycle = viewLifecycle[viewId];
     if (newLifecycle?.init) {
          try {
-            await initialDataLoaded; // Wait for initial data to be loaded
-            await newLifecycle.init(data);
+             (async () => await newLifecycle.init(data))();
          } catch (error) {
               console.error(`Error during initialization of view ${viewId}:`, error);
          }
@@ -169,10 +167,10 @@ export async function showView(viewId, data = {}) {
     window.scrollTo(0, 0);
 }
 
-export async function handleGoBack() {
+export function handleGoBack() {
     viewHistory.pop(); 
     const previousViewName = viewHistory[viewHistory.length - 1];
-    await showView(previousViewName || VIEWS.MODE_SELECTION);
+    showView(previousViewName || VIEWS.MODE_SELECTION);
 }
 
 /**
@@ -301,7 +299,7 @@ async function handleAdminLogin() {
             setAuthLevel('admin'); 
             input.value = "";
             closeModal(adminPasswordView);
-            await showView(adminLoginDestination || VIEWS.HOST);
+            showView(adminLoginDestination || VIEWS.HOST);
             adminLoginDestination = null;
         } else {
             errorEl.textContent = "パスワードが違います。";
@@ -312,13 +310,13 @@ async function handleAdminLogin() {
     }
 }
 
-export function startAppAfterLogin() {
+export async function startAppAfterLogin() {
     console.log("Authentication successful. Starting data sync...");
     initMessaging(userId);
     listenForMessages();
 
     // 【改善】常時監視を止め、初期化時に1回だけ取得する
-    initialDataLoaded = Promise.all([fetchTasks(), fetchDisplayPreferences()]);
+    await Promise.all([fetchTasks(), fetchDisplayPreferences()]);
 }
 
 function setupVisibilityReload() {

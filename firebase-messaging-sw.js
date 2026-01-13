@@ -24,4 +24,16 @@ messaging.onBackgroundMessage((payload) => {
     };
 
     self.registration.showNotification(notificationTitle, notificationOptions);
+
+    // ★追加: 特定の通知でクライアントにメッセージを送信
+    if (notificationTitle && notificationTitle.includes('予約')) {
+        console.log('予約通知を検出。クライアントに更新を促します。');
+        self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
+            if (clients && clients.length) {
+                clients.forEach(client => {
+                    client.postMessage({ type: 'FORCE_STATUS_UPDATE' });
+                });
+            }
+        });
+    }
 });

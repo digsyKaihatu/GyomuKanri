@@ -94,14 +94,14 @@ async function initialize() {
             if (lastLoginDate !== today) {
                 console.log("本日最初のログインです。モード選択画面を表示します。");
                 localStorage.setItem("last_login_date", today);
-                showView(VIEWS.MODE_SELECTION);
+                await showView(VIEWS.MODE_SELECTION);
             } else {
                 const savedViewJson = localStorage.getItem(LAST_VIEW_KEY);
                 if (savedViewJson) {
                     const { name, params } = JSON.parse(savedViewJson);
-                    showView(name, params);
+                    await showView(name, params);
                 } else {
-                    showView(VIEWS.MODE_SELECTION);
+                    await showView(VIEWS.MODE_SELECTION);
                 }
             }
         });
@@ -125,7 +125,7 @@ function displayInitializationError(message) {
     }
 }
 
-export function showView(viewId, data = {}) {
+export async function showView(viewId, data = {}) {
     console.log(`Showing view: ${viewId}`, data);
     const targetViewElement = document.getElementById(viewId);
     const appContainer = document.getElementById('app-container');
@@ -169,10 +169,10 @@ export function showView(viewId, data = {}) {
     window.scrollTo(0, 0);
 }
 
-export function handleGoBack() {
+export async function handleGoBack() {
     viewHistory.pop(); 
     const previousViewName = viewHistory[viewHistory.length - 1];
-    showView(previousViewName || VIEWS.MODE_SELECTION);
+    await showView(previousViewName || VIEWS.MODE_SELECTION);
 }
 
 /**
@@ -301,7 +301,7 @@ async function handleAdminLogin() {
             setAuthLevel('admin'); 
             input.value = "";
             closeModal(adminPasswordView);
-            showView(adminLoginDestination || VIEWS.HOST);
+            await showView(adminLoginDestination || VIEWS.HOST);
             adminLoginDestination = null;
         } else {
             errorEl.textContent = "パスワードが違います。";

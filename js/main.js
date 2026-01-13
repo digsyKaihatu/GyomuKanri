@@ -19,7 +19,7 @@ const LAST_VIEW_KEY = "gyomu_timer_last_view";
 import { initializeApprovalView, cleanupApprovalView } from './views/host/approval.js';
 
 import { setupModalEventListeners, adminPasswordView, closeModal } from './components/modal/index.js';
-import { setupExcelExportEventListeners } from './excelExport.js';
+import { setupExcelExportEventListeners, initializeExcelExportDOMElements } from './excelExport.js';
 import { getJSTDateString, escapeHtml } from './utils.js';
 
 export let userId = null;
@@ -64,6 +64,7 @@ async function initialize() {
 
     injectAllTemplates();
     initModals();
+    initializeExcelExportDOMElements();
 
     // Setup listeners that are not view-specific
     setupModalEventListeners();

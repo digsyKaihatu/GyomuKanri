@@ -83,7 +83,7 @@ export async function initializeTaskSettingsView() {
         
         restoreSelectionStateWithRetry(highlightTaskName);
     }
-    
+
     // Set up event listeners for the view
     setupTaskSettingsEventListeners();
 }

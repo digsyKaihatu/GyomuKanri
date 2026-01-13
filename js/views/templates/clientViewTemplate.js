@@ -134,15 +134,15 @@ export const clientViewTemplate = `
               <svg fill="none" height="24" shape-rendering="geometricPrecision" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" viewBox="0 0 24 24" width="24"><path d="M6 9l6 6 6-6"></path></svg>
             </span>
           </summary>
-          
+
           <div class="p-4 border-t space-y-1">
             <label for="notification-interval-input" class="block text-sm font-medium text-gray-700">お褒め通知 (同じ業務の継続)</label>
             <div class="flex items-center gap-2">
-                <input 
-                    type="number" 
-                    id="notification-interval-input" 
+                <input
+                    type="number"
+                    id="notification-interval-input"
                     class="w-24 p-2 border border-gray-300 rounded-lg"
-                    min="0" 
+                    min="0"
                     placeholder="例: 10"
                 >
                 <span class="text-sm text-gray-600">分ごと (0で通知しない)</span>

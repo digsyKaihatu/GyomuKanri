@@ -18,7 +18,7 @@ function initializeDOMElements() {
     viewProgressButton = document.getElementById("view-progress-btn");
     viewReportButton = document.getElementById("view-report-btn");
     deleteAllLogsButton = document.getElementById("delete-all-logs-btn");
-    userListContainer = document.getElementById("summary-list"); 
+    userListContainer = document.getElementById("summary-list");
     helpButton = document.querySelector('#host-view .help-btn');
     tomuraStatusRadios = document.querySelectorAll('input[name="tomura-status"]');
 }

@@ -51,7 +51,7 @@ export async function initializeModeSelectionView() {
             }
         }
     }
-    
+
     setupModeSelectionEventListeners();
 }
 
@@ -74,7 +74,7 @@ const handleHostBtnClick = () => handleModeSelect(VIEWS.HOST);
 const handleSettingsBtnClick = () => showView(VIEWS.TASK_SETTINGS);
 const handleLogoutBtnClick = () => {
     if(confirm("ログアウトしますか？")) {
-         location.reload(); 
+         location.reload();
     }
 };
 

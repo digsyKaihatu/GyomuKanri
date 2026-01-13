@@ -77,6 +77,8 @@ export async function initializeProgressView() {
         clearGoalDetailsAndSummary(goalDetailsContainer, chartContainer, weeklySummaryContainer, [progressLineChartInstance]);
         progressLineChartInstance = null;
     }
+
+    setupProgressEventListeners();
 }
 
 export function setupProgressEventListeners() {

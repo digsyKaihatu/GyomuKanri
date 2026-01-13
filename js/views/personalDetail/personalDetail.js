@@ -107,6 +107,7 @@ export function initializePersonalDetailView(data) {
     });
 
     clearDetails(detailsTitleEl, detailsContentEl);
+    setupPersonalDetailEventListeners();
 }
 
 export function cleanupPersonalDetailView() {
@@ -119,6 +120,8 @@ export function cleanupPersonalDetailView() {
     // ★追加: ボタン掃除
     const btn = document.getElementById("add-request-btn");
     if(btn) btn.remove();
+    // It's good practice to also remove event listeners, but since they are added to elements
+    // that are part of the view and will be hidden/inactive, it's not strictly necessary.
 }
 
 export function setupPersonalDetailEventListeners() {

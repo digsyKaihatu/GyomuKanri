@@ -6,15 +6,15 @@ import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/f
 import { initMessaging, listenForMessages } from './fcm.js';
 import { injectAllTemplates } from './domInjector.js';
 import { initModals } from './components/modal/core.js';
-import { initializeModeSelectionView, setupModeSelectionEventListeners } from './views/modeSelection.js';
-import { initializeTaskSettingsView, setupTaskSettingsEventListeners } from './views/taskSettings.js';
-import { initializeHostView, cleanupHostView, setupHostEventListeners } from './views/host/host.js';
+import { initializeModeSelectionView } from './views/modeSelection.js';
+import { initializeTaskSettingsView } from './views/taskSettings.js';
+import { initializeHostView, cleanupHostView } from './views/host/host.js';
 // ★修正: cleanupClientView をインポートに追加
-import { initializeClientView, cleanupClientView, setupClientEventListeners } from './views/client/client.js';
-import { initializePersonalDetailView, cleanupPersonalDetailView, setupPersonalDetailEventListeners } from './views/personalDetail/personalDetail.js';
-import { initializeReportView, cleanupReportView, setupReportEventListeners } from './views/report.js';
-import { initializeProgressView, setupProgressEventListeners } from './views/progress/progress.js';
-import { initializeArchiveView, setupArchiveEventListeners } from './views/archive.js';
+import { initializeClientView, cleanupClientView } from './views/client/client.js';
+import { initializePersonalDetailView, cleanupPersonalDetailView } from './views/personalDetail/personalDetail.js';
+import { initializeReportView, cleanupReportView } from './views/report.js';
+import { initializeProgressView } from './views/progress/progress.js';
+import { initializeArchiveView } from './views/archive.js';
 const LAST_VIEW_KEY = "gyomu_timer_last_view";
 import { initializeApprovalView, cleanupApprovalView } from './views/host/approval.js';
 
@@ -65,6 +65,16 @@ async function initialize() {
     injectAllTemplates();
     initModals();
 
+    // Setup listeners that are not view-specific
+    setupModalEventListeners();
+    setupExcelExportEventListeners();
+    const adminPasswordSubmitBtn = document.getElementById("admin-password-submit-btn");
+    const adminPasswordInput = document.getElementById("admin-password-input");
+    adminPasswordSubmitBtn?.addEventListener("click", handleAdminLogin);
+    adminPasswordInput?.addEventListener('keypress', (event) => {
+         if (event.key === 'Enter') handleAdminLogin();
+     });
+
     const appContainer = document.getElementById('app-container');
 
     if (!isFirebaseConfigValid()) {
@@ -72,8 +82,6 @@ async function initialize() {
         return;
     }
     
-    setupGlobalEventListeners();
-
     try {
         await checkOktaAuthentication(async () => {
             await startAppAfterLogin();
@@ -113,27 +121,6 @@ function displayInitializationError(message) {
             <span class="block sm:inline">${escapeHtml(message)}</span>
         </div>`;
     }
-}
-
-function setupGlobalEventListeners() {
-    setupModalEventListeners();
-    setupModeSelectionEventListeners();
-    setupTaskSettingsEventListeners();
-    setupHostEventListeners();
-    setupClientEventListeners();
-    setupPersonalDetailEventListeners();
-    setupReportEventListeners();
-    setupProgressEventListeners();
-    setupArchiveEventListeners();
-    setupExcelExportEventListeners();
-
-    const adminPasswordSubmitBtn = document.getElementById("admin-password-submit-btn");
-    const adminPasswordInput = document.getElementById("admin-password-input");
-    
-    adminPasswordSubmitBtn?.addEventListener("click", handleAdminLogin);
-    adminPasswordInput?.addEventListener('keypress', (event) => {
-         if (event.key === 'Enter') handleAdminLogin();
-     });
 }
 
 export function showView(viewId, data = {}) {

@@ -33,10 +33,16 @@ export async function initializeReportView() {
     selectedReportDateStr = null;
     
     await fetchAndRenderForCurrentMonth();
+    setupReportEventListeners();
 }
 
 export function cleanupReportView() {
     console.log("Cleaning up Report View...");
+    // Remove event listeners to prevent memory leaks
+    reportPrevMonthBtn?.removeEventListener("click", handlePrevMonthClick);
+    reportNextMonthBtn?.removeEventListener("click", handleNextMonthClick);
+    backButton?.removeEventListener("click", handleGoBack);
+
     destroyCharts(activeReportCharts);
     activeReportCharts = [];
     selectedReportDateStr = null;
@@ -44,9 +50,12 @@ export function cleanupReportView() {
     if (reportChartsContainer) reportChartsContainer.innerHTML = "";
 }
 
+const handlePrevMonthClick = () => moveReportMonth(-1);
+const handleNextMonthClick = () => moveReportMonth(1);
+
 export function setupReportEventListeners() {
-    reportPrevMonthBtn?.addEventListener("click", () => moveReportMonth(-1));
-    reportNextMonthBtn?.addEventListener("click", () => moveReportMonth(1));
+    reportPrevMonthBtn?.addEventListener("click", handlePrevMonthClick);
+    reportNextMonthBtn?.addEventListener("click", handleNextMonthClick);
     backButton?.addEventListener("click", handleGoBack);
 }
 

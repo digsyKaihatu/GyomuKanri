@@ -154,11 +154,16 @@ export function showView(viewId, data = {}) {
 
     const newLifecycle = viewLifecycle[viewId];
     if (newLifecycle?.init) {
-         try {
-             (async () => await newLifecycle.init(data))();
-         } catch (error) {
-              console.error(`Error during initialization of view ${viewId}:`, error);
-         }
+        try {
+            // CLIENTビューの場合、tasksが提供されていなければallTaskObjectsをデフォルトとして使用する
+            const initData = viewId === VIEWS.CLIENT
+                ? { tasks: allTaskObjects, ...data }
+                : data;
+
+            (async () => await newLifecycle.init(initData))();
+        } catch (error) {
+             console.error(`Error during initialization of view ${viewId}:`, error);
+        }
     }
 
     if (viewHistory[viewHistory.length - 1] !== viewId) {

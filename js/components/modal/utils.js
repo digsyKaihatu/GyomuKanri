@@ -20,7 +20,6 @@ export function showHelpModal(pageKey) {
 
 const helpContents = {
     client: {
-client: {
         title: "従業員画面（業務記録）ヘルプ",
         content: `
             <div class="w-full h-[65vh] bg-white rounded border border-gray-200 overflow-hidden">
@@ -40,7 +39,8 @@ client: {
                 </a>
             </div>
         `
-    },    host: {
+    },
+        host: {
 title: "管理者画面（モニタリング）ヘルプ",
         content: `
             <p class="font-semibold mb-2 text-gray-800">チーム全体の稼働状況をリアルタイムで把握・管理するダッシュボードです。</p>

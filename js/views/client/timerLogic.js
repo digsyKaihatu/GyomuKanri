@@ -64,7 +64,7 @@ export async function executeStartTask(selectedTask, selectedGoalId, selectedGoa
                     currentGoalId: State.getCurrentGoalId() || null,
                     currentGoalTitle: State.getCurrentGoalTitle() || null,
                     currentGoal: State.getCurrentGoalTitle() || null,
-                    startTime: data.startTime,
+                    startTime: new Date(data.startTime),
                     isWorking: true,
                     preBreakTask: State.getPreBreakTask() || null,
                     userId, userName, onlineStatus: true

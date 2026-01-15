@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Verification Page</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <h1>Display Settings Verification</h1>
+    <div id="verification-container">
+        <!-- The client view template will be injected here -->
+    </div>
+
+    <script type="module">
+        import { clientViewTemplate } from '/js/views/templates/clientViewTemplate.js';
+        import { initializeDOMElements, renderTaskDisplaySettings } from '/js/views/client/clientUI.js';
+
+        // Inject the template into the DOM
+        const container = document.getElementById('verification-container');
+        container.innerHTML = clientViewTemplate;
+
+        // Force the view to be visible for the test
+        const clientViewElement = document.getElementById('client-view');
+        if (clientViewElement) {
+            clientViewElement.classList.remove('hidden');
+            clientViewElement.classList.add('active-view');
+        }
+
+        // Initialize the DOM elements within clientUI.js
+        initializeDOMElements();
+
+        // Dummy data for testing
+        const dummyTasks = [
+            { name: "テスト業務1", memo: "", goals: [] },
+            { name: "テスト業務2", memo: "", goals: [] },
+            { name: "休憩", memo: "", goals: [] },
+        ];
+
+        // Mock preferences object
+        const mockPreferences = { hiddenTasks: ["テスト業務1"] };
+
+        // Directly call the render function with dummy data and mock preferences
+        renderTaskDisplaySettings(dummyTasks, mockPreferences);
+    </script>
+</body>
+</html>

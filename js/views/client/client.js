@@ -23,7 +23,8 @@ import {
     renderTaskOptions, 
     renderTaskDisplaySettings, 
     updateTomuraStatusDisplay,
-    injectMessageHistoryButton 
+    injectMessageHistoryButton,
+    initializeDOMElements as initializeClientUIDOMElements
 } from "./clientUI.js";
 
 import { handleFixCheckout } from "./clientActions.js";
@@ -32,34 +33,44 @@ import { openBreakReservationModal, fixCheckoutModal, showHelpModal } from "../.
 import { stopColleaguesListener } from "./colleagues.js";
 
 // --- DOM Element references ---
-const startBtn = document.getElementById("start-btn");
-const stopBtn = document.getElementById("stop-btn");
-const breakBtn = document.getElementById("break-btn");
-const taskSelect = document.getElementById("task-select");
-const goalSelect = document.getElementById("goal-select");
-const otherTaskInput = document.getElementById("other-task-input");
-const taskDisplaySettingsList = document.getElementById("task-display-settings-list");
+let startBtn, stopBtn, breakBtn, taskSelect, goalSelect, otherTaskInput, taskDisplaySettingsList;
+let addBreakReservationBtn, breakReservationList, breakReservationSaveBtn, setStopReservationBtn, cancelStopReservationBtn;
+let backButton, myRecordsButton, viewMyProgressButton, fixCheckoutButton, fixCheckoutSaveBtn;
+let helpButton;
 
-// Reservation UI elements
-const addBreakReservationBtn = document.getElementById("add-break-reservation-btn");
-const breakReservationList = document.getElementById("break-reservation-list");
-const breakReservationSaveBtn = document.getElementById("break-reservation-save-btn");
-const setStopReservationBtn = document.getElementById("set-stop-reservation-btn");
-const cancelStopReservationBtn = document.getElementById("cancel-stop-reservation-btn");
 
-// Navigation/Other buttons
-const backButton = document.getElementById("back-to-selection-client");
-const myRecordsButton = document.getElementById("my-records-btn");
-const viewMyProgressButton = document.getElementById("view-my-progress-btn");
-const fixCheckoutButton = document.getElementById("fix-yesterday-checkout-btn");
-const fixCheckoutSaveBtn = document.getElementById("fix-checkout-save-btn");
+function initClientViewDOM() {
+    startBtn = document.getElementById("start-btn");
+    stopBtn = document.getElementById("stop-btn");
+    breakBtn = document.getElementById("break-btn");
+    taskSelect = document.getElementById("task-select");
+    goalSelect = document.getElementById("goal-select");
+    otherTaskInput = document.getElementById("other-task-input");
+    taskDisplaySettingsList = document.getElementById("task-display-settings-list");
 
-// Help Button
-const helpButton = document.querySelector('#client-view .help-btn');
+    // Reservation UI elements
+    addBreakReservationBtn = document.getElementById("add-break-reservation-btn");
+    breakReservationList = document.getElementById("break-reservation-list");
+    breakReservationSaveBtn = document.getElementById("break-reservation-save-btn");
+    setStopReservationBtn = document.getElementById("set-stop-reservation-btn");
+    cancelStopReservationBtn = document.getElementById("cancel-stop-reservation-btn");
+
+    // Navigation/Other buttons
+    backButton = document.getElementById("back-to-selection-client");
+    myRecordsButton = document.getElementById("my-records-btn");
+    viewMyProgressButton = document.getElementById("view-my-progress-btn");
+    fixCheckoutButton = document.getElementById("fix-yesterday-checkout-btn");
+    fixCheckoutSaveBtn = document.getElementById("fix-checkout-save-btn");
+
+    // Help Button
+    helpButton = document.querySelector('#client-view .help-btn');
+}
+
 
 // リスナー解除用変数
 let tomuraStatusInterval = null; // Unsubscribe から Interval に変更
 let myStatusUnsubscribe = null;
+let areClientEventListenersSetup = false; // ★リスナー重複登録防止フラグ
 /**
  * クライアント画面を離れる際、または初期化前のクリーンアップ処理
  */
@@ -84,9 +95,12 @@ export function cleanupClientView() {
 /**
  * クライアント画面の初期化
  */
-export async function initializeClientView() {
+export async function initializeClientView({ tasks }) {
     console.log("Initializing Client View...");
     
+    initClientViewDOM();
+    initializeClientUIDOMElements();
+
     // 以前のリスナーが残っている場合に備えて掃除を行う
     cleanupClientView();
 
@@ -97,8 +111,9 @@ export async function initializeClientView() {
 
     listenForUserReservations();
     
-    renderTaskOptions();
-    renderTaskDisplaySettings(); 
+    const taskSelect = document.getElementById("task-select");
+    renderTaskOptions(tasks, taskSelect);
+    renderTaskDisplaySettings(tasks);
     
     injectMessageHistoryButton();
     
@@ -106,6 +121,9 @@ export async function initializeClientView() {
     
     // 前の画面のリスナーを停止
     stopColleaguesListener();
+
+    // Setup event listeners for the client view
+    setupClientEventListeners();
 }
 
 /**
@@ -322,10 +340,13 @@ function stopListeningForMyStatus() {
  * イベントリスナーの設定
  */
 export function setupClientEventListeners() {
-    console.log("Setting up Client View event listeners...");
+    if (areClientEventListenersSetup) {
+        return; // リスナーが既にセットアップされていれば何もしない
+    }
+    console.log("Setting up Client View event listeners for the first time...");
 
     // Timer control buttons
-if (startBtn) startBtn.onclick = handleStartClick;
+    if (startBtn) startBtn.onclick = handleStartClick;
 if (stopBtn) stopBtn.onclick = () => handleStopClick(false);
 if (breakBtn) breakBtn.onclick = () => handleBreakClick(false);
     
@@ -422,6 +443,7 @@ if (breakBtn) breakBtn.onclick = () => handleBreakClick(false);
         }
     });
 
+    areClientEventListenersSetup = true; // ★フラグを立てる
     console.log("Client View event listeners set up complete.");
 }
 

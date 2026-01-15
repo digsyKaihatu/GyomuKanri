@@ -5,10 +5,14 @@ import { formatHoursAndMinutesSimple, getMonthDateRange } from "./utils.js"; // 
 // ★修正: js/excelExport.js から見て js/components/modal.js は ./components/modal.js
 import { exportExcelModal } from "./components/modal/index.js"; 
 
-const yearSelect = document.getElementById("export-year-select");
-const monthSelect = document.getElementById("export-month-select");
-const confirmButton = document.getElementById("confirm-export-excel-btn");
-const cancelButton = document.getElementById("cancel-export-excel-btn");
+let yearSelect, monthSelect, confirmButton, cancelButton;
+
+export function initializeExcelExportDOMElements() {
+    yearSelect = document.getElementById("export-year-select");
+    monthSelect = document.getElementById("export-month-select");
+    confirmButton = document.getElementById("confirm-export-excel-btn");
+    cancelButton = document.getElementById("cancel-export-excel-btn");
+}
 
 export function setupExcelExportEventListeners() {
     confirmButton?.addEventListener("click", handleExportExcel);

@@ -35,17 +35,23 @@ let progressChartType = "contribution";
 let progressLineChartInstance = null;
 let selectedTaskLogs = []; // ★ 選択されたタスクのログを保持するローカル変数
 
-const taskListContainer = document.getElementById("progress-task-list");
-const goalListContainer = document.getElementById("progress-goal-list");
-const goalDetailsContainer = document.getElementById("progress-goal-details-container");
-const chartContainer = document.getElementById("progress-chart-container");
-const weeklySummaryContainer = document.getElementById("progress-weekly-summary-container");
-const backButton = document.getElementById("back-to-previous-view-from-progress");
-const viewArchiveButton = document.getElementById("view-archive-btn");
-const helpButton = document.querySelector('#progress-view .help-btn');
+// DOM要素 (遅延初期化)
+let taskListContainer, goalListContainer, goalDetailsContainer, chartContainer, weeklySummaryContainer, backButton, viewArchiveButton, helpButton;
+
+function initializeDOMElements() {
+    taskListContainer = document.getElementById("progress-task-list");
+    goalListContainer = document.getElementById("progress-goal-list");
+    goalDetailsContainer = document.getElementById("progress-goal-details-container");
+    chartContainer = document.getElementById("progress-chart-container");
+    weeklySummaryContainer = document.getElementById("progress-weekly-summary-container");
+    backButton = document.getElementById("back-to-previous-view-from-progress");
+    viewArchiveButton = document.getElementById("view-archive-btn");
+    helpButton = document.querySelector('#progress-view .help-btn');
+}
 
 export async function initializeProgressView() {
     console.log("Initializing Progress View...");
+    initializeDOMElements();
     
     // ★ 全件取得は削除。初期化時はタスクリストの表示のみ。
     selectedTaskLogs = []; 
@@ -71,6 +77,8 @@ export async function initializeProgressView() {
         clearGoalDetailsAndSummary(goalDetailsContainer, chartContainer, weeklySummaryContainer, [progressLineChartInstance]);
         progressLineChartInstance = null;
     }
+
+    setupProgressEventListeners();
 }
 
 export function setupProgressEventListeners() {

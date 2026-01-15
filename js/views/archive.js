@@ -23,14 +23,21 @@ let archiveDatePageIndex = 0;
 let archiveChartInstance = null;
 let selectedGoalLogs = []; 
 
-const archiveTaskListContainer = document.getElementById("archive-task-list");
-const archiveGoalListContainer = document.getElementById("archive-goal-list");
-const archiveGoalDetailsContainer = document.getElementById("archive-goal-details-container");
-const archiveWeeklySummaryContainer = document.getElementById("archive-weekly-summary-container");
-const archiveChartContainer = document.getElementById("archive-chart-container");
-const archiveBackButton = document.getElementById("back-to-progress-from-archive");
+// DOM要素 (遅延初期化)
+let archiveTaskListContainer, archiveGoalListContainer, archiveGoalDetailsContainer, archiveWeeklySummaryContainer, archiveChartContainer, archiveBackButton;
+
+function initializeDOMElements() {
+    archiveTaskListContainer = document.getElementById("archive-task-list");
+    archiveGoalListContainer = document.getElementById("archive-goal-list");
+    archiveGoalDetailsContainer = document.getElementById("archive-goal-details-container");
+    archiveWeeklySummaryContainer = document.getElementById("archive-weekly-summary-container");
+    archiveChartContainer = document.getElementById("archive-chart-container");
+    archiveBackButton = document.getElementById("back-to-progress-from-archive");
+}
+
 
 export async function initializeArchiveView() {
+    initializeDOMElements();
     selectedArchiveTaskName = null;
     selectedArchiveGoalId = null;
     archiveDatePageIndex = 0;
@@ -44,6 +51,7 @@ export async function initializeArchiveView() {
     if(archiveWeeklySummaryContainer) archiveWeeklySummaryContainer.classList.add("hidden");
      destroyCharts([archiveChartInstance]);
      archiveChartInstance = null;
+    setupArchiveEventListeners();
 }
 
 export function setupArchiveEventListeners() {

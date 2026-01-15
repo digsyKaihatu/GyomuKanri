@@ -13,23 +13,29 @@ export * from "./messageHistory.js";
 export * from "./statusUI.js";
 
 // --- DOM Elements ---
-const taskSelect = document.getElementById("task-select");
-const goalSelect = document.getElementById("goal-select");
-const goalSelectContainer = document.getElementById("goal-select-container");
-const otherTaskContainer = document.getElementById("other-task-container");
-const otherTaskInput = document.getElementById("other-task-input");
-const taskDescriptionDisplay = document.getElementById("task-description-display");
-const startBtn = document.getElementById("start-btn");
-const warningMessage = document.getElementById("change-warning-message");
-const taskDisplaySettingsList = document.getElementById("task-display-settings-list");
-const notificationIntervalInput = document.getElementById("notification-interval-input");
+let taskSelect, goalSelect, goalSelectContainer, otherTaskContainer, otherTaskInput,
+    taskDescriptionDisplay, startBtn, warningMessage, taskDisplaySettingsList,
+    notificationIntervalInput;
+
+export function initializeDOMElements() {
+    taskSelect = document.getElementById("task-select");
+    goalSelect = document.getElementById("goal-select");
+    goalSelectContainer = document.getElementById("goal-select-container");
+    otherTaskContainer = document.getElementById("other-task-container");
+    otherTaskInput = document.getElementById("other-task-input");
+    taskDescriptionDisplay = document.getElementById("task-description-display");
+    startBtn = document.getElementById("start-btn");
+    warningMessage = document.getElementById("change-warning-message");
+    taskDisplaySettingsList = document.getElementById("task-display-settings-list");
+    notificationIntervalInput = document.getElementById("notification-interval-input");
+}
 
 /**
  * 従業員画面のUIセットアップ
  */
 export function setupClientUI() {
-    renderTaskOptions();
-    renderTaskDisplaySettings();
+    renderTaskOptions(allTaskObjects);
+    renderTaskDisplaySettings(allTaskObjects, userDisplayPreferences);
     setupWordOfTheDayListener(); // statusUI.js から
     injectMessageHistoryButton(); // messageHistory.js から
 }
@@ -37,14 +43,16 @@ export function setupClientUI() {
 /**
  * 業務プルダウンの選択肢を描画
  */
-export function renderTaskOptions() {
-    if (!taskSelect) return;
-    const currentValue = taskSelect.value;
-    taskSelect.innerHTML = '<option value="">業務を選択...</option>';
+export function renderTaskOptions(tasks, selectElement) {
+    const targetElement = selectElement || taskSelect;
+    if (!targetElement) return;
+
+    const currentValue = targetElement.value;
+    targetElement.innerHTML = '<option value="">業務を選択...</option>';
 
     const hiddenTasks = userDisplayPreferences?.hiddenTasks || [];
 
-    const dropdownTasks = allTaskObjects.filter(
+    const dropdownTasks = tasks.filter(
         (task) => task.name !== "休憩" && !hiddenTasks.includes(task.name)
     );
 
@@ -52,18 +60,21 @@ export function renderTaskOptions() {
 
     dropdownTasks.forEach(
         (task) =>
-        (taskSelect.innerHTML += `<option value="${escapeHtml(task.name)}">${escapeHtml(task.name)}</option>`)
+        (targetElement.innerHTML += `<option value="${escapeHtml(task.name)}">${escapeHtml(task.name)}</option>`)
     );
 
-    taskSelect.value = currentValue;
+    targetElement.value = currentValue;
     updateTaskDisplaysForSelection();
 }
 
 /**
  * 表示設定（チェックボックス、ミニ表示ボタンなど）を描画
  */
-export function renderTaskDisplaySettings() {
+export function renderTaskDisplaySettings(tasks, preferences) {
     if (!taskDisplaySettingsList) return;
+
+    const effectiveTasks = tasks || allTaskObjects;
+    const effectivePrefs = preferences || userDisplayPreferences;
 
     taskDisplaySettingsList.innerHTML = "";
 
@@ -84,7 +95,7 @@ export function renderTaskDisplaySettings() {
     taskDisplaySettingsList.appendChild(miniDisplayDiv);
 
     // 2. 業務の表示/非表示設定
-    const configurableTasks = allTaskObjects.filter(
+    const configurableTasks = effectiveTasks.filter(
         (task) => task.name !== "休憩"
     );
 
@@ -96,7 +107,7 @@ export function renderTaskDisplaySettings() {
     } else {
         configurableTasks.forEach((task) => {
             const isHidden =
-                userDisplayPreferences.hiddenTasks?.includes(task.name) || false;
+                effectivePrefs.hiddenTasks?.includes(task.name) || false;
             const isChecked = !isHidden;
 
             const label = document.createElement("label");
@@ -113,7 +124,7 @@ export function renderTaskDisplaySettings() {
 
     // 3. 通知間隔設定の初期値を反映
     if (notificationIntervalInput) {
-        notificationIntervalInput.value = userDisplayPreferences.notificationIntervalMinutes || 0;
+        notificationIntervalInput.value = effectivePrefs.notificationIntervalMinutes || 0;
         notificationIntervalInput.onchange = handleNotificationIntervalChange;
     }
 }
@@ -172,7 +183,7 @@ export async function handleDisplaySettingChange(event) {
     }
 
     await updateDisplayPreferences({ hiddenTasks });
-    renderTaskOptions(); 
+    renderTaskOptions(allTaskObjects, taskSelect);
 }
 
 // 通知間隔設定の変更ハンドラ

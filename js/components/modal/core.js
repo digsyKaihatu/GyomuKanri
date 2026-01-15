@@ -1,21 +1,41 @@
 // js/components/modal/core.js
-export const confirmationModal = document.getElementById("confirmation-modal");
-export const adminPasswordView = document.getElementById("admin-password-view");
-export const editLogModal = document.getElementById("edit-log-modal");
-export const fixCheckoutModal = document.getElementById("fix-checkout-modal"); // ★ここだけに残す
-export const editMemoModal = document.getElementById("edit-memo-modal");
-export const helpModal = document.getElementById("help-modal");
-export const goalDetailsModal = document.getElementById("goal-details-modal");
-export const goalModal = document.getElementById("goal-modal");
-export const exportExcelModal = document.getElementById("export-excel-modal");
-export const editContributionModal = document.getElementById("edit-contribution-modal");
-export const breakReservationModal = document.getElementById("break-reservation-modal");
-export const addUserModal = document.getElementById("add-user-modal");
-export const taskModal = document.getElementById("task-modal");
+export let confirmationModal;
+export let adminPasswordView;
+export let editLogModal;
+export let fixCheckoutModal;
+export let editMemoModal;
+export let helpModal;
+export let goalDetailsModal;
+export let goalModal;
+export let exportExcelModal;
+export let editContributionModal;
+export let breakReservationModal;
+export let addUserModal;
+export let taskModal;
 
-const modalMessage = document.getElementById("modal-message");
-let modalConfirmBtn = document.getElementById("modal-confirm-btn");
-let modalCancelBtn = document.getElementById("modal-cancel-btn");
+let modalMessage;
+let modalConfirmBtn;
+let modalCancelBtn;
+
+export function initModals() {
+    confirmationModal = document.getElementById("confirmation-modal");
+    adminPasswordView = document.getElementById("admin-password-view");
+    editLogModal = document.getElementById("edit-log-modal");
+    fixCheckoutModal = document.getElementById("fix-checkout-modal");
+    editMemoModal = document.getElementById("edit-memo-modal");
+    helpModal = document.getElementById("help-modal");
+    goalDetailsModal = document.getElementById("goal-details-modal");
+    goalModal = document.getElementById("goal-modal");
+    exportExcelModal = document.getElementById("export-excel-modal");
+    editContributionModal = document.getElementById("edit-contribution-modal");
+    breakReservationModal = document.getElementById("break-reservation-modal");
+    addUserModal = document.getElementById("add-user-modal");
+    taskModal = document.getElementById("task-modal");
+
+    modalMessage = document.getElementById("modal-message");
+    modalConfirmBtn = document.getElementById("modal-confirm-btn");
+    modalCancelBtn = document.getElementById("modal-cancel-btn");
+}
 
 export function showModal(modalElement) {
     if (modalElement) modalElement.classList.remove("hidden");

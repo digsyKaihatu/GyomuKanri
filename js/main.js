@@ -4,20 +4,22 @@ import { db, isFirebaseConfigValid } from './firebase.js';
 import { checkOktaAuthentication, handleOktaLogout } from './okta.js';
 import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { initMessaging, listenForMessages } from './fcm.js';
-import { initializeModeSelectionView, setupModeSelectionEventListeners } from './views/modeSelection.js';
-import { initializeTaskSettingsView, setupTaskSettingsEventListeners } from './views/taskSettings.js';
-import { initializeHostView, cleanupHostView, setupHostEventListeners } from './views/host/host.js';
+import { injectAllTemplates } from './domInjector.js';
+import { initModals } from './components/modal/core.js';
+import { initializeModeSelectionView } from './views/modeSelection.js';
+import { initializeTaskSettingsView } from './views/taskSettings.js';
+import { initializeHostView, cleanupHostView } from './views/host/host.js';
 // ★修正: cleanupClientView をインポートに追加
-import { initializeClientView, cleanupClientView, setupClientEventListeners } from './views/client/client.js';
-import { initializePersonalDetailView, cleanupPersonalDetailView, setupPersonalDetailEventListeners } from './views/personalDetail/personalDetail.js';
-import { initializeReportView, cleanupReportView, setupReportEventListeners } from './views/report.js';
-import { initializeProgressView, setupProgressEventListeners } from './views/progress/progress.js';
-import { initializeArchiveView, setupArchiveEventListeners } from './views/archive.js';
+import { initializeClientView, cleanupClientView } from './views/client/client.js';
+import { initializePersonalDetailView, cleanupPersonalDetailView } from './views/personalDetail/personalDetail.js';
+import { initializeReportView, cleanupReportView } from './views/report.js';
+import { initializeProgressView } from './views/progress/progress.js';
+import { initializeArchiveView } from './views/archive.js';
 const LAST_VIEW_KEY = "gyomu_timer_last_view";
 import { initializeApprovalView, cleanupApprovalView } from './views/host/approval.js';
 
 import { setupModalEventListeners, adminPasswordView, closeModal } from './components/modal/index.js';
-import { setupExcelExportEventListeners } from './excelExport.js';
+import { setupExcelExportEventListeners, initializeExcelExportDOMElements } from './excelExport.js';
 import { getJSTDateString, escapeHtml } from './utils.js';
 
 export let userId = null;
@@ -56,30 +58,23 @@ const viewLifecycle = {
     [VIEWS.APPROVAL]: { init: initializeApprovalView, cleanup: cleanupApprovalView },
 };
 
-function injectApprovalViewHTML() {
-    if (document.getElementById(VIEWS.APPROVAL)) return;
-    const div = document.createElement("div");
-    div.id = VIEWS.APPROVAL;
-    div.className = "view p-6 max-w-5xl mx-auto"; 
-    div.innerHTML = `
-        <div class="flex items-center justify-between mb-6">
-            <h2 class="text-2xl font-bold text-gray-800">業務時間追加・変更承認</h2>
-            <button id="back-from-approval" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded shadow">
-                戻る
-            </button>
-        </div>
-        <div id="approval-list-content" class="space-y-4"></div>
-    `;
-    document.getElementById("app-container").appendChild(div);
-    
-    document.getElementById("back-from-approval").addEventListener("click", () => {
-        showView(VIEWS.HOST);
-    });
-}
-
 async function initialize() {
     console.log("Initializing application...");
     setupVisibilityReload();
+
+    injectAllTemplates();
+    initModals();
+    initializeExcelExportDOMElements();
+
+    // Setup listeners that are not view-specific
+    setupModalEventListeners();
+    setupExcelExportEventListeners();
+    const adminPasswordSubmitBtn = document.getElementById("admin-password-submit-btn");
+    const adminPasswordInput = document.getElementById("admin-password-input");
+    adminPasswordSubmitBtn?.addEventListener("click", handleAdminLogin);
+    adminPasswordInput?.addEventListener('keypress', (event) => {
+         if (event.key === 'Enter') handleAdminLogin();
+     });
 
     const appContainer = document.getElementById('app-container');
 
@@ -88,9 +83,6 @@ async function initialize() {
         return;
     }
     
-    injectApprovalViewHTML();
-    setupGlobalEventListeners();
-
     try {
         await checkOktaAuthentication(async () => {
             await startAppAfterLogin();
@@ -132,27 +124,6 @@ function displayInitializationError(message) {
     }
 }
 
-function setupGlobalEventListeners() {
-    setupModalEventListeners();
-    setupModeSelectionEventListeners();
-    setupTaskSettingsEventListeners();
-    setupHostEventListeners();
-    setupClientEventListeners();
-    setupPersonalDetailEventListeners();
-    setupReportEventListeners();
-    setupProgressEventListeners();
-    setupArchiveEventListeners();
-    setupExcelExportEventListeners();
-
-    const adminPasswordSubmitBtn = document.getElementById("admin-password-submit-btn");
-    const adminPasswordInput = document.getElementById("admin-password-input");
-    
-    adminPasswordSubmitBtn?.addEventListener("click", handleAdminLogin);
-    adminPasswordInput?.addEventListener('keypress', (event) => {
-         if (event.key === 'Enter') handleAdminLogin();
-     });
-}
-
 export function showView(viewId, data = {}) {
     console.log(`Showing view: ${viewId}`, data);
     const targetViewElement = document.getElementById(viewId);
@@ -183,11 +154,16 @@ export function showView(viewId, data = {}) {
 
     const newLifecycle = viewLifecycle[viewId];
     if (newLifecycle?.init) {
-         try {
-             (async () => await newLifecycle.init(data))();
-         } catch (error) {
-              console.error(`Error during initialization of view ${viewId}:`, error);
-         }
+        try {
+            // CLIENTビューの場合、tasksが提供されていなければallTaskObjectsをデフォルトとして使用する
+            const initData = viewId === VIEWS.CLIENT
+                ? { tasks: allTaskObjects, ...data }
+                : data;
+
+            (async () => await newLifecycle.init(initData))();
+        } catch (error) {
+             console.error(`Error during initialization of view ${viewId}:`, error);
+        }
     }
 
     if (viewHistory[viewHistory.length - 1] !== viewId) {
@@ -345,8 +321,7 @@ export async function startAppAfterLogin() {
     listenForMessages();
 
     // 【改善】常時監視を止め、初期化時に1回だけ取得する
-    await fetchTasks();
-    await fetchDisplayPreferences();
+    await Promise.all([fetchTasks(), fetchDisplayPreferences()]);
 }
 
 function setupVisibilityReload() {
@@ -370,5 +345,11 @@ export function getAllTaskObjects() {
 }
     
 export { db, escapeHtml, getJSTDateString };
-document.addEventListener("DOMContentLoaded", initialize);
+
+// Ensure the initialize function is called reliably, whether the script is loaded before or after DOMContentLoaded.
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initialize);
+} else {
+    initialize();
+}
 

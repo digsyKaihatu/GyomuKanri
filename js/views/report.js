@@ -11,26 +11,38 @@ let activeReportCharts = [];
 let selectedReportDateStr = null;
 let currentMonthLogs = []; 
 
-const reportCalendarEl = document.getElementById("report-calendar");
-const reportMonthYearEl = document.getElementById("report-calendar-month-year");
-const reportPrevMonthBtn = document.getElementById("report-prev-month-btn");
-const reportNextMonthBtn = document.getElementById("report-next-month-btn");
-const reportTitleEl = document.getElementById("report-title");
-const reportChartsContainer = document.getElementById("report-charts-container");
-const backButton = document.getElementById("back-to-host-from-report");
+// DOM要素 (遅延初期化)
+let reportCalendarEl, reportMonthYearEl, reportPrevMonthBtn, reportNextMonthBtn, reportTitleEl, reportChartsContainer, backButton;
+
+function initializeDOMElements() {
+    reportCalendarEl = document.getElementById("report-calendar");
+    reportMonthYearEl = document.getElementById("report-calendar-month-year");
+    reportPrevMonthBtn = document.getElementById("report-prev-month-btn");
+    reportNextMonthBtn = document.getElementById("report-next-month-btn");
+    reportTitleEl = document.getElementById("report-title");
+    reportChartsContainer = document.getElementById("report-charts-container");
+    backButton = document.getElementById("back-to-host-from-report");
+}
 
 // --- 初期化・クリーンアップ関数 ---
 
 export async function initializeReportView() {
     console.log("Initializing Report View...");
+    initializeDOMElements();
     currentReportDate = new Date();
     selectedReportDateStr = null;
     
     await fetchAndRenderForCurrentMonth();
+    setupReportEventListeners();
 }
 
 export function cleanupReportView() {
     console.log("Cleaning up Report View...");
+    // Remove event listeners to prevent memory leaks
+    reportPrevMonthBtn?.removeEventListener("click", handlePrevMonthClick);
+    reportNextMonthBtn?.removeEventListener("click", handleNextMonthClick);
+    backButton?.removeEventListener("click", handleGoBack);
+
     destroyCharts(activeReportCharts);
     activeReportCharts = [];
     selectedReportDateStr = null;
@@ -38,9 +50,12 @@ export function cleanupReportView() {
     if (reportChartsContainer) reportChartsContainer.innerHTML = "";
 }
 
+const handlePrevMonthClick = () => moveReportMonth(-1);
+const handleNextMonthClick = () => moveReportMonth(1);
+
 export function setupReportEventListeners() {
-    reportPrevMonthBtn?.addEventListener("click", () => moveReportMonth(-1));
-    reportNextMonthBtn?.addEventListener("click", () => moveReportMonth(1));
+    reportPrevMonthBtn?.addEventListener("click", handlePrevMonthClick);
+    reportNextMonthBtn?.addEventListener("click", handleNextMonthClick);
     backButton?.addEventListener("click", handleGoBack);
 }
 

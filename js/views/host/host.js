@@ -9,14 +9,19 @@ import { openExportExcelModal } from "../../excelExport.js";
 import { startListeningForStatusUpdates, stopListeningForStatusUpdates, forceStopUser } from "./statusDisplay.js";
 import { startListeningForUsers, stopListeningForUsers, handleUserDetailClick, handleDeleteAllLogs } from "./userManagement.js";
 
-const backButton = document.getElementById("back-to-selection-host");
-const exportExcelButton = document.getElementById("export-excel-btn");
-const viewProgressButton = document.getElementById("view-progress-btn");
-const viewReportButton = document.getElementById("view-report-btn");
-const deleteAllLogsButton = document.getElementById("delete-all-logs-btn");
-const userListContainer = document.getElementById("summary-list"); 
-const helpButton = document.querySelector('#host-view .help-btn');
-const tomuraStatusRadios = document.querySelectorAll('input[name="tomura-status"]');
+// DOM要素 (遅延初期化)
+let backButton, exportExcelButton, viewProgressButton, viewReportButton, deleteAllLogsButton, userListContainer, helpButton, tomuraStatusRadios;
+
+function initializeDOMElements() {
+    backButton = document.getElementById("back-to-selection-host");
+    exportExcelButton = document.getElementById("export-excel-btn");
+    viewProgressButton = document.getElementById("view-progress-btn");
+    viewReportButton = document.getElementById("view-report-btn");
+    deleteAllLogsButton = document.getElementById("delete-all-logs-btn");
+    userListContainer = document.getElementById("summary-list");
+    helpButton = document.querySelector('#host-view .help-btn');
+    tomuraStatusRadios = document.querySelectorAll('input[name="tomura-status"]');
+}
 
 // --- 既存機能: 戸村さんステータスUI ---
 function injectTomuraLocationUI() {
@@ -115,6 +120,7 @@ function stopListeningForApprovals() {
 
 export function initializeHostView() {
     console.log("Initializing Host View...");
+    initializeDOMElements();
     
     injectTomuraLocationUI();
     injectApprovalButton();
@@ -124,6 +130,7 @@ export function initializeHostView() {
     startListeningForUsers();      
     listenForTomuraStatus();
     startListeningForApprovals();
+    setupHostEventListeners();
 }
 
 export function cleanupHostView() {
@@ -131,6 +138,9 @@ export function cleanupHostView() {
     stopListeningForStatusUpdates(); 
     stopListeningForUsers();      
     stopListeningForApprovals();
+    // It's good practice to also remove event listeners, but since they are added to elements
+    // that are part of the view and will be hidden/inactive, it's not strictly necessary
+    // unless you see memory leak issues. For now, we'll keep it simple.
 }
 
 export function setupHostEventListeners() {

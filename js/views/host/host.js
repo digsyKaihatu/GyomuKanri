@@ -253,9 +253,9 @@ document.addEventListener("visibilitychange", () => {
     if (!isHostViewActive) return;
 
     if (document.hidden) {
-        // 非アクティブになったら、リアルタイム系のリスナーを停止
+        // 非アクティブになったら、一部のリアルタイム系リスナーを停止
         stopListeningForUsers();
-        stopListeningForApprovals();
+        // ★修正: 承認通知はバックグラウンドでも受け取りたいため、stopListeningForApprovals() は呼ばない
     } else {
         // アクティブになったら、ポーリングとリアルタイムリスナーを再開
         fetchTomuraStatus(); // ★修正: listenの再呼び出しではなく、単発のfetchに

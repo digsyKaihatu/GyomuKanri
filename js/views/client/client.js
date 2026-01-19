@@ -15,6 +15,7 @@ import {
 
 import { listenForUserReservations, handleSaveBreakReservation, handleSetStopReservation, handleCancelStopReservation, deleteReservation } from "./reservations.js";
 import { triggerReservationNotification } from "../../components/notification.js";
+import { WORKER_URL } from "./timerState.js";
 
 import { 
     handleTaskSelectionChange, 
@@ -70,6 +71,7 @@ function initClientViewDOM() {
 // リスナー解除用変数
 let tomuraStatusInterval = null; // Unsubscribe から Interval に変更
 let myStatusUnsubscribe = null;
+let d1StatusPollingInterval = null; // ★追加: D1ステータスポーリング用
 let areClientEventListenersSetup = false; // ★リスナー重複登録防止フラグ
 /**
  * クライアント画面を離れる際、または初期化前のクリーンアップ処理
@@ -84,6 +86,7 @@ export function cleanupClientView() {
     }
     // 2. ★追加: 自分自身のステータス監視を止める
     stopListeningForMyStatus();
+    stopD1StatusPolling(); // ★追加
     
     // 3. 同僚の監視を止める
     stopColleaguesListener();
@@ -108,6 +111,7 @@ export async function initializeClientView({ tasks }) {
 
     // ★追加: 自分自身のステータス変化を監視開始 (自動切り替えに必須)
     listenForMyStatus();
+    startD1StatusPolling(); // ★追加: D1側も監視開始
 
     listenForUserReservations();
     
@@ -130,199 +134,139 @@ export async function initializeClientView({ tasks }) {
  * ★追加: 自分自身のステータスをリアルタイム監視する関数
  * Workerが裏でステータスを変更した際に、画面を即座に同期させます。
  */
+/**
+ * ステータス同期のコアロジック
+ * @param {Object} data 取得したステータスデータ
+ * @param {string} source データのソース ('firestore' | 'd1')
+ */
+async function syncStatus(data, source) {
+    if (!data) return;
+
+    // ★追加判定：Workerによって更新されたばかりかどうか
+    const isWorkerUpdate = data.lastUpdatedBy === 'worker';
+    // 以前の状態（ローカル）と比較
+    const prevTask = localStorage.getItem("currentTask");
+
+    // データの正規化 (Firestore Timestamp 対策)
+    let dbStartTime = data.startTime;
+    if (dbStartTime && typeof dbStartTime.toDate === 'function') {
+        dbStartTime = dbStartTime.toDate().toISOString();
+    } else if (dbStartTime && dbStartTime.seconds) {
+        dbStartTime = new Date(dbStartTime.seconds * 1000).toISOString();
+    }
+
+    // ■■■ 予約通知・Worker更新対応ブロック ■■■
+    // ユーザーの要望により、予約通知に関しては D1 側のみで判定を行う（Firebase側の更新では通知を出さない）
+    if (isWorkerUpdate && source === 'd1') {
+        const lastNotified = localStorage.getItem("lastNotifiedWorkerUpdate");
+        const currentUpdateId = data.updatedAt ? (data.updatedAt.seconds || data.updatedAt) : null;
+
+        if (currentUpdateId && lastNotified !== String(currentUpdateId)) {
+            // 1. 休憩開始の判定
+            if (data.currentTask === '休憩' && prevTask !== '休憩') {
+                console.log(`[${source}] Workerによる休憩開始を検知。`);
+                triggerReservationNotification("休憩開始");
+                localStorage.setItem("lastNotifiedWorkerUpdate", String(currentUpdateId));
+            }
+            // 2. 自動帰宅の判定
+            else if (!(data.isWorking === 1 || data.isWorking === true) && prevTask) {
+                let lastUpdate = null;
+                if (data.updatedAt) {
+                    if (typeof data.updatedAt.toDate === 'function') lastUpdate = data.updatedAt.toDate();
+                    else if (data.updatedAt.seconds) lastUpdate = new Date(data.updatedAt.seconds * 1000);
+                    else lastUpdate = new Date(data.updatedAt);
+                }
+                const now = new Date();
+                const diffSeconds = lastUpdate ? (now - lastUpdate) / 1000 : 999999;
+
+                if (diffSeconds < 600) {
+                    console.log(`[${source}] Workerによる自動帰宅を検知。`);
+                    triggerReservationNotification("帰宅");
+                    localStorage.setItem("lastNotifiedWorkerUpdate", String(currentUpdateId));
+                }
+            }
+        }
+    }
+    // ■■■ ここまで ■■■
+
+    // 通常の同期ロジック
+    const dbIsWorking = data.isWorking === 1 || data.isWorking === true;
+    if (dbIsWorking) {
+        localStorage.setItem("isWorking", "1");
+        if (data.currentTask) localStorage.setItem("currentTask", data.currentTask);
+        if (dbStartTime) localStorage.setItem("startTime", dbStartTime);
+
+        if (data.currentGoalId) localStorage.setItem("currentGoalId", data.currentGoalId);
+        else localStorage.removeItem("currentGoalId");
+
+        const goalTitle = data.currentGoalTitle || data.currentGoal;
+        if (goalTitle) localStorage.setItem("currentGoal", goalTitle);
+        else localStorage.removeItem("currentGoal");
+    } else {
+        localStorage.removeItem("isWorking");
+        localStorage.removeItem("currentTask");
+        localStorage.removeItem("startTime");
+        localStorage.removeItem("currentGoal");
+        localStorage.removeItem("currentGoalId");
+        localStorage.removeItem("preBreakTask");
+        localStorage.removeItem("gyomu_timer_current_status");
+    }
+
+    if (data.preBreakTask) {
+        let preTask = data.preBreakTask;
+        if (typeof preTask === 'string') {
+            try { preTask = JSON.parse(preTask); } catch (e) { console.error(e); }
+        }
+        localStorage.setItem("preBreakTask", JSON.stringify(preTask));
+        const State = await import("./timerState.js");
+        State.setPreBreakTask(preTask);
+    }
+
+    await restoreTimerState();
+}
+
+// ★追加: D1ステータスポーリングを開始する関数
+function startD1StatusPolling() {
+    if (!userId || d1StatusPollingInterval) return;
+
+    console.log("D1 status polling started.");
+    const poll = async () => {
+        // タブの状態に関わらず実行（予約通知のため）
+        // ただし、バックグラウンド時は頻度を落とすなどの配慮は可能
+        try {
+            const resp = await fetch(`${WORKER_URL}/get-all-status`);
+            if (resp.ok) {
+                const allStatus = await resp.json();
+                const myData = allStatus.find(u => u.userId === userId);
+                if (myData) {
+                    await syncStatus(myData, 'd1');
+                }
+            }
+        } catch (error) {
+            console.error("D1 polling error:", error);
+        }
+    };
+
+    poll();
+    d1StatusPollingInterval = setInterval(poll, 30000); // 30秒おき
+}
+
+function stopD1StatusPolling() {
+    if (d1StatusPollingInterval) {
+        clearInterval(d1StatusPollingInterval);
+        d1StatusPollingInterval = null;
+        console.log("D1 status polling stopped.");
+    }
+}
+
 // ★追加: 自分自身のステータスをリアルタイム監視する関数
 function listenForMyStatus() {
     if (!userId || myStatusUnsubscribe) return;
 
     // Firestoreの自分のドキュメントを監視
-    myStatusUnsubscribe = onSnapshot(doc(db, "work_status", userId), async (docSnap) => { // asyncにする
+    myStatusUnsubscribe = onSnapshot(doc(db, "work_status", userId), async (docSnap) => {
         if (docSnap.exists()) {
-            const data = docSnap.data();
-
-            // --- [DEBUG] データ受信確認 ---
-            console.group("🔥 Firestore Update Detected");
-            console.log("Raw Data:", data);
-            // -----------------------------
-
-            // ★追加判定：Workerによって更新されたばかりかどうか
-            const isWorkerUpdate = data.lastUpdatedBy === 'worker';
-            // 以前の状態（ローカル）と比較
-            const prevTask = localStorage.getItem("currentTask");
-            
-            // FirestoreのTimestamp型対策
-            let dbStartTime = data.startTime;
-            if (dbStartTime && typeof dbStartTime.toDate === 'function') {
-                dbStartTime = dbStartTime.toDate().toISOString();
-            }
-
-            // --- [DEBUG] 条件判定の確認 ---
-            console.log("🔍 Condition Check:", {
-                isWorkerUpdate: isWorkerUpdate,
-                currentTaskIsBreak: data.currentTask === '休憩',
-                prevTaskIsNotBreak: prevTask !== '休憩',
-                localPrevTask: prevTask
-            });
-            // -----------------------------
-
-            // ■■■ Worker対応追加ブロック ■■■
-            if (isWorkerUpdate && data.currentTask === '休憩' && prevTask !== '休憩') {
-                console.log("✅ Workerブロックに突入しました！"); // [DEBUG]
-                triggerReservationNotification("休憩開始");
-
-                console.log("Workerによる休憩開始を検知。ローカル状態を強制同期します（ログ保存はスキップ）。");
-                
-                // 1. LocalStorageを強制上書き
-                localStorage.setItem("isWorking", "1");
-                localStorage.setItem("currentTask", "休憩");
-                if (dbStartTime) localStorage.setItem("startTime", dbStartTime);
-
-                // ▼▼▼ 追加: 休憩に入ったので、ローカルに残っている工数情報を確実に消す！ ▼▼▼
-                localStorage.removeItem("currentGoalId");
-                localStorage.removeItem("currentGoal");
-                // ▲▲▲ 追加ここまで ▲▲▲
-                
-                // 2. 休憩前のタスク情報があれば保存
-                if (data.preBreakTask) {
-
-                    // ▼▼▼ 【追加】データが「文字列」のままなら、オブジェクトに変換する ▼▼▼
-                    if (typeof data.preBreakTask === 'string') {
-                        try {
-                            data.preBreakTask = JSON.parse(data.preBreakTask);
-                            console.log("⚠️ 文字列のpreBreakTaskをオブジェクトに変換しました");
-                        } catch (e) {
-                            console.error("❌ preBreakTaskのパースに失敗:", e);
-                        }
-                    }
-                    // ▲▲▲ 追加ここまで ▲▲▲
-
-                    const goalSelect = document.getElementById("goal-select");
-                    const currentGoalId = goalSelect ? goalSelect.value : null;
-                    
-                    // 修正: オブジェクトに対して goalId をセットするのでエラーになりません
-                    if (currentGoalId && (!data.preBreakTask.goalId || data.preBreakTask.goalId === "")) {
-                        data.preBreakTask.goalId = currentGoalId;
-                        console.log("🔄 画面の値を使って goalId を補完しました:", currentGoalId);
-                    }                    
-                    console.log("💾 preBreakTaskを保存します:", data.preBreakTask); // [DEBUG]
-
-                    // LocalStorageへ保存
-                    localStorage.setItem("preBreakTask", JSON.stringify(data.preBreakTask));
-                    
-                    // ステートへ保存（awaitを使って、完了を確実に待つ）
-                    const State = await import("./timerState.js");
-                    State.setPreBreakTask(data.preBreakTask);
-                } else {
-                    console.warn("⚠️ data.preBreakTask が存在しません！"); // [DEBUG]
-                }
-
-                // 3. UIと内部ステートだけ更新して終了
-                await restoreTimerState(); // ここも念の為 await しておくと安心
-                
-                console.log("🛑 Workerブロック処理完了。returnします。"); // [DEBUG]
-                console.groupEnd();
-                return; 
-            } else {
-                console.log("⏭️ Workerブロックをスキップしました（条件不一致）。"); // [DEBUG]
-            }
-            // ■■■ ここまで ■■■
-
-
-            const dbIsWorking = data.isWorking === 1 || data.isWorking === true;
-            console.log("Standard Logic Check - dbIsWorking:", dbIsWorking); // [DEBUG]
-
-            if (dbIsWorking) {
-                // DBが「稼働中（休憩含む）」の場合
-                localStorage.setItem("isWorking", "1");
-                
-                if (data.currentTask) {
-                    localStorage.setItem("currentTask", data.currentTask);
-                }
-                
-                if (dbStartTime) {
-                    localStorage.setItem("startTime", dbStartTime);
-                }
-
-                // 工数情報の同期
-                if (data.currentGoalId) {
-                    localStorage.setItem("currentGoalId", data.currentGoalId);
-                } else {
-                    localStorage.removeItem("currentGoalId");
-                }
-
-                const goalTitle = data.currentGoalTitle || data.currentGoal;
-                if (goalTitle) {
-                    localStorage.setItem("currentGoal", goalTitle);
-                } else {
-                    localStorage.removeItem("currentGoal");
-                }
-
-            } else {
-                console.log("⬇️ 業務終了（停止中）ルートに入りました"); // [DEBUG]
-
-                // ★追加: Workerによる自動停止（帰宅）だった場合に通知を出す
-if (isWorkerUpdate) {
-                    // 更新時刻をチェックして、古すぎる通知（ログイン時など）を防ぐ
-                    let lastUpdate = null;
-                    if (data.updatedAt) {
-                        // FirestoreのTimestamp型か、文字列(ISO)かを判定してDate化
-                        if (typeof data.updatedAt.toDate === 'function') {
-                            lastUpdate = data.updatedAt.toDate();
-                        } else {
-                            lastUpdate = new Date(data.updatedAt);
-                        }
-                    }
-
-                    // 現在時刻との差分（秒）を計算
-                    const now = new Date();
-                    const diffSeconds = lastUpdate ? (now - lastUpdate) / 1000 : 999999;
-
-                    // 「10分以内（600秒）」に行われた変更の場合のみ通知する
-                    // ※PCの時計ズレも考慮して少し余裕を持たせています
-                    if (diffSeconds < 600) {
-                        triggerReservationNotification("帰宅");
-                    }
-                }                
-                // DBが「停止中（帰宅済）」の場合
-                localStorage.removeItem("isWorking");
-                localStorage.removeItem("currentTask");
-                localStorage.removeItem("startTime");
-                localStorage.removeItem("currentGoal");
-                localStorage.removeItem("currentGoalId");
-                localStorage.removeItem("preBreakTask");
-                localStorage.removeItem("gyomu_timer_current_status");
-            }
-
-            // 念のため、休憩前タスクがあれば必ず保存しておく
-            if (data.preBreakTask) {
-
-                // ▼▼▼ 追加: goalId チェックと補完ロジック ▼▼▼
-                    if (!data.preBreakTask.goalId && data.preBreakTask.goalTitle) {
-                        console.warn("⚠️ goalId が欠落しています。goalTitle から復旧を試みます:", data.preBreakTask.goalTitle);
-                        
-                        // 現在の画面にあるゴールプルダウンの選択肢から、同じタイトルの ID を探す
-                        // (※プルダウンの ID が "#goal-select" だと仮定した場合の例です。適宜IDを合わせてください)
-                        const goalSelect = document.getElementById("goal-select"); // ← ここのIDを確認してください
-                        if (goalSelect) {
-                            const matchingOption = Array.from(goalSelect.options).find(opt => opt.text.trim() === data.preBreakTask.goalTitle.trim());
-                            if (matchingOption) {
-                                data.preBreakTask.goalId = matchingOption.value;
-                                console.log("✅ goalId を復元しました:", data.preBreakTask.goalId);
-                            } else {
-                                console.error("❌ 一致するゴールが見つかりませんでした。");
-                            }
-                        }
-                    }
-                    // ▲▲▲ 追加ここまで ▲▲▲
-                
-                localStorage.setItem("preBreakTask", JSON.stringify(data.preBreakTask));
-                import("./timerState.js").then(State => State.setPreBreakTask(data.preBreakTask));
-            }
-
-            await restoreTimerState();
-            console.groupEnd();
-            console.log("🛑 Workerブロック処理完了。returnします。"); // [DEBUG]
-            return;
-
+            await syncStatus(docSnap.data(), 'firestore');
         } 
     }, (error) => {
         console.error("Error listening to my status:", error);
@@ -437,9 +381,13 @@ if (breakBtn) breakBtn.onclick = () => handleBreakClick(false);
         if (!isClientViewActive) return;
 
         if (document.hidden) {
+            // Firestoreは非アクティブ時に停止して節約する
             stopListeningForMyStatus();
         } else {
+            // アクティブになったら即座に同期
             listenForMyStatus();
+            // D1ポーリングも即座に1回実行して最新にする（任意）
+            // fetchMyStatusFromD1();
         }
     });
 

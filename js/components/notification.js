@@ -78,10 +78,11 @@ async function showBrowserNotification(title, message) {
                     console.log("[Notification] Using Service Worker to show notification");
                     await reg.showNotification(title, {
                         body: message,
-                        icon: '/icon-192.png',
-                        badge: '/icon-192.png',
+                        icon: '/512.pngs32.png',
+                        badge: '/512.pngs32.png',
                         tag: 'reservation-notification',
-                        renotify: true
+                        renotify: true,
+                        requireInteraction: true // ユーザーが気づくまで消さない
                     });
                     return;
                 }

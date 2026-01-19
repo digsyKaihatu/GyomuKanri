@@ -124,9 +124,17 @@ export default {
       if (url.pathname === "/force-stop" && request.method === "POST") {
         const { userId } = await request.json();
         const nowIso = new Date().toISOString();
+        // 管理者による停止時は preBreakTask も含めすべてリセットする
         await env.DB.prepare(`
           UPDATE work_status
-          SET isWorking = 0, currentTask = NULL, startTime = NULL, currentGoal = NULL, currentGoalId = NULL, updatedAt = ?, lastUpdatedBy = 'admin'
+          SET isWorking = 0,
+              currentTask = NULL,
+              startTime = NULL,
+              preBreakTask = NULL,
+              currentGoal = NULL,
+              currentGoalId = NULL,
+              updatedAt = ?,
+              lastUpdatedBy = 'admin'
           WHERE userId = ?
         `).bind(nowIso, userId).run();
         return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });

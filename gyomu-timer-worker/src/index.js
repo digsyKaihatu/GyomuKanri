@@ -21,10 +21,45 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    if (url.pathname === '/update-schedule') {
-        return new Response("OK");
+    const corsHeaders = {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    };
+
+    if (request.method === "OPTIONS") {
+      return new Response(null, { headers: corsHeaders });
     }
-    return new Response("OK");
+
+    if (url.pathname === '/get-my-status') {
+      const userId = url.searchParams.get('userId');
+      if (!userId) return new Response("Missing userId", { status: 400, headers: corsHeaders });
+
+      try {
+        if (!env.DB) throw new Error("D1 Database not bound");
+        const status = await env.DB.prepare('SELECT * FROM work_status WHERE userId = ?').bind(userId).first();
+        return new Response(JSON.stringify(status || null), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), {
+          status: 500, headers: corsHeaders
+        });
+      }
+    }
+
+    if (url.pathname === '/get-tomura-status') {
+      // 戸村さんのステータスをD1から取得（userId="tomura" と仮定、または別のテーブル）
+      // ここでは最低限のレスポンスを返します
+      return new Response(JSON.stringify({ status: "声掛けOK", location: "出社", date: new Date().toISOString().split('T')[0] }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
+    if (url.pathname === '/update-schedule') {
+        return new Response("OK", { headers: corsHeaders });
+    }
+    return new Response("OK", { headers: corsHeaders });
   },
 
   async scheduled(event, env, ctx) {
@@ -139,6 +174,41 @@ export default {
                         currentGoal: null,
                         debug_workerSeenGoalId: safeGoalId || "NULL_OR_EMPTY"
                     });
+
+                    // ■ D1 status update (for background polling)
+                    if (env.DB) {
+                        try {
+                            const d1UpdatedAt = executionTime.toISOString();
+                            await env.DB.prepare(`
+                                INSERT INTO work_status (userId, userName, isWorking, currentTask, currentGoal, currentGoalId, startTime, updatedAt, lastUpdatedBy, preBreakTask)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                ON CONFLICT(userId) DO UPDATE SET
+                                    userName=excluded.userName,
+                                    isWorking=excluded.isWorking,
+                                    currentTask=excluded.currentTask,
+                                    currentGoal=excluded.currentGoal,
+                                    currentGoalId=excluded.currentGoalId,
+                                    startTime=excluded.startTime,
+                                    updatedAt=excluded.updatedAt,
+                                    lastUpdatedBy=excluded.lastUpdatedBy,
+                                    preBreakTask=excluded.preBreakTask
+                            `).bind(
+                                userId,
+                                currentStatus.userName || 'Unknown',
+                                1, // isWorking
+                                '休憩',
+                                null, // currentGoal
+                                null, // currentGoalId
+                                executionTime.toISOString(), // startTime
+                                d1UpdatedAt,
+                                'worker',
+                                JSON.stringify(preBreakTaskData)
+                            ).run();
+                            console.log(`[Worker] D1 status updated for ${userId}`);
+                        } catch (d1Err) {
+                            console.error("[Worker] D1 status update failed:", d1Err);
+                        }
+                    }
                 }
 
                 transaction.update(resDoc.ref, { 

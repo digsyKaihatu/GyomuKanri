@@ -123,6 +123,11 @@ export const clientViewTemplate = `
                 </button>
               </div>
             </div>
+            <div class="border-t pt-2 mt-2">
+                <button id="test-notification-btn" class="w-full text-xs text-gray-500 hover:text-blue-600 underline text-center transition">
+                    通知が届かない場合: デスクトップ通知をテスト
+                </button>
+            </div>
           </div>
         </details>
 

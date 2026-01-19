@@ -142,7 +142,11 @@ export async function initializeClientView({ tasks }) {
 async function syncStatus(data, source) {
     if (!data) return;
 
-    // ★追加判定：Workerによって更新されたばかりかどうか
+    // 診断用ログ (後で削除予定)
+    console.log(`%c[syncStatus] source: ${source}`, "color: blue; font-weight: bold;");
+    console.log("Received data:", data);
+
+    // ★判定：Workerによって更新されたばかりかどうか
     const isWorkerUpdate = data.lastUpdatedBy === 'worker';
     // 以前の状態（ローカル）と比較
     const prevTask = localStorage.getItem("currentTask");
@@ -156,39 +160,43 @@ async function syncStatus(data, source) {
     }
 
     // ■■■ 予約通知・Worker更新対応ブロック ■■■
-    // ユーザーの要望により、予約通知に関しては D1 側のみで判定を行う
-    if (isWorkerUpdate && source === 'd1') {
+    // 予約通知に関しては Worker による更新であればソースを問わず判定を行う
+    // (以前はD1のみに限定していましたが、アクティブ時の反応を良くするためFirestore側でも許可します)
+    if (isWorkerUpdate) {
+        // 更新時刻の正規化
+        let normalizedUpdatedAt = null;
+        if (data.updatedAt) {
+            if (typeof data.updatedAt.toDate === 'function') normalizedUpdatedAt = data.updatedAt.toDate().toISOString();
+            else if (data.updatedAt.seconds) normalizedUpdatedAt = new Date(data.updatedAt.seconds * 1000).toISOString();
+            else normalizedUpdatedAt = new Date(data.updatedAt).toISOString();
+        }
+
         const lastNotified = localStorage.getItem("lastNotifiedWorkerUpdate");
-        const currentUpdateId = data.updatedAt ? (data.updatedAt.seconds || data.updatedAt) : null;
+        // Fallback: updatedAt がない場合は startTime を ID とする
+        const currentUpdateId = normalizedUpdatedAt || (data.startTime && new Date(data.startTime).toISOString());
 
-        if (currentUpdateId && lastNotified !== String(currentUpdateId)) {
-            // 更新時刻をチェックして、古すぎる通知（ログイン時など）を防ぐ
-            let lastUpdate = null;
-            if (data.updatedAt) {
-                if (typeof data.updatedAt.toDate === 'function') lastUpdate = data.updatedAt.toDate();
-                else if (data.updatedAt.seconds) lastUpdate = new Date(data.updatedAt.seconds * 1000);
-                else lastUpdate = new Date(data.updatedAt);
-            }
+        if (currentUpdateId && lastNotified !== currentUpdateId) {
+            const lastUpdateDate = new Date(currentUpdateId);
             const now = new Date();
-            const diffSeconds = lastUpdate ? (now - lastUpdate) / 1000 : 999999;
+            const diffSeconds = (now - lastUpdateDate) / 1000;
+            console.log(`[syncStatus] New worker update detected. currentUpdateId=${currentUpdateId}, diffSeconds=${diffSeconds}`);
 
-            if (diffSeconds < 600) { // 10分以内の更新のみ通知
+            if (diffSeconds < 600 || diffSeconds < -600) { // 10分以内の更新のみ通知 (負の数も許容)
                 // 1. 休憩開始の判定
-                // Firebase(Firestore)とのレースに勝つため、prevTaskのチェックは外します
-                if (data.currentTask === '休憩') {
-                    console.log(`[${source}] Workerによる休憩開始を検知。`);
+                if (data.currentTask && data.currentTask.trim() === '休憩') {
+                    console.log(`%c[${source}] Workerによる休憩開始を検知。通知を出します。`, "color: green; font-weight: bold;");
                     triggerReservationNotification("休憩開始");
-                    localStorage.setItem("lastNotifiedWorkerUpdate", String(currentUpdateId));
+                    localStorage.setItem("lastNotifiedWorkerUpdate", currentUpdateId);
                 }
                 // 2. 自動帰宅の判定
                 else if (!(data.isWorking === 1 || data.isWorking === true)) {
-                    console.log(`[${source}] Workerによる自動帰宅を検知。`);
+                    console.log(`[${source}] Workerによる自動帰宅を検知。通知を出します。`);
                     triggerReservationNotification("帰宅");
-                    localStorage.setItem("lastNotifiedWorkerUpdate", String(currentUpdateId));
+                    localStorage.setItem("lastNotifiedWorkerUpdate", currentUpdateId);
                 }
             } else {
                 // 古い更新の場合は通知せず、既読扱いにする
-                localStorage.setItem("lastNotifiedWorkerUpdate", String(currentUpdateId));
+                localStorage.setItem("lastNotifiedWorkerUpdate", currentUpdateId);
             }
         }
     }
@@ -223,8 +231,7 @@ async function syncStatus(data, source) {
             try { preTask = JSON.parse(preTask); } catch (e) { console.error(e); }
         }
         localStorage.setItem("preBreakTask", JSON.stringify(preTask));
-        const State = await import("./timerState.js");
-        State.setPreBreakTask(preTask);
+        import("./timerState.js").then(State => State.setPreBreakTask(preTask));
     }
 
     await restoreTimerState();
@@ -237,12 +244,10 @@ function startD1StatusPolling() {
     console.log("D1 status polling started.");
     const poll = async () => {
         // タブの状態に関わらず実行（予約通知のため）
-        // ただし、バックグラウンド時は頻度を落とすなどの配慮は可能
         try {
-            const resp = await fetch(`${WORKER_URL}/get-all-status`);
+            const resp = await fetch(`${WORKER_URL}/get-my-status?userId=${encodeURIComponent(userId)}`);
             if (resp.ok) {
-                const allStatus = await resp.json();
-                const myData = allStatus.find(u => u.userId === userId);
+                const myData = await resp.json();
                 if (myData) {
                     await syncStatus(myData, 'd1');
                 }
@@ -335,6 +340,10 @@ if (breakBtn) breakBtn.onclick = () => handleBreakClick(false);
     breakReservationSaveBtn?.addEventListener("click", handleSaveBreakReservation);
     setStopReservationBtn?.addEventListener("click", handleSetStopReservation);
     cancelStopReservationBtn?.addEventListener("click", handleCancelStopReservation);
+    document.getElementById('test-notification-btn').addEventListener('click', () => {
+        triggerReservationNotification("テスト通知 (5秒後に届きます)");
+        alert("通知テストを開始しました。5秒以内にブラウザを最小化するか他のタブを開いて、通知が届くか確認してください。");
+    });
 
     // --- Navigation and Other Buttons ---
     backButton?.addEventListener("click", () => showView(VIEWS.MODE_SELECTION));

@@ -181,7 +181,7 @@ async function syncStatus(data, source) {
             const diffSeconds = (now - lastUpdateDate) / 1000;
             console.log(`[syncStatus] New worker update detected. currentUpdateId=${currentUpdateId}, diffSeconds=${diffSeconds}`);
 
-            if (diffSeconds < 600 || diffSeconds < -600) { // 10分以内の更新のみ通知 (負の数も許容)
+            if (Math.abs(diffSeconds) < 600) { // 10分以内の更新のみ通知 (クライアント/サーバー間の時計のズレも考慮)
                 // 1. 休憩開始の判定
                 if (data.currentTask && data.currentTask.trim() === '休憩') {
                     console.log(`%c[${source}] Workerによる休憩開始を検知。通知を出します。`, "color: green; font-weight: bold;");
@@ -416,7 +416,6 @@ function listenForTomuraStatus() {
         clearInterval(tomuraStatusInterval);
     }
 
-    const WORKER_URL = "https://muddy-night-4bd4.sora-yamashita.workers.dev";
     const todayStr = new Date().toISOString().split("T")[0];
 
     const fetchStatus = async () => {

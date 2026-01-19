@@ -22,7 +22,8 @@ export async function executeStartTask(selectedTask, selectedGoalId, selectedGoa
         currentTask: selectedTask,
         currentGoal: selectedGoalTitle,
         currentGoalId: selectedGoalId,
-        startTime: new Date().toISOString()
+        startTime: new Date().toISOString(),
+        preBreakTask: State.getPreBreakTask()
     };
 
     try {

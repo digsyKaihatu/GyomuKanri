@@ -29,6 +29,7 @@ export async function triggerEncouragementNotification(elapsedSeconds, type = 'e
 
 // 予約実行時の通知
 export async function triggerReservationNotification(actionName) {
+    console.log(`[Notification] triggerReservationNotification called for: ${actionName}`);
     let title = "予約時間のお知らせ";
     let message = `予約設定で${actionName}しました`;
 
@@ -60,7 +61,11 @@ export async function triggerBreakNotification(elapsedSeconds) {
 
 // ブラウザ通知を表示する共通関数
 async function showBrowserNotification(title, message) {
-    if (!("Notification" in window)) return;
+    console.log(`[Notification] showBrowserNotification: title="${title}", message="${message}"`);
+    if (!("Notification" in window)) {
+        console.warn("[Notification] Browser does not support Notification API");
+        return;
+    }
 
     let permission = Notification.permission;
 
@@ -79,6 +84,7 @@ async function showBrowserNotification(title, message) {
 }
 
 function createNotification(title, message) {
+    console.log(`[Notification] Creating actual notification: ${title}`);
     try {
         const notification = new Notification(title, {
             body: message,

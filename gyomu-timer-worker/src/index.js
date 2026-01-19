@@ -145,6 +145,42 @@ export default {
                     status: 'executed',
                     executedAt: executionTime.toISOString()
                 });
+
+                // ■ D1 status update (for background polling)
+                if (env.DB) {
+                    try {
+                        const d1UpdatedAt = executionTime.toISOString();
+                        await env.DB.prepare(`
+                            INSERT INTO work_status (userId, userName, isWorking, currentTask, currentGoal, currentGoalId, startTime, updatedAt, lastUpdatedBy, preBreakTask)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ON CONFLICT(userId) DO UPDATE SET
+                                userName=excluded.userName,
+                                isWorking=excluded.isWorking,
+                                currentTask=excluded.currentTask,
+                                currentGoal=excluded.currentGoal,
+                                currentGoalId=excluded.currentGoalId,
+                                startTime=excluded.startTime,
+                                updatedAt=excluded.updatedAt,
+                                lastUpdatedBy=excluded.lastUpdatedBy,
+                                preBreakTask=excluded.preBreakTask
+                        `).bind(
+                            userId,
+                            currentStatus.userName || 'Unknown',
+                            1, // isWorking
+                            '休憩',
+                            null, // currentGoal
+                            null, // currentGoalId
+                            executionTime.toISOString(), // startTime
+                            d1UpdatedAt,
+                            'worker',
+                            JSON.stringify(preBreakTaskData)
+                        ).run();
+                        console.log(`[Worker] D1 status updated for ${userId}`);
+                    } catch (d1Err) {
+                        console.error("[Worker] D1 status update failed:", d1Err);
+                        // Table name might be different, try a more generic one if needed or just fail silently
+                    }
+                }
             }
         });
         console.log("Transaction successfully committed!");

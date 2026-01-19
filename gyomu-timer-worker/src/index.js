@@ -1,5 +1,5 @@
 /**
- * 業務管理システム: Cloudflare Worker 統合バックエンド
+ * 業務管理システム: Cloudflare Worker 統合バックエンド (修正版)
  * 機能: D1ステータス管理, 予約自動実行, Firebaseログ連携, ステータス完全同期
  */
 
@@ -17,6 +17,7 @@ export default {
    * 1. HTTPリクエスト処理 (フロントエンドからのAPI呼び出し)
    */
   async fetch(request, env, ctx) {
+    // CORS プリフライトリクエストの処理
     if (request.method === "OPTIONS") {
       return new Response(null, { headers: corsHeaders });
     }
@@ -82,6 +83,7 @@ export default {
         const nowIso = new Date().toISOString();
         const preBreakTask = data.preBreakTask ? (typeof data.preBreakTask === 'string' ? data.preBreakTask : JSON.stringify(data.preBreakTask)) : null;
 
+        // ★修正: 明示的な10カラムのINSERT
         await env.DB.prepare(`
           INSERT INTO work_status (userId, userName, isWorking, currentTask, startTime, currentGoal, currentGoalId, updatedAt, lastUpdatedBy, preBreakTask)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -96,8 +98,16 @@ export default {
             lastUpdatedBy=excluded.lastUpdatedBy,
             preBreakTask=excluded.preBreakTask
         `).bind(
-            data.userId, data.userName, data.isWorking, data.currentTask, data.startTime,
-            currentGoal, currentGoalId, nowIso, 'client', preBreakTask
+            data.userId,
+            data.userName,
+            data.isWorking,
+            data.currentTask,
+            data.startTime,
+            currentGoal,
+            currentGoalId,
+            nowIso,
+            'client',
+            preBreakTask
         ).run();
 
         return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
@@ -125,12 +135,7 @@ export default {
       // --- 追加エンドポイント: 戸村さんステータスの取得 ---
       if (url.pathname === "/get-tomura-status") {
         const result = await env.DB.prepare("SELECT value FROM settings WHERE key = 'tomura_status'").first();
-        if (result && result.value) {
-           return new Response(result.value, {
-             headers: { ...corsHeaders, "Content-Type": "application/json" }
-           });
-        }
-        return new Response(JSON.stringify({ status: "声掛けOK", location: "出社" }), {
+        return new Response(result ? result.value : JSON.stringify({ status: "声掛けOK", location: "出社" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
       }
@@ -148,9 +153,11 @@ export default {
         return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
       }
 
+      // --- 404 Not Found ---
       return new Response("End Point Not Found", { status: 404, headers: corsHeaders });
 
     } catch (e) {
+      // エラーハンドリング
       return new Response(JSON.stringify({ error: e.message, stack: e.stack }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" }
@@ -246,7 +253,7 @@ export default {
         const currentNowIso = new Date().toISOString();
 
         // D1更新
-        console.log(`[Worker] Updating D1 for ${res.userId}. updatedAt=${currentNowIso}, lastUpdatedBy=worker`);
+        // ★修正: 明示的に10カラム指定し、Bindも合わせる
         await env.DB.prepare(`
           INSERT INTO work_status (userId, userName, isWorking, currentTask, startTime, preBreakTask, currentGoal, currentGoalId, updatedAt, lastUpdatedBy)
           VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)

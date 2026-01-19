@@ -255,8 +255,8 @@ function startD1StatusPolling() {
     console.log("D1 status polling started.");
     const poll = async () => {
         // タブの状態に関わらず実行（予約通知のため）
+        console.log(`[D1 Polling] Checking status at ${new Date().toLocaleTimeString()}${document.hidden ? ' (Background)' : ''}`);
         try {
-            // /get-user-status を優先し、念のため /get-my-status も試せるようにしておく
             const resp = await fetch(`${WORKER_URL}/get-user-status?userId=${encodeURIComponent(userId)}`);
             if (resp.ok) {
                 const myData = await resp.json();

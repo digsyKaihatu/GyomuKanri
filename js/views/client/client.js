@@ -140,7 +140,7 @@ export async function initializeClientView({ tasks }) {
  * @param {string} source データのソース ('firestore' | 'd1')
  */
 async function syncStatus(data, source) {
-    if (!data) return;
+    if (!data || Object.keys(data).length === 0) return;
 
     // 診断用ログ (後で削除予定)
     console.log(`%c[syncStatus] source: ${source}`, "color: blue; font-weight: bold;");
@@ -148,6 +148,8 @@ async function syncStatus(data, source) {
 
     // ★判定：Workerによって更新されたばかりかどうか
     const isWorkerUpdate = data.lastUpdatedBy === 'worker';
+    console.log(`[syncStatus] isWorkerUpdate: ${isWorkerUpdate}, lastUpdatedBy: ${data.lastUpdatedBy}`);
+
     // 以前の状態（ローカル）と比較
     const prevTask = localStorage.getItem("currentTask");
 
@@ -175,11 +177,14 @@ async function syncStatus(data, source) {
         // Fallback: updatedAt がない場合は startTime を ID とする
         const currentUpdateId = normalizedUpdatedAt || (data.startTime && new Date(data.startTime).toISOString());
 
+        console.log(`[syncStatus] ID Check: currentUpdateId=${currentUpdateId}, lastNotified=${lastNotified}`);
+
         if (currentUpdateId && lastNotified !== currentUpdateId) {
             const lastUpdateDate = new Date(currentUpdateId);
             const now = new Date();
             const diffSeconds = (now - lastUpdateDate) / 1000;
-            console.log(`[syncStatus] New worker update detected. currentUpdateId=${currentUpdateId}, diffSeconds=${diffSeconds}`);
+            console.log(`[syncStatus] New worker update detected. diffSeconds=${diffSeconds.toFixed(2)}s`);
+            console.log(`[syncStatus] Notification Permission: ${Notification.permission}`);
 
             if (Math.abs(diffSeconds) < 600) { // 10分以内の更新のみ通知 (クライアント/サーバー間の時計のズレも考慮)
                 // 1. 休憩開始の判定

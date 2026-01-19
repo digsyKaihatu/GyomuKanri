@@ -17,7 +17,6 @@ export default {
    * 1. HTTPリクエスト処理 (フロントエンドからのAPI呼び出し)
    */
   async fetch(request, env, ctx) {
-    // CORS プリフライトリクエストの処理
     if (request.method === "OPTIONS") {
       return new Response(null, { headers: corsHeaders });
     }
@@ -81,20 +80,24 @@ export default {
         const currentGoal = data.currentGoal || null;
         const currentGoalId = data.currentGoalId || null;
         const nowIso = new Date().toISOString();
+        const preBreakTask = data.preBreakTask ? (typeof data.preBreakTask === 'string' ? data.preBreakTask : JSON.stringify(data.preBreakTask)) : null;
 
-        await env.DB.prepare(
-          "INSERT OR REPLACE INTO work_status (userId, userName, isWorking, currentTask, startTime, currentGoal, currentGoalId, updatedAt, lastUpdatedBy, preBreakTask) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-        ).bind(
-            data.userId,
-            data.userName,
-            data.isWorking,
-            data.currentTask,
-            data.startTime,
-            currentGoal,
-            currentGoalId,
-            nowIso,
-            'client',
-            data.preBreakTask ? (typeof data.preBreakTask === 'string' ? data.preBreakTask : JSON.stringify(data.preBreakTask)) : null
+        await env.DB.prepare(`
+          INSERT INTO work_status (userId, userName, isWorking, currentTask, startTime, currentGoal, currentGoalId, updatedAt, lastUpdatedBy, preBreakTask)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(userId) DO UPDATE SET
+            userName=excluded.userName,
+            isWorking=excluded.isWorking,
+            currentTask=excluded.currentTask,
+            startTime=excluded.startTime,
+            currentGoal=excluded.currentGoal,
+            currentGoalId=excluded.currentGoalId,
+            updatedAt=excluded.updatedAt,
+            lastUpdatedBy=excluded.lastUpdatedBy,
+            preBreakTask=excluded.preBreakTask
+        `).bind(
+            data.userId, data.userName, data.isWorking, data.currentTask, data.startTime,
+            currentGoal, currentGoalId, nowIso, 'client', preBreakTask
         ).run();
 
         return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
@@ -111,9 +114,11 @@ export default {
       if (url.pathname === "/force-stop" && request.method === "POST") {
         const { userId } = await request.json();
         const nowIso = new Date().toISOString();
-        await env.DB.prepare(
-          "UPDATE work_status SET isWorking = 0, currentTask = NULL, startTime = NULL, currentGoal = NULL, currentGoalId = NULL, updatedAt = ?, lastUpdatedBy = 'admin' WHERE userId = ?"
-        ).bind(nowIso, userId).run();
+        await env.DB.prepare(`
+          UPDATE work_status
+          SET isWorking = 0, currentTask = NULL, startTime = NULL, currentGoal = NULL, currentGoalId = NULL, updatedAt = ?, lastUpdatedBy = 'admin'
+          WHERE userId = ?
+        `).bind(nowIso, userId).run();
         return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
       }
 
@@ -143,11 +148,9 @@ export default {
         return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
       }
 
-      // --- 404 Not Found ---
       return new Response("End Point Not Found", { status: 404, headers: corsHeaders });
 
     } catch (e) {
-      // エラーハンドリング
       return new Response(JSON.stringify({ error: e.message, stack: e.stack }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" }
@@ -177,11 +180,9 @@ export default {
         const currentStatus = await env.DB.prepare("SELECT * FROM work_status WHERE userId = ?")
           .bind(res.userId).first();
 
-        const isCurrentlyWorking = currentStatus && currentStatus.isWorking === 1;
         let preBreakTaskJson = null;
 
         if (res.action === "break" && currentStatus && currentStatus.currentTask === "休憩") {
-          console.log(`User ${res.userName} is already in break. Skipping duplicate execution.`);
           const scheduledDate = new Date(res.scheduledTime);
           const nextDateIso = new Date(scheduledDate.getTime() + 24 * 60 * 60 * 1000).toISOString();
           await env.DB.prepare("UPDATE reservations SET scheduledTime = ? WHERE id = ?")
@@ -227,7 +228,7 @@ export default {
               });
             }
           } catch (logErr) {
-            console.error("Firebase Log Error (Ignored):", logErr.message);
+            console.error("Firebase Log Error:", logErr.message);
           }
 
           if (res.action === "break") {
@@ -244,10 +245,24 @@ export default {
         const taskNext = (res.action === "break") ? "休憩" : null;
         const currentNowIso = new Date().toISOString();
 
-        // D1更新 (updatedAt, lastUpdatedBy, preBreakTask を含む)
-        await env.DB.prepare(
-          "INSERT OR REPLACE INTO work_status (userId, userName, isWorking, currentTask, startTime, currentGoal, currentGoalId, updatedAt, lastUpdatedBy, preBreakTask) VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)"
-        ).bind(res.userId, res.userName, isWorkingNext, taskNext, currentNowIso, currentNowIso, 'worker', preBreakTaskJson).run();
+        // D1更新
+        console.log(`[Worker] Updating D1 for ${res.userId}. updatedAt=${currentNowIso}, lastUpdatedBy=worker`);
+        await env.DB.prepare(`
+          INSERT INTO work_status (userId, userName, isWorking, currentTask, startTime, preBreakTask, currentGoal, currentGoalId, updatedAt, lastUpdatedBy)
+          VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
+          ON CONFLICT(userId) DO UPDATE SET
+            userName=excluded.userName,
+            isWorking=excluded.isWorking,
+            currentTask=excluded.currentTask,
+            startTime=excluded.startTime,
+            preBreakTask=excluded.preBreakTask,
+            currentGoal=excluded.currentGoal,
+            currentGoalId=excluded.currentGoalId,
+            updatedAt=excluded.updatedAt,
+            lastUpdatedBy=excluded.lastUpdatedBy
+        `).bind(
+            res.userId, res.userName, isWorkingNext, taskNext, currentNowIso, preBreakTaskJson, currentNowIso, 'worker'
+        ).run();
 
         // Firestore同期
         try {

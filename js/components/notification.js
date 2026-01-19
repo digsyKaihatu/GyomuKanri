@@ -29,9 +29,25 @@ export async function triggerEncouragementNotification(elapsedSeconds, type = 'e
 
 // 予約実行時の通知
 export async function triggerReservationNotification(actionName) {
-    const title = "自動実行";
-    const message = `予約設定で${actionName}しました`;
-    await showBrowserNotification(title, message);
+    let title = "予約時間のお知らせ";
+    let message = `予約設定で${actionName}しました`;
+
+    if (actionName === "休憩開始") {
+        title = "休憩時間になりました";
+        message = "自動的に休憩に切り替わりました。ゆっくり休んでください。";
+    } else if (actionName === "帰宅") {
+        title = "自動帰宅しました";
+        message = "本日もお疲れ様でした！";
+    } else if (actionName.startsWith("テスト")) {
+        title = "通知テスト";
+        message = actionName;
+    }
+
+    // テストの場合は5秒遅らせる（タブ切り替えの猶予）
+    const delay = actionName.startsWith("テスト") ? 5000 : 0;
+    setTimeout(() => {
+        showBrowserNotification(title, message);
+    }, delay);
 }
 
 // 休憩経過時間の通知

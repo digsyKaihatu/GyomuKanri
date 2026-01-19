@@ -148,7 +148,7 @@ async function syncStatus(data, source) {
     console.log("Received data:", data);
 
     // ★判定：Workerによって更新されたばかりかどうか
-    const isWorkerUpdate = data.lastUpdatedBy === 'worker';
+    const isWorkerUpdate = data.lastUpdatedBy === 'worker' || data.lastUpdatedBy === null;
 
     // D1ポーリング時に lastUpdatedBy が無い場合への警告
     if (source === 'd1' && (data.lastUpdatedBy === undefined || data.lastUpdatedBy === null)) {

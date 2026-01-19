@@ -173,45 +173,51 @@ export default {
     }
   },
 
-  /**
+/**
    * 2. 定期実行 (Cronによる予約の自動処理)
    */
   async scheduled(event, env, ctx) {
     const now = new Date();
+    // 1分後までの予約を検索対象とする
     const lookAheadIso = new Date(now.getTime() + 60 * 1000).toISOString();
 
     try {
+      // 実行待ちの予約を取得
       const { results: pendingReservations } = await env.DB.prepare(
         "SELECT * FROM reservations WHERE status = 'reserved' AND scheduledTime <= ?"
       ).bind(lookAheadIso).all();
 
       if (pendingReservations.length === 0) return;
 
+      // Firebase認証情報の取得
       const serviceAccount = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT);
       const token = await getAccessToken(serviceAccount);
       const projectId = serviceAccount.project_id;
 
       for (const res of pendingReservations) {
+        // 現在のステータスを取得
         const currentStatus = await env.DB.prepare("SELECT * FROM work_status WHERE userId = ?")
           .bind(res.userId).first();
 
         let preBreakTaskJson = null;
 
+        // 既に休憩中ならスキップ（ただし予約日時は更新）
         if (res.action === "break" && currentStatus && currentStatus.currentTask === "休憩") {
           const scheduledDate = new Date(res.scheduledTime);
           const nextDateIso = new Date(scheduledDate.getTime() + 24 * 60 * 60 * 1000).toISOString();
           await env.DB.prepare("UPDATE reservations SET scheduledTime = ? WHERE id = ?")
             .bind(nextDateIso, res.id).run();
-          continue;
+          continue; 
         }
 
-        // --- 1. Firebaseへのログ送信 ---
+        // --- 1. Firebaseへのログ送信 & 休憩前タスクの保存準備 ---
         if (currentStatus && currentStatus.isWorking === 1) {
           try {
             const startTime = new Date(currentStatus.startTime);
             const endTime = new Date();
             const duration = Math.floor((endTime.getTime() - startTime.getTime()) / 1000);
 
+            // 休憩以外のタスクで、かつ作業時間が正の場合のみログ送信
             if (duration > 0 && currentStatus.currentTask !== "休憩") {
               const logBody = {
                 fields: {
@@ -243,9 +249,10 @@ export default {
               });
             }
           } catch (logErr) {
-            console.error("Firebase Log Error:", logErr.message);
+            console.error("Firebase Log Error (Ignored):", logErr.message);
           }
 
+          // 「休憩」アクションの場合、直前のタスク情報を保存するためのJSONを作成
           if (res.action === "break") {
             preBreakTaskJson = JSON.stringify({
               task: currentStatus.currentTask,
@@ -256,35 +263,38 @@ export default {
         }
 
         // --- 2. D1とFirestoreのステータスを更新 ---
-        const isWorkingNext = (res.action === "break") ? 1 : 0;
+        const isWorkingNext = (res.action === "break") ? 1 : 0; // 休憩もisWorking=1扱い、退勤は0
         const taskNext = (res.action === "break") ? "休憩" : null;
         const currentNowIso = new Date().toISOString();
-
-        // D1更新 (10カラム明示指定 / 順序: userId, userName, isWorking, currentTask, startTime, preBreakTask, currentGoal, currentGoalId, updatedAt, lastUpdatedBy)
+        
+        // ★修正ポイント: Upsert構文を使用し、updatedAtやpreBreakTaskを含む全10カラムを更新
         await env.DB.prepare(`
-          INSERT INTO work_status (userId, userName, isWorking, currentTask, startTime, preBreakTask, currentGoal, currentGoalId, updatedAt, lastUpdatedBy)
+          INSERT INTO work_status (
+            userId, userName, isWorking, currentTask, startTime, 
+            preBreakTask, currentGoal, currentGoalId, updatedAt, lastUpdatedBy
+          )
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(userId) DO UPDATE SET
-            userName=excluded.userName,
-            isWorking=excluded.isWorking,
-            currentTask=excluded.currentTask,
-            startTime=excluded.startTime,
-            preBreakTask=excluded.preBreakTask,
-            currentGoal=excluded.currentGoal,
-            currentGoalId=excluded.currentGoalId,
-            updatedAt=excluded.updatedAt,
-            lastUpdatedBy=excluded.lastUpdatedBy
+            userName = excluded.userName,
+            isWorking = excluded.isWorking,
+            currentTask = excluded.currentTask,
+            startTime = excluded.startTime,
+            preBreakTask = excluded.preBreakTask,
+            currentGoal = excluded.currentGoal,
+            currentGoalId = excluded.currentGoalId,
+            updatedAt = excluded.updatedAt,
+            lastUpdatedBy = excluded.lastUpdatedBy
         `).bind(
             res.userId,
             res.userName,
             isWorkingNext,
             taskNext,
             currentNowIso,
-            preBreakTaskJson,
-            null,
-            null,
+            preBreakTaskJson, // 生成したJSON (またはnull)
+            null, // currentGoal (休憩/停止時はnull)
+            null, // currentGoalId (休憩/停止時はnull)
             currentNowIso,
-            'worker'
+            'worker' // 自動実行なので 'worker' とする
         ).run();
 
         // Firestore同期
@@ -303,6 +313,7 @@ export default {
               updatedAt: { timestampValue: currentNowIso }
             }
           };
+          
           await fetch(`https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/work_status/${res.userId}`, {
             method: 'PATCH',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -312,7 +323,7 @@ export default {
           console.error("Firestore Sync Error:", fsErr.message);
         }
 
-        // --- 3. 予約を翌日に更新 ---
+        // --- 3. 予約を翌日に更新（毎日繰り返す仕様の場合） ---
         const scheduledDate = new Date(res.scheduledTime);
         const nextDateIso = new Date(scheduledDate.getTime() + 24 * 60 * 60 * 1000).toISOString();
         await env.DB.prepare("UPDATE reservations SET scheduledTime = ? WHERE id = ?")

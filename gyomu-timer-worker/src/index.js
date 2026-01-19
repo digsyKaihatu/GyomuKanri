@@ -252,23 +252,31 @@ export default {
         const taskNext = (res.action === "break") ? "休憩" : null;
         const currentNowIso = new Date().toISOString();
 
-        // D1更新
-        // ★修正: 明示的に10カラム指定し、Bindも合わせる
+        // D1更新 (10カラム明示指定で確実な同期を保証)
         await env.DB.prepare(`
-          INSERT INTO work_status (userId, userName, isWorking, currentTask, startTime, preBreakTask, currentGoal, currentGoalId, updatedAt, lastUpdatedBy)
-          VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
+          INSERT INTO work_status (userId, userName, isWorking, currentTask, startTime, currentGoal, currentGoalId, updatedAt, lastUpdatedBy, preBreakTask)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(userId) DO UPDATE SET
             userName=excluded.userName,
             isWorking=excluded.isWorking,
             currentTask=excluded.currentTask,
             startTime=excluded.startTime,
-            preBreakTask=excluded.preBreakTask,
             currentGoal=excluded.currentGoal,
             currentGoalId=excluded.currentGoalId,
             updatedAt=excluded.updatedAt,
-            lastUpdatedBy=excluded.lastUpdatedBy
+            lastUpdatedBy=excluded.lastUpdatedBy,
+            preBreakTask=excluded.preBreakTask
         `).bind(
-            res.userId, res.userName, isWorkingNext, taskNext, currentNowIso, preBreakTaskJson, currentNowIso, 'worker'
+            res.userId,
+            res.userName,
+            isWorkingNext,
+            taskNext,
+            currentNowIso,
+            null,
+            null,
+            currentNowIso,
+            'worker',
+            preBreakTaskJson
         ).run();
 
         // Firestore同期

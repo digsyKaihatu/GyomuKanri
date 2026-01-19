@@ -150,11 +150,11 @@ async function syncStatus(data, source) {
     const isWorkerUpdate = data.lastUpdatedBy === 'worker';
 
     // D1ポーリング時に lastUpdatedBy が無い場合への警告
-    if (source === 'd1' && data.lastUpdatedBy === undefined) {
-        console.warn("[syncStatus] Warning: D1 data is missing 'lastUpdatedBy' column. Notification might not work.");
+    if (source === 'd1' && (data.lastUpdatedBy === undefined || data.lastUpdatedBy === null)) {
+        console.warn(`[syncStatus] Warning: D1 data is missing 'lastUpdatedBy' column (value: ${data.lastUpdatedBy}). Notification will not trigger.`);
     }
 
-    console.log(`[syncStatus] isWorkerUpdate: ${isWorkerUpdate}, lastUpdatedBy: ${data.lastUpdatedBy}`);
+    console.log(`[syncStatus] from ${source}: isWorkerUpdate=${isWorkerUpdate}, lastUpdatedBy=${data.lastUpdatedBy}, currentTask=${data.currentTask}`);
 
     // 以前の状態（ローカル）と比較
     const prevTask = localStorage.getItem("currentTask");
@@ -183,14 +183,14 @@ async function syncStatus(data, source) {
         // Fallback: updatedAt がない場合は startTime を ID とする
         const currentUpdateId = normalizedUpdatedAt || (data.startTime && new Date(data.startTime).toISOString());
 
-        console.log(`[syncStatus] ID Check: currentUpdateId=${currentUpdateId}, lastNotified=${lastNotified}`);
+        console.log(`[syncStatus] Notification Check -> UpdateID: ${currentUpdateId}, LastNotified: ${lastNotified}`);
 
         if (currentUpdateId && lastNotified !== currentUpdateId) {
             const lastUpdateDate = new Date(currentUpdateId);
             const now = new Date();
             const diffSeconds = (now - lastUpdateDate) / 1000;
-            console.log(`[syncStatus] New worker update detected. diffSeconds=${diffSeconds.toFixed(2)}s`);
-            console.log(`[syncStatus] Notification Permission: ${Notification.permission}`);
+
+            console.log(`[syncStatus] Worker update found! Time diff: ${diffSeconds.toFixed(1)}s, Permission: ${Notification.permission}`);
 
             if (Math.abs(diffSeconds) < 600) { // 10分以内の更新のみ通知 (クライアント/サーバー間の時計のズレも考慮)
                 // 1. 休憩開始の判定

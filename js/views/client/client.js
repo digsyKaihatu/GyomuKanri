@@ -220,11 +220,13 @@ async function syncStatus(data, source) {
         if (data.currentTask) localStorage.setItem("currentTask", data.currentTask);
         if (dbStartTime) localStorage.setItem("startTime", dbStartTime);
 
-        if (data.currentGoalId) localStorage.setItem("currentGoalId", data.currentGoalId);
+        // 工数（ゴール）情報の同期: 複数名への対応 (currentGoalId or goalId)
+        const gId = data.currentGoalId || data.goalId;
+        if (gId) localStorage.setItem("currentGoalId", gId);
         else localStorage.removeItem("currentGoalId");
 
-        const goalTitle = data.currentGoalTitle || data.currentGoal;
-        if (goalTitle) localStorage.setItem("currentGoal", goalTitle);
+        const gTitle = data.currentGoal || data.currentGoalTitle || data.goalTitle;
+        if (gTitle) localStorage.setItem("currentGoal", gTitle);
         else localStorage.removeItem("currentGoal");
     } else {
         localStorage.removeItem("isWorking");
@@ -412,8 +414,6 @@ if (breakBtn) breakBtn.onclick = () => handleBreakClick(false);
         } else {
             // アクティブになったら即座に同期
             listenForMyStatus();
-            // D1ポーリングも即座に1回実行して最新にする（任意）
-            // fetchMyStatusFromD1();
         }
     });
 

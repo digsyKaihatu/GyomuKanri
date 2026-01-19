@@ -3,6 +3,7 @@
 // ★修正: userId を追加インポート（自分の監視に必要）
 import { showView, VIEWS, db, userName, userId } from "../../main.js";
 import { doc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import * as State from "./timerState.js"; // ★追加: これが必要です
 
 // timer.js から操作関数をインポート
 import { 
@@ -192,13 +193,38 @@ async function syncStatus(data, source) {
 
             console.log(`[syncStatus] Worker update found! Time diff: ${diffSeconds.toFixed(1)}s, Permission: ${Notification.permission}`);
 
-            if (Math.abs(diffSeconds) < 600) { // 10分以内の更新のみ通知 (クライアント/サーバー間の時計のズレも考慮)
+if (Math.abs(diffSeconds) < 600) { // 10分以内の更新のみ通知
                 // 1. 休憩開始の判定
                 if (data.currentTask && data.currentTask.trim() === '休憩') {
-                    console.log(`%c[${source}] Workerによる休憩開始を検知。通知を出します。`, "color: green; font-weight: bold;");
-                    triggerReservationNotification("休憩開始");
-                    localStorage.setItem("lastNotifiedWorkerUpdate", currentUpdateId);
+                    
+                    // ★★★ ここから修正・追加 ★★★
+                    // 以前の状態が「休憩」でない場合のみチェック（連続通知防止）
+                    if (prevTask !== '休憩') {
+                        // アクティブな予約リストを取得
+                        const reservations = State.getActiveReservations();
+                        // 簡易的に「break」アクションを持つ予約を探す
+                        const matchingRes = reservations ? reservations.find(r => r.action === "break") : null;
+
+                        if (matchingRes && State.isReservationNotified(matchingRes.id)) {
+                            // ローカル（裏画面など）ですでに通知済みの場合はスキップ
+                            console.log("[External Trigger] ローカルで通知済みのため、外部通知をスキップ");
+                        } else {
+                            // まだ通知していない場合
+                            console.log(`%c[${source}] Workerによる休憩開始を検知。通知を出します。`, "color: green; font-weight: bold;");
+                            
+                            // もし予約が見つかればフラグを立てる（同時発生時の重複防止）
+                            if (matchingRes) {
+                                State.markReservationAsNotified(matchingRes.id);
+                            }
+                            
+                            triggerReservationNotification("休憩開始");
+                        }
+                        // 最後に通知済みIDを保存（Worker更新IDによる重複防止）
+                        localStorage.setItem("lastNotifiedWorkerUpdate", currentUpdateId);
+                    }
+                    // ★★★ ここまで ★★★
                 }
+                
                 // 2. 自動帰宅の判定
                 else if (!(data.isWorking === 1 || data.isWorking === true)) {
                     console.log(`[${source}] Workerによる自動帰宅を検知。通知を出します。`);

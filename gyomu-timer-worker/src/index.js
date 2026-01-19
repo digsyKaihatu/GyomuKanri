@@ -83,31 +83,31 @@ export default {
         const nowIso = new Date().toISOString();
         const preBreakTask = data.preBreakTask ? (typeof data.preBreakTask === 'string' ? data.preBreakTask : JSON.stringify(data.preBreakTask)) : null;
 
-        // ★修正: 明示的な10カラムのINSERT
+        // ★修正: 明示的な10カラムのINSERT (ユーザー指定順序: userId, userName, isWorking, currentTask, startTime, preBreakTask, currentGoal, currentGoalId, updatedAt, lastUpdatedBy)
         await env.DB.prepare(`
-          INSERT INTO work_status (userId, userName, isWorking, currentTask, startTime, currentGoal, currentGoalId, updatedAt, lastUpdatedBy, preBreakTask)
+          INSERT INTO work_status (userId, userName, isWorking, currentTask, startTime, preBreakTask, currentGoal, currentGoalId, updatedAt, lastUpdatedBy)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(userId) DO UPDATE SET
             userName=excluded.userName,
             isWorking=excluded.isWorking,
             currentTask=excluded.currentTask,
             startTime=excluded.startTime,
+            preBreakTask=excluded.preBreakTask,
             currentGoal=excluded.currentGoal,
             currentGoalId=excluded.currentGoalId,
             updatedAt=excluded.updatedAt,
-            lastUpdatedBy=excluded.lastUpdatedBy,
-            preBreakTask=excluded.preBreakTask
+            lastUpdatedBy=excluded.lastUpdatedBy
         `).bind(
             data.userId,
             data.userName,
             data.isWorking,
             data.currentTask,
             data.startTime,
+            preBreakTask,
             currentGoal,
             currentGoalId,
             nowIso,
-            'client',
-            preBreakTask
+            'client'
         ).run();
 
         return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
@@ -124,9 +124,17 @@ export default {
       if (url.pathname === "/force-stop" && request.method === "POST") {
         const { userId } = await request.json();
         const nowIso = new Date().toISOString();
+        // 管理者による停止時は preBreakTask も含めすべてリセットする
         await env.DB.prepare(`
           UPDATE work_status
-          SET isWorking = 0, currentTask = NULL, startTime = NULL, currentGoal = NULL, currentGoalId = NULL, updatedAt = ?, lastUpdatedBy = 'admin'
+          SET isWorking = 0,
+              currentTask = NULL,
+              startTime = NULL,
+              preBreakTask = NULL,
+              currentGoal = NULL,
+              currentGoalId = NULL,
+              updatedAt = ?,
+              lastUpdatedBy = 'admin'
           WHERE userId = ?
         `).bind(nowIso, userId).run();
         return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
@@ -252,31 +260,31 @@ export default {
         const taskNext = (res.action === "break") ? "休憩" : null;
         const currentNowIso = new Date().toISOString();
 
-        // D1更新 (10カラム明示指定で確実な同期を保証)
+        // D1更新 (10カラム明示指定 / 順序: userId, userName, isWorking, currentTask, startTime, preBreakTask, currentGoal, currentGoalId, updatedAt, lastUpdatedBy)
         await env.DB.prepare(`
-          INSERT INTO work_status (userId, userName, isWorking, currentTask, startTime, currentGoal, currentGoalId, updatedAt, lastUpdatedBy, preBreakTask)
+          INSERT INTO work_status (userId, userName, isWorking, currentTask, startTime, preBreakTask, currentGoal, currentGoalId, updatedAt, lastUpdatedBy)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(userId) DO UPDATE SET
             userName=excluded.userName,
             isWorking=excluded.isWorking,
             currentTask=excluded.currentTask,
             startTime=excluded.startTime,
+            preBreakTask=excluded.preBreakTask,
             currentGoal=excluded.currentGoal,
             currentGoalId=excluded.currentGoalId,
             updatedAt=excluded.updatedAt,
-            lastUpdatedBy=excluded.lastUpdatedBy,
-            preBreakTask=excluded.preBreakTask
+            lastUpdatedBy=excluded.lastUpdatedBy
         `).bind(
             res.userId,
             res.userName,
             isWorkingNext,
             taskNext,
             currentNowIso,
+            preBreakTaskJson,
             null,
             null,
             currentNowIso,
-            'worker',
-            preBreakTaskJson
+            'worker'
         ).run();
 
         // Firestore同期

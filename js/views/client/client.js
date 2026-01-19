@@ -156,34 +156,39 @@ async function syncStatus(data, source) {
     }
 
     // ■■■ 予約通知・Worker更新対応ブロック ■■■
-    // ユーザーの要望により、予約通知に関しては D1 側のみで判定を行う（Firebase側の更新では通知を出さない）
+    // ユーザーの要望により、予約通知に関しては D1 側のみで判定を行う
     if (isWorkerUpdate && source === 'd1') {
         const lastNotified = localStorage.getItem("lastNotifiedWorkerUpdate");
         const currentUpdateId = data.updatedAt ? (data.updatedAt.seconds || data.updatedAt) : null;
 
         if (currentUpdateId && lastNotified !== String(currentUpdateId)) {
-            // 1. 休憩開始の判定
-            if (data.currentTask === '休憩' && prevTask !== '休憩') {
-                console.log(`[${source}] Workerによる休憩開始を検知。`);
-                triggerReservationNotification("休憩開始");
-                localStorage.setItem("lastNotifiedWorkerUpdate", String(currentUpdateId));
+            // 更新時刻をチェックして、古すぎる通知（ログイン時など）を防ぐ
+            let lastUpdate = null;
+            if (data.updatedAt) {
+                if (typeof data.updatedAt.toDate === 'function') lastUpdate = data.updatedAt.toDate();
+                else if (data.updatedAt.seconds) lastUpdate = new Date(data.updatedAt.seconds * 1000);
+                else lastUpdate = new Date(data.updatedAt);
             }
-            // 2. 自動帰宅の判定
-            else if (!(data.isWorking === 1 || data.isWorking === true) && prevTask) {
-                let lastUpdate = null;
-                if (data.updatedAt) {
-                    if (typeof data.updatedAt.toDate === 'function') lastUpdate = data.updatedAt.toDate();
-                    else if (data.updatedAt.seconds) lastUpdate = new Date(data.updatedAt.seconds * 1000);
-                    else lastUpdate = new Date(data.updatedAt);
-                }
-                const now = new Date();
-                const diffSeconds = lastUpdate ? (now - lastUpdate) / 1000 : 999999;
+            const now = new Date();
+            const diffSeconds = lastUpdate ? (now - lastUpdate) / 1000 : 999999;
 
-                if (diffSeconds < 600) {
+            if (diffSeconds < 600) { // 10分以内の更新のみ通知
+                // 1. 休憩開始の判定
+                // Firebase(Firestore)とのレースに勝つため、prevTaskのチェックは外します
+                if (data.currentTask === '休憩') {
+                    console.log(`[${source}] Workerによる休憩開始を検知。`);
+                    triggerReservationNotification("休憩開始");
+                    localStorage.setItem("lastNotifiedWorkerUpdate", String(currentUpdateId));
+                }
+                // 2. 自動帰宅の判定
+                else if (!(data.isWorking === 1 || data.isWorking === true)) {
                     console.log(`[${source}] Workerによる自動帰宅を検知。`);
                     triggerReservationNotification("帰宅");
                     localStorage.setItem("lastNotifiedWorkerUpdate", String(currentUpdateId));
                 }
+            } else {
+                // 古い更新の場合は通知せず、既読扱いにする
+                localStorage.setItem("lastNotifiedWorkerUpdate", String(currentUpdateId));
             }
         }
     }

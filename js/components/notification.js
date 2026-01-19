@@ -70,6 +70,25 @@ async function showBrowserNotification(title, message) {
     let permission = Notification.permission;
 
     if (permission === "granted") {
+        // バックグラウンドタブでも確実に表示されるよう、Service Worker経由の通知を優先する
+        if ('serviceWorker' in navigator) {
+            try {
+                const reg = await navigator.serviceWorker.ready;
+                if (reg && reg.showNotification) {
+                    console.log("[Notification] Using Service Worker to show notification");
+                    await reg.showNotification(title, {
+                        body: message,
+                        icon: '/icon-192.png',
+                        badge: '/icon-192.png',
+                        tag: 'reservation-notification',
+                        renotify: true
+                    });
+                    return;
+                }
+            } catch (swErr) {
+                console.warn("[Notification] Service Worker notification failed, falling back to foreground:", swErr);
+            }
+        }
         createNotification(title, message);
     } else if (permission !== "denied") {
         try {

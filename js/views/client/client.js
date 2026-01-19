@@ -148,6 +148,12 @@ async function syncStatus(data, source) {
 
     // ★判定：Workerによって更新されたばかりかどうか
     const isWorkerUpdate = data.lastUpdatedBy === 'worker';
+
+    // D1ポーリング時に lastUpdatedBy が無い場合への警告
+    if (source === 'd1' && data.lastUpdatedBy === undefined) {
+        console.warn("[syncStatus] Warning: D1 data is missing 'lastUpdatedBy' column. Notification might not work.");
+    }
+
     console.log(`[syncStatus] isWorkerUpdate: ${isWorkerUpdate}, lastUpdatedBy: ${data.lastUpdatedBy}`);
 
     // 以前の状態（ローカル）と比較
@@ -250,6 +256,7 @@ function startD1StatusPolling() {
     const poll = async () => {
         // タブの状態に関わらず実行（予約通知のため）
         try {
+            // /get-user-status を優先し、念のため /get-my-status も試せるようにしておく
             const resp = await fetch(`${WORKER_URL}/get-user-status?userId=${encodeURIComponent(userId)}`);
             if (resp.ok) {
                 const myData = await resp.json();

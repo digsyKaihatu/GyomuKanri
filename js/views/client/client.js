@@ -245,7 +245,7 @@ function startD1StatusPolling() {
     const poll = async () => {
         // タブの状態に関わらず実行（予約通知のため）
         try {
-            const resp = await fetch(`${WORKER_URL}/get-my-status?userId=${encodeURIComponent(userId)}`);
+            const resp = await fetch(`${WORKER_URL}/get-user-status?userId=${encodeURIComponent(userId)}`);
             if (resp.ok) {
                 const myData = await resp.json();
                 if (myData) {

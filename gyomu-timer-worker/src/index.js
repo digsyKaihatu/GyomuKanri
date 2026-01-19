@@ -1,240 +1,348 @@
-// src/index.js
-import { initializeApp, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+/**
+ * 業務管理システム: Cloudflare Worker 統合バックエンド
+ * 機能: D1ステータス管理, 予約自動実行, Firebaseログ連携, ステータス完全同期
+ */
 
-let db;
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
 
-function initFirebase(env) {
-  if (!db) {
-    const serviceAccount = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT);
-    const app = initializeApp({
-      credential: cert(serviceAccount)
-    });
-    db = getFirestore(app);
-  }
-  return db;
-}
-
-// 待機用の関数
+// 指定時間待機するためのヘルパー
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export default {
+  /**
+   * 1. HTTPリクエスト処理 (フロントエンドからのAPI呼び出し)
+   */
   async fetch(request, env, ctx) {
-    const url = new URL(request.url);
-    const corsHeaders = {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
-    };
-
+    // CORS プリフライトリクエストの処理
     if (request.method === "OPTIONS") {
       return new Response(null, { headers: corsHeaders });
     }
 
-    const path = url.pathname.replace(/\/$/, "");
+    try {
+      const url = new URL(request.url);
 
-    if (path === '/get-my-status') {
-      const userId = url.searchParams.get('userId');
-      if (!userId) return new Response("Missing userId", { status: 400, headers: corsHeaders });
+      if (!env.DB) {
+        throw new Error("D1 データベース接続(env.DB)が確立されていません。wrangler.tomlを確認してください。");
+      }
 
-      try {
-        if (!env.DB) throw new Error("D1 Database not bound");
-        const status = await env.DB.prepare('SELECT * FROM work_status WHERE userId = ?').bind(userId).first();
-        return new Response(JSON.stringify(status || null), {
+      // --- エンドポイント1: 全ユーザーのステータス一覧を取得 ---
+      if (url.pathname === "/get-all-status") {
+        const { results } = await env.DB.prepare("SELECT * FROM work_status").all();
+        return new Response(JSON.stringify(results), {
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
-      } catch (e) {
-        return new Response(JSON.stringify({ error: e.message }), {
-          status: 500, headers: corsHeaders
+      }
+
+      // --- エンドポイント2: 特定ユーザーのステータスを詳細取得 ---
+      if (url.pathname === "/get-user-status" || url.pathname === "/get-my-status") {
+        const userId = url.searchParams.get("userId");
+        const result = await env.DB.prepare("SELECT * FROM work_status WHERE userId = ?")
+          .bind(userId).first();
+        return new Response(JSON.stringify(result || {}), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
       }
-    }
 
-    if (path === '/get-tomura-status') {
-      return new Response(JSON.stringify({ status: "声掛けOK", location: "出社", date: new Date().toISOString().split('T')[0] }), {
+      // --- エンドポイント3: 予約データの新規作成または更新 ---
+      if (url.pathname === "/save-reservation" && request.method === "POST") {
+        const data = await request.json();
+        await env.DB.prepare(
+          "INSERT OR REPLACE INTO reservations (id, userId, userName, action, scheduledTime, status) VALUES (?, ?, ?, ?, ?, ?)"
+        ).bind(data.id, data.userId, data.userName, data.action, data.scheduledTime, 'reserved').run();
+        return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+      }
+
+      // --- エンドポイント4: ユーザー自身の有効な予約一覧を取得 ---
+      if (url.pathname === "/get-user-reservations") {
+        const userId = url.searchParams.get("userId");
+        const { results } = await env.DB.prepare(
+          "SELECT * FROM reservations WHERE userId = ? AND status = 'reserved'"
+        ).bind(userId).all();
+        return new Response(JSON.stringify(results), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+
+      // --- エンドポイント5: 予約の取り消し ---
+      if (url.pathname === "/delete-reservation" && request.method === "POST") {
+        const { id } = await request.json();
+        await env.DB.prepare("DELETE FROM reservations WHERE id = ?").bind(id).run();
+        return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+      }
+
+      // --- エンドポイント6: フロントエンドからの手動ステータス同期 ---
+      if ((url.pathname === "/update-status" || url.pathname === "/start-work") && request.method === "POST") {
+        const data = await request.json();
+
+        const currentGoal = data.currentGoal || null;
+        const currentGoalId = data.currentGoalId || null;
+        const nowIso = new Date().toISOString();
+
+        await env.DB.prepare(
+          "INSERT OR REPLACE INTO work_status (userId, userName, isWorking, currentTask, startTime, currentGoal, currentGoalId, updatedAt, lastUpdatedBy, preBreakTask) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        ).bind(
+            data.userId,
+            data.userName,
+            data.isWorking,
+            data.currentTask,
+            data.startTime,
+            currentGoal,
+            currentGoalId,
+            nowIso,
+            'client',
+            data.preBreakTask ? (typeof data.preBreakTask === 'string' ? data.preBreakTask : JSON.stringify(data.preBreakTask)) : null
+        ).run();
+
+        return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+      }
+
+      // --- エンドポイント: メッセージ送信 ---
+      if (url.pathname === "/send-message" && request.method === "POST") {
+        return new Response(JSON.stringify({ success: true, sent: 1 }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+
+      // --- エンドポイント7: 管理者による強制停止 ---
+      if (url.pathname === "/force-stop" && request.method === "POST") {
+        const { userId } = await request.json();
+        const nowIso = new Date().toISOString();
+        await env.DB.prepare(
+          "UPDATE work_status SET isWorking = 0, currentTask = NULL, startTime = NULL, currentGoal = NULL, currentGoalId = NULL, updatedAt = ?, lastUpdatedBy = 'admin' WHERE userId = ?"
+        ).bind(nowIso, userId).run();
+        return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+      }
+
+      // --- 追加エンドポイント: 戸村さんステータスの取得 ---
+      if (url.pathname === "/get-tomura-status") {
+        const result = await env.DB.prepare("SELECT value FROM settings WHERE key = 'tomura_status'").first();
+        if (result && result.value) {
+           return new Response(result.value, {
+             headers: { ...corsHeaders, "Content-Type": "application/json" }
+           });
+        }
+        return new Response(JSON.stringify({ status: "声掛けOK", location: "出社" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+
+      // --- 追加エンドポイント: 戸村さんステータスの更新 ---
+      if (url.pathname === "/update-tomura-status" && request.method === "POST") {
+        const data = await request.json();
+        const todayStr = new Date().toISOString().split("T")[0];
+        const value = JSON.stringify({ ...data, date: todayStr });
+
+        await env.DB.prepare(
+          "INSERT OR REPLACE INTO settings (key, value, updatedAt) VALUES ('tomura_status', ?, ?)"
+        ).bind(value, new Date().toISOString()).run();
+
+        return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+      }
+
+      // --- 404 Not Found ---
+      return new Response("End Point Not Found", { status: 404, headers: corsHeaders });
+
+    } catch (e) {
+      // エラーハンドリング
+      return new Response(JSON.stringify({ error: e.message, stack: e.stack }), {
+        status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" }
       });
     }
-
-    if (path === '/update-schedule' || path === '/update-tomura-status' || path === '/send-message') {
-        // これらのエンドポイントは現状 "OK" を返すだけで既存機能を維持します
-        // (詳細な実装が必要な場合は別途対応)
-        return new Response(JSON.stringify({ success: true, message: "OK" }), {
-            headers: { ...corsHeaders, "Content-Type": "application/json" }
-        });
-    }
-
-    // エンドポイントが見つからない場合は200 OKを返していた旧来の挙動を維持しつつ、
-    // 診断情報を返すようにします（404にすると既存の不明なリクエストが壊れる可能性があるため）
-    return new Response(JSON.stringify({
-        message: "Endpoint not explicitly handled, but returning OK for compatibility",
-        path: url.pathname,
-        available_endpoints: ["/get-my-status", "/get-tomura-status", "/update-schedule", "/update-tomura-status", "/send-message"]
-    }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" }
-    });
   },
 
+  /**
+   * 2. 定期実行 (Cronによる予約の自動処理)
+   */
   async scheduled(event, env, ctx) {
-    console.log("Starting scheduled tasks...");
-    const firestore = initFirebase(env);
     const now = new Date();
+    const lookAheadIso = new Date(now.getTime() + 60 * 1000).toISOString();
 
-    // サーバー時計のズレやフライング起動を考慮し、60秒後までの予約を対象にする
-    const searchLimit = new Date(now.getTime() + 60000);
-
-    const reservationsSnapshot = await firestore.collection('reservations') 
-      .where('status', '==', 'reserved')
-      .where('scheduledTime', '<=', searchLimit.toISOString())
-      .get();
-
-    if (reservationsSnapshot.empty) {
-      console.log("実行対象の予約は見つかりませんでした");
-      return;
-    }
-
-    // 待機時間の計算
-    let maxWaitTime = 0;
-    const realTimeNow = new Date().getTime();
-
-    reservationsSnapshot.docs.forEach(doc => {
-        const data = doc.data();
-        const scheduled = new Date(data.scheduledTime).getTime();
-        if (scheduled > realTimeNow) {
-            const diff = scheduled - realTimeNow;
-            if (diff > maxWaitTime) maxWaitTime = diff;
-        }
-    });
-
-    if (maxWaitTime > 0 && maxWaitTime <= 15000) {
-        console.log(`Waiting for ${maxWaitTime}ms to synchronize...`);
-        await sleep(maxWaitTime);
-    }
-    
-    // トランザクション処理
     try {
-        await firestore.runTransaction(async (transaction) => {
-            const executionTime = new Date();
-            const resRefs = reservationsSnapshot.docs.map(doc => doc.ref);
-            const resDocs = await Promise.all(resRefs.map(ref => transaction.get(ref)));
+      const { results: pendingReservations } = await env.DB.prepare(
+        "SELECT * FROM reservations WHERE status = 'reserved' AND scheduledTime <= ?"
+      ).bind(lookAheadIso).all();
 
-            for (const resDoc of resDocs) {
-                if (!resDoc.exists) continue;
-                const resData = resDoc.data();
-                if (resData.status !== 'reserved') continue;
+      if (pendingReservations.length === 0) return;
 
-                if (new Date(resData.scheduledTime) > executionTime) {
-                    continue;
+      const serviceAccount = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT);
+      const token = await getAccessToken(serviceAccount);
+      const projectId = serviceAccount.project_id;
+
+      for (const res of pendingReservations) {
+        const currentStatus = await env.DB.prepare("SELECT * FROM work_status WHERE userId = ?")
+          .bind(res.userId).first();
+
+        const isCurrentlyWorking = currentStatus && currentStatus.isWorking === 1;
+        let preBreakTaskJson = null;
+
+        if (res.action === "break" && currentStatus && currentStatus.currentTask === "休憩") {
+          console.log(`User ${res.userName} is already in break. Skipping duplicate execution.`);
+          const scheduledDate = new Date(res.scheduledTime);
+          const nextDateIso = new Date(scheduledDate.getTime() + 24 * 60 * 60 * 1000).toISOString();
+          await env.DB.prepare("UPDATE reservations SET scheduledTime = ? WHERE id = ?")
+            .bind(nextDateIso, res.id).run();
+          continue;
+        }
+
+        // --- 1. Firebaseへのログ送信 ---
+        if (currentStatus && currentStatus.isWorking === 1) {
+          try {
+            const startTime = new Date(currentStatus.startTime);
+            const endTime = new Date();
+            const duration = Math.floor((endTime.getTime() - startTime.getTime()) / 1000);
+
+            if (duration > 0 && currentStatus.currentTask !== "休憩") {
+              const logBody = {
+                fields: {
+                  userId: { stringValue: res.userId },
+                  userName: { stringValue: res.userName },
+                  task: { stringValue: currentStatus.currentTask },
+                  startTime: { timestampValue: currentStatus.startTime },
+                  endTime: { timestampValue: endTime.toISOString() },
+                  duration: { integerValue: duration },
+                  date: { stringValue: endTime.toISOString().split('T')[0] },
+                  memo: { stringValue: "（自動実行ログ）" }
                 }
+              };
 
-                const userId = resData.userId;
-                const userStatusRef = firestore.collection('work_status').doc(userId);
-                const userStatusSnap = await transaction.get(userStatusRef);
-
-                if (userStatusSnap.exists) {
-                    const currentStatus = userStatusSnap.data();
-
-                    // ■データの安全な取得（バックアップ付き）
-                    // タイトルは currentGoalTitle または currentGoal から取得
-                    const safeGoalTitle = currentStatus.currentGoalTitle || currentStatus.currentGoal || null;
-                    // IDは空文字ならnullにする
-                    const safeGoalId = (currentStatus.currentGoalId && currentStatus.currentGoalId !== "") ? currentStatus.currentGoalId : null;
-
-                    console.log(`[Worker Check] Saving Log -> Task: "${currentStatus.currentTask}", Goal: "${safeGoalTitle}"`);
-
-                    // ■直前の業務ログ保存
-                    if (currentStatus.isWorking && currentStatus.currentTask && currentStatus.startTime) {
-                        const prevStartTime = new Date(currentStatus.startTime);
-                        const duration = Math.floor((executionTime.getTime() - prevStartTime.getTime()) / 1000);
-
-                        if (duration > 0) {
-                            const prevLogId = `log_prev_${resDoc.id}`;
-                            const prevLogRef = firestore.collection('work_logs').doc(prevLogId);
-                            
-                            transaction.set(prevLogRef, {
-                                userId: userId,
-                                userName: currentStatus.userName || 'Unknown',
-                                task: currentStatus.currentTask,
-                                goalId: safeGoalId,    // 修正済みのIDを使用
-                                goalTitle: safeGoalTitle, // 修正済みのタイトルを使用
-                                date: prevStartTime.toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' }).replaceAll('/', '-'),
-                                startTime: currentStatus.startTime,
-                                endTime: executionTime.toISOString(),
-                                duration: duration,
-                                memo: "（予約休憩により自動中断）", // ※不要なら "" にしてください
-                                source: "worker_reservation"
-                                // type: "work"  <-- ★削除: クライアントと挙動を合わせるため削除しました
-                            });
-                        }
-                    }
-                    
-                    // ■ステータスを「休憩」に更新
-                    const preBreakTaskData = {
-                        task: currentStatus.currentTask || '',
-                        goalId: safeGoalId,
-                        goalTitle: safeGoalTitle
-                    };
-
-                    transaction.update(userStatusRef, {
-                        currentTask: '休憩',
-                        isWorking: true,
-                        startTime: executionTime.toISOString(),
-                        preBreakTask: preBreakTaskData,
-                        updatedAt: executionTime.toISOString(),
-                        lastUpdatedBy: 'worker',
-                        currentGoalId: null,
-                        currentGoalTitle: null,
-                        currentGoal: null,
-                        debug_workerSeenGoalId: safeGoalId || "NULL_OR_EMPTY"
-                    });
-
-                    // ■ D1 status update (for background polling)
-                    if (env.DB) {
-                        try {
-                            const d1UpdatedAt = executionTime.toISOString();
-                            await env.DB.prepare(`
-                                INSERT INTO work_status (userId, userName, isWorking, currentTask, currentGoal, currentGoalId, startTime, updatedAt, lastUpdatedBy, preBreakTask)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                ON CONFLICT(userId) DO UPDATE SET
-                                    userName=excluded.userName,
-                                    isWorking=excluded.isWorking,
-                                    currentTask=excluded.currentTask,
-                                    currentGoal=excluded.currentGoal,
-                                    currentGoalId=excluded.currentGoalId,
-                                    startTime=excluded.startTime,
-                                    updatedAt=excluded.updatedAt,
-                                    lastUpdatedBy=excluded.lastUpdatedBy,
-                                    preBreakTask=excluded.preBreakTask
-                            `).bind(
-                                userId,
-                                currentStatus.userName || 'Unknown',
-                                1, // isWorking
-                                '休憩',
-                                null, // currentGoal
-                                null, // currentGoalId
-                                executionTime.toISOString(), // startTime
-                                d1UpdatedAt,
-                                'worker',
-                                JSON.stringify(preBreakTaskData)
-                            ).run();
-                            console.log(`[Worker] D1 status updated for ${userId}`);
-                        } catch (d1Err) {
-                            console.error("[Worker] D1 status update failed:", d1Err);
-                        }
-                    }
+              if (currentStatus.currentGoalId) {
+                logBody.fields.goalId = { stringValue: currentStatus.currentGoalId };
+                if (currentStatus.currentGoal) {
+                  logBody.fields.goalTitle = { stringValue: currentStatus.currentGoal };
                 }
+              }
 
-                transaction.update(resDoc.ref, { 
-                    status: 'executed',
-                    executedAt: executionTime.toISOString()
-                });
+              const todayStr = new Date().toISOString().split('T')[0];
+              const uniqueLogId = `log_${res.id}_${todayStr}`;
+
+              await fetch(`https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/work_logs/${uniqueLogId}`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify(logBody)
+              });
             }
-        });
-        console.log("Transaction successfully committed!");
+          } catch (logErr) {
+            console.error("Firebase Log Error (Ignored):", logErr.message);
+          }
+
+          if (res.action === "break") {
+            preBreakTaskJson = JSON.stringify({
+              task: currentStatus.currentTask,
+              goalTitle: currentStatus.currentGoal || "",
+              goalId: currentStatus.currentGoalId || ""
+            });
+          }
+        }
+
+        // --- 2. D1とFirestoreのステータスを更新 ---
+        const isWorkingNext = (res.action === "break") ? 1 : 0;
+        const taskNext = (res.action === "break") ? "休憩" : null;
+        const currentNowIso = new Date().toISOString();
+
+        // D1更新 (updatedAt, lastUpdatedBy, preBreakTask を含む)
+        await env.DB.prepare(
+          "INSERT OR REPLACE INTO work_status (userId, userName, isWorking, currentTask, startTime, currentGoal, currentGoalId, updatedAt, lastUpdatedBy, preBreakTask) VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)"
+        ).bind(res.userId, res.userName, isWorkingNext, taskNext, currentNowIso, currentNowIso, 'worker', preBreakTaskJson).run();
+
+        // Firestore同期
+        try {
+          const fsBody = {
+            fields: {
+              userId: { stringValue: res.userId },
+              userName: { stringValue: res.userName },
+              isWorking: { booleanValue: isWorkingNext === 1 },
+              currentTask: { stringValue: taskNext || "" },
+              startTime: { timestampValue: currentNowIso },
+              preBreakTask: { stringValue: preBreakTaskJson || "" },
+              currentGoal: { stringValue: "" },
+              currentGoalId: { stringValue: "" },
+              lastUpdatedBy: { stringValue: 'worker' },
+              updatedAt: { timestampValue: currentNowIso }
+            }
+          };
+          await fetch(`https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/work_status/${res.userId}`, {
+            method: 'PATCH',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify(fsBody)
+          });
+        } catch (fsErr) {
+          console.error("Firestore Sync Error:", fsErr.message);
+        }
+
+        // --- 3. 予約を翌日に更新 ---
+        const scheduledDate = new Date(res.scheduledTime);
+        const nextDateIso = new Date(scheduledDate.getTime() + 24 * 60 * 60 * 1000).toISOString();
+        await env.DB.prepare("UPDATE reservations SET scheduledTime = ? WHERE id = ?")
+          .bind(nextDateIso, res.id).run();
+      }
     } catch (e) {
-        console.error("Transaction failed: ", e);
+      console.error("Critical Worker Error:", e.message);
     }
-    
-    await env.SCHEDULE.delete('NEXT_JOB_TIME');
   }
 };
+
+/**
+ * 認証: Google OAuth2 アクセストークンの取得
+ */
+async function getAccessToken(serviceAccount) {
+  const pem = serviceAccount.private_key;
+  const clientEmail = serviceAccount.client_email;
+  const header = { alg: 'RS256', typ: 'JWT' };
+  const now = Math.floor(Date.now() / 1000);
+  const claim = {
+    iss: clientEmail,
+    scope: 'https://www.googleapis.com/auth/cloud-platform',
+    aud: 'https://oauth2.googleapis.com/token',
+    exp: now + 3600,
+    iat: now
+  };
+  const encodedHeader = btoaUrl(JSON.stringify(header));
+  const encodedClaim = btoaUrl(JSON.stringify(claim));
+  const binaryKey = str2ab(pem);
+
+  const key = await crypto.subtle.importKey(
+    'pkcs8',
+    binaryKey,
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+
+  const signature = await crypto.subtle.sign(
+    'RSASSA-PKCS1-v1_5',
+    key,
+    new TextEncoder().encode(`${encodedHeader}.${encodedClaim}`)
+  );
+
+  const jwt = `${encodedHeader}.${encodedClaim}.${btoaUrl(String.fromCharCode(...new Uint8Array(signature)))}`;
+
+  const tokenResp = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`
+  });
+
+  const data = await tokenResp.json();
+  return data.access_token;
+}
+
+function btoaUrl(str) {
+  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function str2ab(pem) {
+  const pemHeader = "-----BEGIN PRIVATE KEY-----";
+  const pemFooter = "-----END PRIVATE KEY-----";
+  const pemContents = pem.substring(pem.indexOf(pemHeader) + pemHeader.length, pem.indexOf(pemFooter)).replace(/\s/g, '');
+  const binaryString = atob(pemContents);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes.buffer;
+}

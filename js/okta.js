@@ -87,7 +87,6 @@ export function renderSignInWidget(successCallback) {
 }
 
 export async function checkOktaAuthentication(successCallback) {
-    console.log("Checking Okta authentication status...");
     if (successCallback) onLoginSuccessCallback = successCallback;
     
     if (!initializeOkta()) {
@@ -116,7 +115,6 @@ export async function checkOktaAuthentication(successCallback) {
 async function handleOktaLoginSuccess() {
     try {
         const userClaims = await oktaAuthClient.getUser();
-        console.log("Okta User Claims:", userClaims);
 
         const oktaEmail = userClaims.email;
         const oktaUserId = userClaims.sub;

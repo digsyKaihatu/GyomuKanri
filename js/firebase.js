@@ -1,7 +1,11 @@
 // js/firebase.js
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-// ★修正: enableIndexedDbPersistence を追加インポート
-import { getFirestore, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+// ★修正: 最新のキャッシュ設定用の関数をインポート
+import { 
+    initializeFirestore, 
+    persistentLocalCache, 
+    persistentMultipleTabManager 
+} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 // ローカル設定の読み込み（フォールバック用）
 import { firebaseConfig as localConfig } from "./config.js";
@@ -33,17 +37,16 @@ try {
         throw new Error("Firebase config is missing or invalid.");
     }
     app = initializeApp(firebaseConfig);
-    db = getFirestore(app);
-    auth = getAuth(app);
-
-    // ★追加: Firestoreのオフライン永続化（キャッシュ）を有効にする
-    enableIndexedDbPersistence(db).catch((err) => {
-        if (err.code == 'failed-precondition') {
-            // 複数のタブでアプリを開いている場合など、1つのタブでしか有効にならない場合があります
-        } else if (err.code == 'unimplemented') {
-            // ブラウザがサポートしていない場合
-        }
+    
+    // ★修正: Firestoreの初期化と同時にキャッシュ設定を行う（新しい書き方）
+    // これにより enableIndexedDbPersistence の警告が消え、複数タブの問題も解消されます
+    db = initializeFirestore(app, {
+        localCache: persistentLocalCache({
+            tabManager: persistentMultipleTabManager()
+        })
     });
+
+    auth = getAuth(app);
 
 } catch (error) {
     console.error("Firebase Initialization Error in firebase.js:", error);

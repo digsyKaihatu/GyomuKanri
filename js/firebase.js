@@ -13,7 +13,6 @@ let firebaseConfig;
 if (typeof __firebase_config !== 'undefined') {
     try {
         firebaseConfig = JSON.parse(__firebase_config);
-        console.log("Using preview environment Firebase config.");
     } catch (e) {
         console.error("Failed to parse __firebase_config:", e);
         firebaseConfig = localConfig;
@@ -41,14 +40,11 @@ try {
     enableIndexedDbPersistence(db).catch((err) => {
         if (err.code == 'failed-precondition') {
             // 複数のタブでアプリを開いている場合など、1つのタブでしか有効にならない場合があります
-            console.log("Persistence failed: Multiple tabs open, persistence can only be enabled in one tab at a a time.");
         } else if (err.code == 'unimplemented') {
             // ブラウザがサポートしていない場合
-            console.log("Persistence failed: The current browser does not support all of the features required to enable persistence");
         }
     });
 
-    console.log("Firebase initialized successfully (with persistence enabled).");
 } catch (error) {
     console.error("Firebase Initialization Error in firebase.js:", error);
     initializationError = error;

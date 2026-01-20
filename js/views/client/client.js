@@ -78,7 +78,6 @@ let areClientEventListenersSetup = false; // ★リスナー重複登録防止�
  * クライアント画面を離れる際、または初期化前のクリーンアップ処理
  */
 export function cleanupClientView() {
-    console.log("Cleaning up Client View listeners...");
     
     // 1. 【修正】戸村さんのステータス監視（タイマー）を止める
     if (tomuraStatusInterval) {
@@ -100,7 +99,6 @@ export function cleanupClientView() {
  * クライアント画面の初期化
  */
 export async function initializeClientView({ tasks }) {
-    console.log("Initializing Client View...");
     
     initClientViewDOM();
     initializeClientUIDOMElements();
@@ -143,10 +141,6 @@ export async function initializeClientView({ tasks }) {
 async function syncStatus(data, source) {
     if (!data || Object.keys(data).length === 0) return;
 
-    // 診断用ログ (後で削除予定)
-    console.log(`%c[syncStatus] source: ${source}`, "color: blue; font-weight: bold;");
-    console.log("Received data:", data);
-
     // ★判定：Workerによって更新されたばかりかどうか
     const isWorkerUpdate = data.lastUpdatedBy === 'worker' || data.lastUpdatedBy === null;
 
@@ -155,7 +149,6 @@ async function syncStatus(data, source) {
         console.warn(`[syncStatus] Warning: D1 data is missing 'lastUpdatedBy' column (value: ${data.lastUpdatedBy}). Notification will not trigger.`);
     }
 
-    console.log(`[syncStatus] from ${source}: isWorkerUpdate=${isWorkerUpdate}, lastUpdatedBy=${data.lastUpdatedBy}, currentTask=${data.currentTask}`);
 
     // 以前の状態（ローカル）と比較
     const prevTask = localStorage.getItem("currentTask");
@@ -184,14 +177,11 @@ async function syncStatus(data, source) {
         // Fallback: updatedAt がない場合は startTime を ID とする
         const currentUpdateId = normalizedUpdatedAt || (data.startTime && new Date(data.startTime).toISOString());
 
-        console.log(`[syncStatus] Notification Check -> UpdateID: ${currentUpdateId}, LastNotified: ${lastNotified}`);
 
         if (currentUpdateId && lastNotified !== currentUpdateId) {
             const lastUpdateDate = new Date(currentUpdateId);
             const now = new Date();
             const diffSeconds = (now - lastUpdateDate) / 1000;
-
-            console.log(`[syncStatus] Worker update found! Time diff: ${diffSeconds.toFixed(1)}s, Permission: ${Notification.permission}`);
 
 if (Math.abs(diffSeconds) < 600) { // 10分以内の更新のみ通知
                 // 1. 休憩開始の判定
@@ -207,10 +197,8 @@ if (Math.abs(diffSeconds) < 600) { // 10分以内の更新のみ通知
 
                         if (matchingRes && State.isReservationNotified(matchingRes.id)) {
                             // ローカル（裏画面など）ですでに通知済みの場合はスキップ
-                            console.log("[External Trigger] ローカルで通知済みのため、外部通知をスキップ");
                         } else {
                             // まだ通知していない場合
-                            console.log(`%c[${source}] Workerによる休憩開始を検知。通知を出します。`, "color: green; font-weight: bold;");
                             
                             // もし予約が見つかればフラグを立てる（同時発生時の重複防止）
                             if (matchingRes) {
@@ -227,7 +215,6 @@ if (Math.abs(diffSeconds) < 600) { // 10分以内の更新のみ通知
                 
                 // 2. 自動帰宅の判定
                 else if (!(data.isWorking === 1 || data.isWorking === true)) {
-                    console.log(`[${source}] Workerによる自動帰宅を検知。通知を出します。`);
                     triggerReservationNotification("帰宅");
                     localStorage.setItem("lastNotifiedWorkerUpdate", currentUpdateId);
                 }
@@ -280,10 +267,8 @@ if (Math.abs(diffSeconds) < 600) { // 10分以内の更新のみ通知
 function startD1StatusPolling() {
     if (!userId || d1StatusPollingInterval) return;
 
-    console.log("D1 status polling started.");
     const poll = async () => {
         // タブの状態に関わらず実行（予約通知のため）
-        console.log(`[D1 Polling] Checking status at ${new Date().toLocaleTimeString()}${document.hidden ? ' (Background)' : ''}`);
         try {
             const resp = await fetch(`${WORKER_URL}/get-user-status?userId=${encodeURIComponent(userId)}`);
             if (resp.ok) {
@@ -305,7 +290,6 @@ function stopD1StatusPolling() {
     if (d1StatusPollingInterval) {
         clearInterval(d1StatusPollingInterval);
         d1StatusPollingInterval = null;
-        console.log("D1 status polling stopped.");
     }
 }
 
@@ -337,7 +321,6 @@ export function setupClientEventListeners() {
     if (areClientEventListenersSetup) {
         return; // リスナーが既にセットアップされていれば何もしない
     }
-    console.log("Setting up Client View event listeners for the first time...");
 
     // Timer control buttons
     if (startBtn) startBtn.onclick = handleStartClick;
@@ -444,7 +427,6 @@ if (breakBtn) breakBtn.onclick = () => handleBreakClick(false);
     });
 
     areClientEventListenersSetup = true; // ★フラグを立てる
-    console.log("Client View event listeners set up complete.");
 }
 
 // 【修正】戸村さんの状況をD1から取得して表示する関数

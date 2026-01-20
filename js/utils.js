@@ -89,7 +89,6 @@ export async function checkForCheckoutCorrection(uid) {
     try {
         const statusSnap = await getDoc(statusRef);
         if (statusSnap.exists() && statusSnap.data().needsCheckoutCorrection === true) {
-            console.log(`User ${uid} needs checkout correction.`);
             
             if (fixCheckoutModal) {
                 const dateInput = fixCheckoutModal.querySelector("#fix-checkout-date-input");

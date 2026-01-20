@@ -204,7 +204,6 @@ async function handleDeleteGoal(taskName, goalId) {
 }
 
 async function fetchLogsForGoal(goalId) {
-    console.log(`Fetching logs for goal: ${goalId}`);
     try {
         const q = query(
             collection(db, "work_logs"),
@@ -219,7 +218,6 @@ async function fetchLogsForGoal(goalId) {
              if (log.endTime && log.endTime.toDate) log.endTime = log.endTime.toDate();
              return log;
         });
-        console.log(`Fetched ${selectedGoalLogs.length} logs for goal ${goalId}`);
 
     } catch (error) {
         console.error("Error fetching goal logs:", error);

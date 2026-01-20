@@ -59,7 +59,6 @@ const viewLifecycle = {
 };
 
 async function initialize() {
-    console.log("Initializing application...");
     setupVisibilityReload();
 
     injectAllTemplates();
@@ -91,7 +90,6 @@ async function initialize() {
             const lastLoginDate = localStorage.getItem("last_login_date");
 
             if (lastLoginDate !== today) {
-                console.log("本日最初のログインです。モード選択画面を表示します。");
                 localStorage.setItem("last_login_date", today);
                 showView(VIEWS.MODE_SELECTION);
             } else {
@@ -125,7 +123,6 @@ function displayInitializationError(message) {
 }
 
 export function showView(viewId, data = {}) {
-    console.log(`Showing view: ${viewId}`, data);
     const targetViewElement = document.getElementById(viewId);
     const appContainer = document.getElementById('app-container');
 
@@ -316,7 +313,6 @@ async function handleAdminLogin() {
 }
 
 export async function startAppAfterLogin() {
-    console.log("Authentication successful. Starting data sync...");
     initMessaging(userId);
     listenForMessages();
 

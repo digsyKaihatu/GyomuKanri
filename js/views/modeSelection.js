@@ -21,7 +21,6 @@ function initializeDOMElements() {
  * モード選択画面の初期化
  */
 export async function initializeModeSelectionView() {
-    console.log("Initializing Mode Selection View...");
     initializeDOMElements();
     
     // ユーザー名の表示
@@ -79,7 +78,6 @@ const handleLogoutBtnClick = () => {
 };
 
 export function setupModeSelectionEventListeners() {
-    console.log("Setting up Mode Selection event listeners...");
 
     clientBtn?.addEventListener("click", handleClientBtnClick);
     hostBtn?.addEventListener("click", handleHostBtnClick);
@@ -145,7 +143,6 @@ async function handleModeSelect(mode) {
     const hasPermission = await checkUserPermission(mode);
 
     if (hasPermission) {
-        console.log(`Permission granted for ${mode} via user role.`);
         showView(mode);
         return;
     }

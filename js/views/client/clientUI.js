@@ -192,7 +192,6 @@ async function handleNotificationIntervalChange(event) {
     if (isNaN(minutes) || minutes < 0) return;
 
     await updateDisplayPreferences({ notificationIntervalMinutes: minutes });
-    console.log(`Notification interval set to ${minutes} minutes.`);
 }
 
 async function updateDisplayPreferences(newPrefs) {

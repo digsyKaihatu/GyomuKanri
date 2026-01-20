@@ -70,7 +70,6 @@ export function initializePersonalDetailView(data) {
         return;
     }
 
-    console.log(`Initializing Personal Detail View for: ${name}`);
     currentUserForDetailView = name;
 
     if (detailTitle) detailTitle.textContent = `${escapeHtml(name)} の業務記録`;
@@ -111,7 +110,6 @@ export function initializePersonalDetailView(data) {
 }
 
 export function cleanupPersonalDetailView() {
-    console.log("Cleaning up Personal Detail View...");
     stopListeningForUserLogs();
     selectedUserLogs = [];
     currentUserForDetailView = null;
@@ -125,7 +123,6 @@ export function cleanupPersonalDetailView() {
 }
 
 export function setupPersonalDetailEventListeners() {
-    console.log("Setting up Personal Detail event listeners...");
     prevMonthBtn?.addEventListener("click", () => moveMonth(-1));
     nextMonthBtn?.addEventListener("click", () => moveMonth(1));
     backButton?.addEventListener("click", handleGoBack);
@@ -159,7 +156,6 @@ export function setupPersonalDetailEventListeners() {
          });
      });
 
-    console.log("Personal Detail event listeners set up complete.");
 }
 
 function renderCalendar() {

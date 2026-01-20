@@ -35,7 +35,6 @@ export function handleDeleteUserClick(currentUserForDetailView, authLevel, curre
                 if (!profileDocs.empty) {
                     userIdToDelete = profileDocs.docs[0].id;
                     batch.delete(profileDocs.docs[0].ref); // Delete user_profiles document
-                    console.log(`Deleting profile for ${userNameToDelete} (ID: ${userIdToDelete})`);
                 } else {
                     console.warn(`User profile not found for "${userNameToDelete}". Proceeding to delete logs.`);
                 }
@@ -43,21 +42,18 @@ export function handleDeleteUserClick(currentUserForDetailView, authLevel, curre
                  // 2. Delete Work Logs associated with the username
                  const qLogs = query(collection(db, "work_logs"), where("userName", "==", userNameToDelete));
                  const logDocs = await getDocs(qLogs);
-                 console.log(`Found ${logDocs.size} work logs for ${userNameToDelete} to delete.`);
                  logDocs.forEach((docSnapshot) => batch.delete(docSnapshot.ref));
 
                  // 3. Delete Work Status if userId was found
                  if (userIdToDelete) {
                      const statusRef = doc(db, "work_status", userIdToDelete);
                      batch.delete(statusRef); // Delete work_status document
-                     console.log(`Deleting status for ${userNameToDelete} (ID: ${userIdToDelete})`);
                  } else {
                      console.warn(`Skipping status deletion as userId for ${userNameToDelete} was not found.`);
                  }
 
                 // 4. Commit all deletions
                 await batch.commit();
-                console.log(`Successfully deleted user ${userNameToDelete} and associated data.`);
                 alert(`ユーザー「${escapeHtml(userNameToDelete)}」を削除しました。`);
 
                 // Navigate back to the host view after deletion
@@ -69,7 +65,6 @@ export function handleDeleteUserClick(currentUserForDetailView, authLevel, curre
             }
         },
         () => {
-             console.log(`Deletion of user ${userNameToDelete} cancelled.`); // Log cancellation
         }
     );
 }

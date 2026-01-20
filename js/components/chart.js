@@ -13,7 +13,6 @@ export function createPieChart(ctx, data, colorMap, showLegend = true) {
         .sort(([, a], [, b]) => b - a); 
 
     if (sortedData.length === 0) {
-        console.log("No data > 0 to display in pie chart.");
         return null; 
     }
 
@@ -107,7 +106,6 @@ export function createLineChart(ctx, labels, datasets, titleText = "グラフ", 
     }
 
     if (datasets.length === 0 || datasets.every(ds => ds.data.length === 0)) {
-         console.log("No data to display in line chart.");
          ctx.font = "16px sans-serif";
          ctx.textAlign = "center";
          ctx.fillText("データがありません", ctx.canvas.width / 2, ctx.canvas.height / 2);

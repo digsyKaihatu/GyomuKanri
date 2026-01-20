@@ -50,7 +50,6 @@ function initializeDOMElements() {
 }
 
 export async function initializeProgressView() {
-    console.log("Initializing Progress View...");
     initializeDOMElements();
     
     // ★ 全件取得は削除。初期化時はタスクリストの表示のみ。
@@ -162,7 +161,6 @@ export function setupProgressEventListeners() {
 
 // ★ 新規: 指定されたタスクのログを全期間分取得する
 async function fetchLogsForTask(taskName) {
-    console.log(`Fetching logs for task: ${taskName}`);
     // UIにローディング表示などを出すとより良い
     
     try {
@@ -181,7 +179,6 @@ async function fetchLogsForTask(taskName) {
              if (log.endTime && log.endTime.toDate) log.endTime = log.endTime.toDate();
              return log;
         });
-        console.log(`Fetched ${selectedTaskLogs.length} logs for task ${taskName}`);
 
     } catch (error) {
         console.error("Error fetching task logs:", error);

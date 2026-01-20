@@ -166,7 +166,6 @@ export async function deleteReservation(id) {
  * ★追加: 全ての予約をクリアする (インポートエラー防止用の空関数)
  */
 export async function cancelAllReservations() {
-    console.log("cancelAllReservations called (D1版では個別削除を推奨)");
 }
 
 function calculateScheduledTime(timeStr) {

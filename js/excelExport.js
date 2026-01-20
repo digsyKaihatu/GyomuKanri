@@ -70,7 +70,6 @@ async function handleExportExcel() {
     const targetDate = new Date(year, month - 1, 1);
     const { start, end } = getMonthDateRange(targetDate);
 
-    console.log(`Exporting Excel for period: ${start} to ${end}`);
     confirmButton.disabled = true;
     confirmButton.textContent = "データ取得中...";
 
@@ -207,7 +206,6 @@ async function handleExportExcel() {
 
         const fileName = `業務記録_${year}年${month}月.xlsx`;
         XLSX.writeFile(wb, fileName);
-        console.log(`Excel file "${fileName}" generated.`);
 
         closeExportExcelModal();
 

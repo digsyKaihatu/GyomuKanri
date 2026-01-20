@@ -177,7 +177,6 @@ async function markMessagesAsRead() {
         });
         
         await batch.commit();
-        console.log(`${snapshot.size} messages marked as read.`);
     } catch (error) {
         console.error("Error marking messages as read:", error);
     }

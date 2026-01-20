@@ -53,7 +53,6 @@ function initializeDOMElements() {
  * 画面の初期化
  */
 export async function initializeTaskSettingsView() {
-    console.log("Initializing Task Settings View...");
     initializeDOMElements();
     
     if (userId) {
@@ -224,9 +223,7 @@ function restoreSelectionStateWithRetry(taskName, retryCount = 0) {
             setTimeout(() => {
                 restoreSelectionStateWithRetry(taskName, retryCount + 1);
             }, 100);
-        } else {
-            console.log(`復元失敗: ${taskName} が見つかりませんでした。`);
-        }
+    }
     }
 }
 
@@ -389,7 +386,7 @@ function handleDeleteTask(taskNameToDelete) {
                 alert("削除中にエラーが発生しました。");
             }
         },
-        () => { console.log("Deletion cancelled."); }
+        () => {  }
     );
 }
 
@@ -421,7 +418,7 @@ async function toggleMembersList(button, taskName) {
             container.innerHTML = sorted.length > 0 
                 ? sorted.map(([name, d]) => `<div class="flex justify-between"><span>${escapeHtml(name)}</span><span class="font-mono">${formatHoursMinutes(d)}</span></div>`).join("")
                 : '<p class="text-gray-500">稼働記録はありません。</p>';
-        } catch (error) {
+        } catch {
             container.innerHTML = '<p class="text-red-500">取得エラー</p>';
         }
     } else {

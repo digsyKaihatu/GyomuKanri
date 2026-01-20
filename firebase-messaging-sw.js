@@ -13,7 +13,6 @@ const messaging = firebase.messaging();
 
 // バックグラウンド通知ハンドラ
 messaging.onBackgroundMessage((payload) => {
-    console.log('[firebase-messaging-sw.js] Background message: ', payload);
     
     // 通知の表示
     const notificationTitle = payload.notification.title;

@@ -10,7 +10,6 @@ let timerTickInterval = null;  // 経過時間表示用（1秒おき）
 
 export function startListeningForStatusUpdates() {
     stopListeningForStatusUpdates();
-    console.log("ステータス監視を開始します（ポーリング方式）");
     
     // 初回実行
     fetchAndRefreshStatus();
@@ -33,7 +32,6 @@ export function stopListeningForStatusUpdates() {
         clearInterval(timerTickInterval);
         timerTickInterval = null;
     }
-    console.log("ステータス監視を停止しました");
 }
 
 async function fetchAndRefreshStatus() {

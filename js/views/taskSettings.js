@@ -224,6 +224,7 @@ function restoreSelectionStateWithRetry(taskName, retryCount = 0) {
                 restoreSelectionStateWithRetry(taskName, retryCount + 1);
             }, 100);
     }
+    }
 }
 
 // --- アクションハンドラ ---
@@ -417,7 +418,7 @@ async function toggleMembersList(button, taskName) {
             container.innerHTML = sorted.length > 0 
                 ? sorted.map(([name, d]) => `<div class="flex justify-between"><span>${escapeHtml(name)}</span><span class="font-mono">${formatHoursMinutes(d)}</span></div>`).join("")
                 : '<p class="text-gray-500">稼働記録はありません。</p>';
-        } catch (error) {
+        } catch {
             container.innerHTML = '<p class="text-red-500">取得エラー</p>';
         }
     } else {

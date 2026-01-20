@@ -31,7 +31,6 @@ export function startListeningForUserLogs(name, dateToDisplay, onLogsReceived) {
     const startDateStr = getJSTDateString(firstDay); // "YYYY-MM-01"
     const endDateStr = getJSTDateString(lastDay);   // "YYYY-MM-30" など
 
-    console.log(`Starting log listener for ${name} between ${startDateStr} and ${endDateStr}`);
 
     // 2. クエリを修正
     const q = query(
@@ -52,7 +51,6 @@ export function startListeningForUserLogs(name, dateToDisplay, onLogsReceived) {
             return log;
         });
         
-        console.log(`Received ${logs.length} logs for ${name} for month ${startDateStr.substring(0, 7)}.`);
         
         // データを司令塔（personalDetail.js）にコールバックで渡す
         if (typeof onLogsReceived === 'function') {
@@ -72,7 +70,6 @@ export function startListeningForUserLogs(name, dateToDisplay, onLogsReceived) {
  */
 export function stopListeningForUserLogs() {
     if (personalDetailUnsubscribe) {
-        console.log("Stopping log listener.");
         personalDetailUnsubscribe();
         personalDetailUnsubscribe = null;
     }

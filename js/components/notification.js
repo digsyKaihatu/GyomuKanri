@@ -30,7 +30,6 @@ export async function triggerEncouragementNotification(elapsedSeconds, type = 'e
 
 // 予約実行時の通知
 export async function triggerReservationNotification(actionName) {
-    console.log(`[Notification] triggerReservationNotification called for: ${actionName}`);
     let title = "予約時間のお知らせ";
     let message = `予約設定で${actionName}しました`;
 
@@ -65,7 +64,6 @@ export async function triggerBreakNotification(elapsedSeconds) {
 // ブラウザ通知を表示する共通関数
 // ★修正: duration 引数を追加 (デフォルト 15000ms)
 async function showBrowserNotification(title, message, duration = 15000) {
-    console.log(`[Notification] showBrowserNotification: title="${title}", message="${message}", duration=${duration}`);
     if (!("Notification" in window)) {
         console.warn("[Notification] Browser does not support Notification API");
         return;
@@ -79,7 +77,6 @@ async function showBrowserNotification(title, message, duration = 15000) {
             try {
                 const reg = await navigator.serviceWorker.ready;
                 if (reg && reg.showNotification) {
-                    console.log("[Notification] Using Service Worker to show notification");
                     
                     const tag = 'reservation-notification';
                     
@@ -127,7 +124,6 @@ async function showBrowserNotification(title, message, duration = 15000) {
 
 // ★修正: duration 引数を追加
 function createNotification(title, message, duration) {
-    console.log(`[Notification] Creating actual notification: ${title}`);
     try {
         const notification = new Notification(title, {
             body: message,

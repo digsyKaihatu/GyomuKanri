@@ -137,13 +137,7 @@ export async function handleBreakClick(isAuto = false) {
         if (taskToReturnTo && taskToReturnTo.task) {
 
             // ★修正: ここは「BreakClick」なので taskToReturnTo 系を使うのが正解
-            // さっきはここに selectedTask と書いてしまったためエラーになりました
-            console.log("🚀【休憩復帰】D1送信直前ログ:", {
-                task: taskToReturnTo.task,
-                goalId: taskToReturnTo.goalId,
-                title: taskToReturnTo.goalTitle
-            });
-                        
+            // さっきはここに selectedTask と書いてしまったためエラーになりました                      
             await Logic.executeStartTask(taskToReturnTo.task, taskToReturnTo.goalId, taskToReturnTo.goalTitle);
         } else {
             console.warn("休憩前のタスク情報が破損しているため、停止処理を行います。");
@@ -157,7 +151,6 @@ export async function handleBreakClick(isAuto = false) {
             const goalSelect = document.getElementById("goal-select");
             if (goalSelect) {
                 currentGoalId = goalSelect.value;
-                console.log("⚠️ StateからgoalIdが取れないため、画面から取得しました:", currentGoalId);
             }
         }
         

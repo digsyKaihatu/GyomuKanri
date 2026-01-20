@@ -11,7 +11,6 @@ const messaging = getMessaging(app);
 const VAPID_KEY = fcmConfig.vapidKey;
 
 export async function initMessaging(passedUserId) {
-    console.log("initMessaging 関数が呼ばれました。ID:", passedUserId);
 
     try {
         const permission = await Notification.requestPermission();
@@ -26,7 +25,6 @@ export async function initMessaging(passedUserId) {
             const params = new URLSearchParams(firebaseConfig).toString();
             const swUrl = `/firebase-messaging-sw.js?${params}`;
             registration = await navigator.serviceWorker.register(swUrl);
-            console.log("Service Worker 登録成功");
         }
 
         const token = await getToken(messaging, { 
@@ -35,7 +33,6 @@ export async function initMessaging(passedUserId) {
         });
         
         if (token) {
-            console.log('★FCM Token 取得成功:', token);
 
             const saveTokenToFirestore = async (uid) => {
                 const userRef = doc(db, "user_profiles", uid);
@@ -43,7 +40,6 @@ export async function initMessaging(passedUserId) {
                 await updateDoc(userRef, {
                     fcmTokens: arrayUnion(token)
                 });
-                console.log("Firestoreにトークンを保存しました:", uid);
             };
 
             if (passedUserId) {
@@ -51,7 +47,6 @@ export async function initMessaging(passedUserId) {
             } else if (auth.currentUser) {
                 await saveTokenToFirestore(auth.currentUser.uid);
             } else {
-                console.log("Auth状態の確定を待っています...");
                 auth.onAuthStateChanged(async (user) => {
                     if (user) await saveTokenToFirestore(user.uid);
                 });
@@ -63,13 +58,10 @@ export async function initMessaging(passedUserId) {
 }
 
 export function listenForMessages() {
-    console.log("listenForMessages を開始しました");
     onMessage(messaging, (payload) => {
-        console.log('フォアグラウンド通知受信:', payload);
 
         // ★追加: Workerからの通知かを判定
         if (payload.data && payload.data.source === 'worker') {
-            console.log("Workerからの通知を検出。ステータスの強制更新を試みます。");
             // カスタムイベントを発火させて host.js に処理を依頼
             document.dispatchEvent(new CustomEvent('force-fetch-status'));
         }

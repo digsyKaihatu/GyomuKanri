@@ -70,9 +70,7 @@ export async function executeStartTask(selectedTask, selectedGoalId, selectedGoa
                     preBreakTask: State.getPreBreakTask() || null,
                     userId, userName, onlineStatus: true
                 }, { merge: true });
-                console.log(`Firestore status synced for ${userId}`);
             } catch (err) {
-                console.error("Firestore status sync error:", err);
             }
 
             // UI更新
@@ -132,7 +130,6 @@ export async function stopCurrentTaskCore(isLeaving, forcedEndTime = null, taskD
                 date: getJSTDateString(taskStartTime),
                 duration, startTime: taskStartTime, endTime, memo
             });
-            console.log("Log saved successfully.");
 
             await fetch(`${State.WORKER_URL}/update-status`, {
                 method: 'POST',
@@ -145,7 +142,6 @@ export async function stopCurrentTaskCore(isLeaving, forcedEndTime = null, taskD
                     currentGoal: null
                 })
             });
-            console.log("D1 status synced (stopped).");
         } catch (e) {
             console.error("Firestore save error:", e);
         }
@@ -158,7 +154,6 @@ export async function syncReservations() {
         const resp = await fetch(`${State.WORKER_URL}/get-user-reservations?userId=${userId}`);
         if (resp.ok) {
             State.setActiveReservations(await resp.json());
-            console.log("予約リストを同期しました:", State.getActiveReservations());
         }
     } catch (e) {
         console.error("予約同期エラー:", e);
@@ -314,7 +309,6 @@ export function startTimerLoop() {
                     else if (res.action === "leave") actionName = "帰宅";
                     else actionName = res.action;
 
-                    console.log(`[Local Trigger] 予約通知を実行(ローカル検知): ${actionName}`);
                     
                     // 通知を実行
                     triggerReservationNotification(actionName);

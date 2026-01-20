@@ -120,7 +120,6 @@ function stopListeningForApprovals() {
 }
 
 export function initializeHostView() {
-    console.log("Initializing Host View...");
     initializeDOMElements();
     
     injectTomuraLocationUI();
@@ -135,7 +134,6 @@ export function initializeHostView() {
 }
 
 export function cleanupHostView() {
-    console.log("Cleaning up Host View...");
     stopListeningForStatusUpdates(); 
     stopListeningForUsers();      
     stopListeningForApprovals();
@@ -145,7 +143,6 @@ export function cleanupHostView() {
 }
 
 export function setupHostEventListeners() {
-    console.log("Setting up Host View event listeners...");
 
     backButton?.addEventListener("click", () => showView(VIEWS.MODE_SELECTION));
     viewProgressButton?.addEventListener("click", () => {
@@ -165,7 +162,6 @@ tomuraStatusRadios.forEach((radio) => {
     });
 
     helpButton?.addEventListener('click', () => showHelpModal('host'));
-    console.log("Host View event listeners set up complete.");
 }
 
 // handleTomuraStatusChange と handleTomuraLocationChange を以下のように統合・修正
@@ -263,7 +259,6 @@ document.addEventListener("visibilitychange", () => {
 // ★追加: 外部からの強制取得トリガー
 // これにより、FCMプッシュ通知などを受けた際に、タブが非アクティブでも情報を更新できる
 document.addEventListener('force-fetch-status', () => {
-    console.log("Event 'force-fetch-status' received. Forcing status fetch.");
     fetchTomuraStatus(true);
 });
 // --- メッセージ機能の実装 ---
@@ -354,7 +349,6 @@ if (referenceBtn && !document.getElementById("open-message-modal-btn")) {
 }
 
 async function handleOpenMessageModal() {
-    console.log("メッセージモーダルを起動します...");
 
     if (typeof openMessageModal !== 'function') {
         alert("エラー: モーダル機能が読み込めていません。");
@@ -411,11 +405,7 @@ async function executeSendMessage(targetIds, title, bodyContent) {
         return;
     }
 
-    console.log("🚀 メッセージ送信リクエスト:", {
-        送信人数: targetIds.length,
-        対象IDリスト: targetIds,
-        タイトル: title
-    });
+
 
     const confirmMsg = `${targetIds.length}名にメッセージを送信しますか？`;
     if (!confirm(confirmMsg)) return;
@@ -440,7 +430,6 @@ async function executeSendMessage(targetIds, title, bodyContent) {
 
         const sendPromises = targetIds.map(async (uid) => {
             try {
-                console.log(`--- [送信中] UID: ${uid} ---`);
 
                 const response = await fetch(sendMessageUrl, {
                     method: "POST",
@@ -453,7 +442,6 @@ async function executeSendMessage(targetIds, title, bodyContent) {
                 });
 
                 const result = await response.json();
-                console.log(`--- [Worker応答] UID: ${uid} ---`, result);
 
                 if (!result.success) {
                     const msg = result.error || "詳細不明のエラー";

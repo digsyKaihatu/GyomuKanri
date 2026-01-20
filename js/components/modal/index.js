@@ -11,7 +11,6 @@ export * from './utils.js';
 import { closeModal } from './core.js';
 
 export function setupModalEventListeners() {
-    console.log("Initializing modal listeners...");
     const mapping = [
         { btn: 'task-cancel-btn', modalId: 'task-modal' },
         { btn: 'goal-modal-cancel-btn', modalId: 'goal-modal' },

@@ -13,7 +13,6 @@ const profileError = document.getElementById("profile-error");
  * Initializes the Profile Setup view.
  */
 export function initializeProfileSetupView() {
-    console.log("Initializing Profile Setup View...");
     if (usernameInput) {
          usernameInput.value = ''; 
          usernameInput.focus();
@@ -27,7 +26,6 @@ export function initializeProfileSetupView() {
  * Sets up event listeners for the Profile Setup view.
  */
 export function setupProfileSetupEventListeners() {
-    console.log("Setting up Profile Setup event listeners...");
     saveProfileButton?.addEventListener("click", handleLogin);
      usernameInput?.addEventListener('keypress', (event) => {
          if (event.key === 'Enter') {
@@ -74,7 +72,6 @@ async function handleLogin() {
 
         if (querySnapshot.empty) {
             // ★変更: ユーザーが存在しない場合、新規作成する
-            console.log(`User not found: ${name}. Creating new profile...`);
             
             const newUserRef = await addDoc(collection(db, "user_profiles"), {
                 name: name,
@@ -83,13 +80,11 @@ async function handleLogin() {
                 createdAt: new Date()
             });
             profileUserId = newUserRef.id;
-            console.log(`New user created with ID: ${profileUserId}`);
 
         } else {
             // ユーザーが存在する場合
             const userDoc = querySnapshot.docs[0];
             profileUserId = userDoc.id; 
-            console.log(`User found: ${name} (ID: ${profileUserId})`);
         }
 
         // --- 以下、ログイン共通処理 ---
@@ -110,7 +105,6 @@ async function handleLogin() {
             { userName: name, onlineStatus: true, userId: profileUserId }, 
             { merge: true } 
         );
-        console.log(`Status updated for user ${name}.`);
 
         // Post-Login Actions
         await checkForCheckoutCorrection(profileUserId); 

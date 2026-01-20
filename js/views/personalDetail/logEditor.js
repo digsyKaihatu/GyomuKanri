@@ -86,7 +86,6 @@ export async function handleSaveLogDuration() {
 
     try {
         await updateDoc(logRef, { duration: newDuration });
-        console.log(`Log ${currentEditingLogId} duration updated to ${newDuration} seconds.`);
         editLogModal.classList.add("hidden");
         currentEditingLogId = null;
         // The onSnapshot listener in personalDetail.js will automatically refresh the details pane.
@@ -134,7 +133,6 @@ export async function handleSaveMemo() {
 
     try {
         await updateDoc(logRef, { memo: newMemo });
-        console.log(`Log ${currentEditingLogId} memo updated.`);
         editMemoModal.classList.add("hidden");
         currentEditingLogId = null;
         // The onSnapshot listener will automatically refresh the details pane.
@@ -237,7 +235,6 @@ export async function handleSaveContribution() {
             const tasksRef = doc(db, "settings", "tasks");
             try {
                 await updateDoc(tasksRef, { list: updatedTasks });
-                console.log(`Overall progress for goal ${goalId} updated by ${diff}.`);
                  if (typeof updateGlobalTaskObjects === 'function') {
                     // main.js の onSnapshot が検知して更新するのが理想だが、
                     // 即時反映のためにグローバルstateも更新する
@@ -290,7 +287,6 @@ export async function handleSaveContribution() {
 
     try {
         await batch.commit();
-        console.log(`Contribution logs for ${userName}, goal ${goalId} on ${date} updated to ${newTotal}.`);
         editContributionModal.classList.add("hidden");
         currentEditingContribution = {};
         // The onSnapshot listener in personalDetail.js will refresh the details pane.

@@ -223,8 +223,6 @@ function restoreSelectionStateWithRetry(taskName, retryCount = 0) {
             setTimeout(() => {
                 restoreSelectionStateWithRetry(taskName, retryCount + 1);
             }, 100);
-        } else {
-        }
     }
 }
 

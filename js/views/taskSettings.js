@@ -53,7 +53,6 @@ function initializeDOMElements() {
  * 画面の初期化
  */
 export async function initializeTaskSettingsView() {
-    console.log("Initializing Task Settings View...");
     initializeDOMElements();
     
     if (userId) {
@@ -225,7 +224,6 @@ function restoreSelectionStateWithRetry(taskName, retryCount = 0) {
                 restoreSelectionStateWithRetry(taskName, retryCount + 1);
             }, 100);
         } else {
-            console.log(`復元失敗: ${taskName} が見つかりませんでした。`);
         }
     }
 }
@@ -389,7 +387,7 @@ function handleDeleteTask(taskNameToDelete) {
                 alert("削除中にエラーが発生しました。");
             }
         },
-        () => { console.log("Deletion cancelled."); }
+        () => {  }
     );
 }
 

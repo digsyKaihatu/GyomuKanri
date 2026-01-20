@@ -1,6 +1,6 @@
 // js/views/client/timerLogic.js
 
-import { db, userId, userName, userDisplayPreferences } from "../../main.js";
+import { db, userId, userName, userDisplayPreferences, allTaskObjects } from "../../main.js";
 import { doc, setDoc, addDoc, updateDoc, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { formatDuration, getJSTDateString } from "../../utils.js";
 import { triggerEncouragementNotification, triggerReservationNotification, triggerBreakNotification } from "../../components/notification.js";
@@ -22,7 +22,8 @@ export async function executeStartTask(selectedTask, selectedGoalId, selectedGoa
         currentTask: selectedTask,
         currentGoal: selectedGoalTitle,
         currentGoalId: selectedGoalId,
-        startTime: new Date().toISOString()
+        startTime: new Date().toISOString(),
+        preBreakTask: State.getPreBreakTask()
     };
 
     try {
@@ -267,33 +268,73 @@ if (currentTask === '休憩') {
 }
 
 export function startTimerLoop() {
+    // 既存のインターバルがあればクリアして重複防止
     if (State.getTimerInterval()) clearInterval(State.getTimerInterval());
     
+    // UIの描画更新（タスク選択肢や設定など）
     import("./clientUI.js").then(({ renderTaskOptions, renderTaskDisplaySettings }) => {
-        renderTaskOptions();
-        renderTaskDisplaySettings(); 
+        renderTaskOptions(allTaskObjects);
+        renderTaskDisplaySettings(allTaskObjects, userDisplayPreferences);
     });
 
+    // 1秒ごとのループ処理を開始
     const interval = setInterval(async () => {
         const startTime = State.getStartTime();
-        if (!startTime) return;
+        if (!startTime) return; // 開始時間がセットされていなければ何もしない
         
         const now = new Date();
+        
+        // --- 1. タイマー表示の更新 ---
         const elapsed = Math.floor((now - startTime) / 1000);
         const timerDisplay = getEl("timer-display");
         if (timerDisplay) timerDisplay.textContent = formatDuration(elapsed);
 
-        // 通知ロジック
+        // --- 2. ローカル予約監視（裏画面対策） ★ここが追加・修正部分 ---
+        // Stateから有効な予約リストを取得（syncReservationsで同期済み）
+        const activeReservations = State.getActiveReservations();
+        
+        if (activeReservations && activeReservations.length > 0) {
+            activeReservations.forEach(res => {
+                const scheduledTime = new Date(res.scheduledTime);
+                const diffMillis = now - scheduledTime;
+
+                // 条件:
+                // 1. 予定時間を過ぎている (diffMillis >= 0)
+                // 2. 過ぎてから1分以内である (diffMillis < 60000) -> 古い予約の暴発防止
+                // 3. まだこの予約IDは通知していない (!State.isReservationNotified)
+
+                // 【修正後】上限(60000)を撤廃し、予約状態なら必ず通知するように変更
+                if (diffMillis >= 0 && !State.isReservationNotified(res.id)) {
+                    // 最初にフラグを立てて重複を防ぐ
+                    State.markReservationAsNotified(res.id);
+                    
+                    // アクション名を表示用に変換
+                    let actionName = "";
+                    if (res.action === "break") actionName = "休憩開始";
+                    else if (res.action === "leave") actionName = "帰宅";
+                    else actionName = res.action;
+
+                    console.log(`[Local Trigger] 予約通知を実行(ローカル検知): ${actionName}`);
+                    
+                    // 通知を実行
+                    triggerReservationNotification(actionName);
+                }
+            });
+        }
+
+        // --- 3. その他の通知ロジック（既存機能） ---
         const activeTaskName = localStorage.getItem("currentTask") || State.getCurrentTask() || "業務";
 
+        // A. 休憩経過時間の通知（30分ごとなど）
         if (State.getCurrentTask() === "休憩" && elapsed > 0) {
-            const breakInterval = 1800;
+            const breakInterval = 1800; // 30分 = 1800秒
             if (elapsed - State.getLastBreakNotificationTime() >= breakInterval) {
                 State.setLastBreakNotificationTime(Math.floor(elapsed / breakInterval) * breakInterval);
                 triggerBreakNotification(elapsed);
             }
         }
         
+        // B. 業務継続のお褒め通知
         if (userDisplayPreferences && userDisplayPreferences.notificationIntervalMinutes > 0) {
             const intervalSeconds = userDisplayPreferences.notificationIntervalMinutes * 60;
             if (elapsed > 0 && elapsed - State.getLastEncouragementTime() >= intervalSeconds) {
@@ -303,6 +344,7 @@ export function startTimerLoop() {
         }
     }, 1000);
 
+    // インターバルIDをStateに保存（後で停止できるようにする）
     State.setTimerInterval(interval);
 }
 

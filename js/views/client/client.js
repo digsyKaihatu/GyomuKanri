@@ -3,6 +3,7 @@
 // ★修正: userId を追加インポート（自分の監視に必要）
 import { showView, VIEWS, db, userName, userId } from "../../main.js";
 import { doc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import * as State from "./timerState.js"; // ★追加: これが必要です
 
 // timer.js から操作関数をインポート
 import { 
@@ -15,6 +16,7 @@ import {
 
 import { listenForUserReservations, handleSaveBreakReservation, handleSetStopReservation, handleCancelStopReservation, deleteReservation } from "./reservations.js";
 import { triggerReservationNotification } from "../../components/notification.js";
+import { WORKER_URL } from "./timerState.js";
 
 import { 
     handleTaskSelectionChange, 
@@ -23,7 +25,8 @@ import {
     renderTaskOptions, 
     renderTaskDisplaySettings, 
     updateTomuraStatusDisplay,
-    injectMessageHistoryButton 
+    injectMessageHistoryButton,
+    initializeDOMElements as initializeClientUIDOMElements
 } from "./clientUI.js";
 
 import { handleFixCheckout } from "./clientActions.js";
@@ -32,34 +35,45 @@ import { openBreakReservationModal, fixCheckoutModal, showHelpModal } from "../.
 import { stopColleaguesListener } from "./colleagues.js";
 
 // --- DOM Element references ---
-const startBtn = document.getElementById("start-btn");
-const stopBtn = document.getElementById("stop-btn");
-const breakBtn = document.getElementById("break-btn");
-const taskSelect = document.getElementById("task-select");
-const goalSelect = document.getElementById("goal-select");
-const otherTaskInput = document.getElementById("other-task-input");
-const taskDisplaySettingsList = document.getElementById("task-display-settings-list");
+let startBtn, stopBtn, breakBtn, taskSelect, goalSelect, otherTaskInput, taskDisplaySettingsList;
+let addBreakReservationBtn, breakReservationList, breakReservationSaveBtn, setStopReservationBtn, cancelStopReservationBtn;
+let backButton, myRecordsButton, viewMyProgressButton, fixCheckoutButton, fixCheckoutSaveBtn;
+let helpButton;
 
-// Reservation UI elements
-const addBreakReservationBtn = document.getElementById("add-break-reservation-btn");
-const breakReservationList = document.getElementById("break-reservation-list");
-const breakReservationSaveBtn = document.getElementById("break-reservation-save-btn");
-const setStopReservationBtn = document.getElementById("set-stop-reservation-btn");
-const cancelStopReservationBtn = document.getElementById("cancel-stop-reservation-btn");
 
-// Navigation/Other buttons
-const backButton = document.getElementById("back-to-selection-client");
-const myRecordsButton = document.getElementById("my-records-btn");
-const viewMyProgressButton = document.getElementById("view-my-progress-btn");
-const fixCheckoutButton = document.getElementById("fix-yesterday-checkout-btn");
-const fixCheckoutSaveBtn = document.getElementById("fix-checkout-save-btn");
+function initClientViewDOM() {
+    startBtn = document.getElementById("start-btn");
+    stopBtn = document.getElementById("stop-btn");
+    breakBtn = document.getElementById("break-btn");
+    taskSelect = document.getElementById("task-select");
+    goalSelect = document.getElementById("goal-select");
+    otherTaskInput = document.getElementById("other-task-input");
+    taskDisplaySettingsList = document.getElementById("task-display-settings-list");
 
-// Help Button
-const helpButton = document.querySelector('#client-view .help-btn');
+    // Reservation UI elements
+    addBreakReservationBtn = document.getElementById("add-break-reservation-btn");
+    breakReservationList = document.getElementById("break-reservation-list");
+    breakReservationSaveBtn = document.getElementById("break-reservation-save-btn");
+    setStopReservationBtn = document.getElementById("set-stop-reservation-btn");
+    cancelStopReservationBtn = document.getElementById("cancel-stop-reservation-btn");
+
+    // Navigation/Other buttons
+    backButton = document.getElementById("back-to-selection-client");
+    myRecordsButton = document.getElementById("my-records-btn");
+    viewMyProgressButton = document.getElementById("view-my-progress-btn");
+    fixCheckoutButton = document.getElementById("fix-yesterday-checkout-btn");
+    fixCheckoutSaveBtn = document.getElementById("fix-checkout-save-btn");
+
+    // Help Button
+    helpButton = document.querySelector('#client-view .help-btn');
+}
+
 
 // リスナー解除用変数
 let tomuraStatusInterval = null; // Unsubscribe から Interval に変更
 let myStatusUnsubscribe = null;
+let d1StatusPollingInterval = null; // ★追加: D1ステータスポーリング用
+let areClientEventListenersSetup = false; // ★リスナー重複登録防止フラグ
 /**
  * クライアント画面を離れる際、または初期化前のクリーンアップ処理
  */
@@ -73,6 +87,7 @@ export function cleanupClientView() {
     }
     // 2. ★追加: 自分自身のステータス監視を止める
     stopListeningForMyStatus();
+    stopD1StatusPolling(); // ★追加
     
     // 3. 同僚の監視を止める
     stopColleaguesListener();
@@ -84,9 +99,12 @@ export function cleanupClientView() {
 /**
  * クライアント画面の初期化
  */
-export async function initializeClientView() {
+export async function initializeClientView({ tasks }) {
     console.log("Initializing Client View...");
     
+    initClientViewDOM();
+    initializeClientUIDOMElements();
+
     // 以前のリスナーが残っている場合に備えて掃除を行う
     cleanupClientView();
 
@@ -94,11 +112,13 @@ export async function initializeClientView() {
 
     // ★追加: 自分自身のステータス変化を監視開始 (自動切り替えに必須)
     listenForMyStatus();
+    startD1StatusPolling(); // ★追加: D1側も監視開始
 
     listenForUserReservations();
     
-    renderTaskOptions();
-    renderTaskDisplaySettings(); 
+    const taskSelect = document.getElementById("task-select");
+    renderTaskOptions(tasks, taskSelect);
+    renderTaskDisplaySettings(tasks);
     
     injectMessageHistoryButton();
     
@@ -106,205 +126,197 @@ export async function initializeClientView() {
     
     // 前の画面のリスナーを停止
     stopColleaguesListener();
+
+    // Setup event listeners for the client view
+    setupClientEventListeners();
 }
 
 /**
  * ★追加: 自分自身のステータスをリアルタイム監視する関数
  * Workerが裏でステータスを変更した際に、画面を即座に同期させます。
  */
+/**
+ * ステータス同期のコアロジック
+ * @param {Object} data 取得したステータスデータ
+ * @param {string} source データのソース ('firestore' | 'd1')
+ */
+async function syncStatus(data, source) {
+    if (!data || Object.keys(data).length === 0) return;
+
+    // 診断用ログ (後で削除予定)
+    console.log(`%c[syncStatus] source: ${source}`, "color: blue; font-weight: bold;");
+    console.log("Received data:", data);
+
+    // ★判定：Workerによって更新されたばかりかどうか
+    const isWorkerUpdate = data.lastUpdatedBy === 'worker' || data.lastUpdatedBy === null;
+
+    // D1ポーリング時に lastUpdatedBy が無い場合への警告
+    if (source === 'd1' && (data.lastUpdatedBy === undefined || data.lastUpdatedBy === null)) {
+        console.warn(`[syncStatus] Warning: D1 data is missing 'lastUpdatedBy' column (value: ${data.lastUpdatedBy}). Notification will not trigger.`);
+    }
+
+    console.log(`[syncStatus] from ${source}: isWorkerUpdate=${isWorkerUpdate}, lastUpdatedBy=${data.lastUpdatedBy}, currentTask=${data.currentTask}`);
+
+    // 以前の状態（ローカル）と比較
+    const prevTask = localStorage.getItem("currentTask");
+
+    // データの正規化 (Firestore Timestamp 対策)
+    let dbStartTime = data.startTime;
+    if (dbStartTime && typeof dbStartTime.toDate === 'function') {
+        dbStartTime = dbStartTime.toDate().toISOString();
+    } else if (dbStartTime && dbStartTime.seconds) {
+        dbStartTime = new Date(dbStartTime.seconds * 1000).toISOString();
+    }
+
+    // ■■■ 予約通知・Worker更新対応ブロック ■■■
+    // 予約通知に関しては Worker による更新であればソースを問わず判定を行う
+    // (以前はD1のみに限定していましたが、アクティブ時の反応を良くするためFirestore側でも許可します)
+    if (isWorkerUpdate) {
+        // 更新時刻の正規化
+        let normalizedUpdatedAt = null;
+        if (data.updatedAt) {
+            if (typeof data.updatedAt.toDate === 'function') normalizedUpdatedAt = data.updatedAt.toDate().toISOString();
+            else if (data.updatedAt.seconds) normalizedUpdatedAt = new Date(data.updatedAt.seconds * 1000).toISOString();
+            else normalizedUpdatedAt = new Date(data.updatedAt).toISOString();
+        }
+
+        const lastNotified = localStorage.getItem("lastNotifiedWorkerUpdate");
+        // Fallback: updatedAt がない場合は startTime を ID とする
+        const currentUpdateId = normalizedUpdatedAt || (data.startTime && new Date(data.startTime).toISOString());
+
+        console.log(`[syncStatus] Notification Check -> UpdateID: ${currentUpdateId}, LastNotified: ${lastNotified}`);
+
+        if (currentUpdateId && lastNotified !== currentUpdateId) {
+            const lastUpdateDate = new Date(currentUpdateId);
+            const now = new Date();
+            const diffSeconds = (now - lastUpdateDate) / 1000;
+
+            console.log(`[syncStatus] Worker update found! Time diff: ${diffSeconds.toFixed(1)}s, Permission: ${Notification.permission}`);
+
+if (Math.abs(diffSeconds) < 600) { // 10分以内の更新のみ通知
+                // 1. 休憩開始の判定
+                if (data.currentTask && data.currentTask.trim() === '休憩') {
+                    
+                    // ★★★ ここから修正・追加 ★★★
+                    // 以前の状態が「休憩」でない場合のみチェック（連続通知防止）
+                    if (prevTask !== '休憩') {
+                        // アクティブな予約リストを取得
+                        const reservations = State.getActiveReservations();
+                        // 簡易的に「break」アクションを持つ予約を探す
+                        const matchingRes = reservations ? reservations.find(r => r.action === "break") : null;
+
+                        if (matchingRes && State.isReservationNotified(matchingRes.id)) {
+                            // ローカル（裏画面など）ですでに通知済みの場合はスキップ
+                            console.log("[External Trigger] ローカルで通知済みのため、外部通知をスキップ");
+                        } else {
+                            // まだ通知していない場合
+                            console.log(`%c[${source}] Workerによる休憩開始を検知。通知を出します。`, "color: green; font-weight: bold;");
+                            
+                            // もし予約が見つかればフラグを立てる（同時発生時の重複防止）
+                            if (matchingRes) {
+                                State.markReservationAsNotified(matchingRes.id);
+                            }
+                            
+                            triggerReservationNotification("休憩開始");
+                        }
+                        // 最後に通知済みIDを保存（Worker更新IDによる重複防止）
+                        localStorage.setItem("lastNotifiedWorkerUpdate", currentUpdateId);
+                    }
+                    // ★★★ ここまで ★★★
+                }
+                
+                // 2. 自動帰宅の判定
+                else if (!(data.isWorking === 1 || data.isWorking === true)) {
+                    console.log(`[${source}] Workerによる自動帰宅を検知。通知を出します。`);
+                    triggerReservationNotification("帰宅");
+                    localStorage.setItem("lastNotifiedWorkerUpdate", currentUpdateId);
+                }
+            } else {
+                // 古い更新の場合は通知せず、既読扱いにする
+                localStorage.setItem("lastNotifiedWorkerUpdate", currentUpdateId);
+            }
+        }
+    }
+    // ■■■ ここまで ■■■
+
+    // 通常の同期ロジック
+    const dbIsWorking = data.isWorking === 1 || data.isWorking === true;
+    if (dbIsWorking) {
+        localStorage.setItem("isWorking", "1");
+        if (data.currentTask) localStorage.setItem("currentTask", data.currentTask);
+        if (dbStartTime) localStorage.setItem("startTime", dbStartTime);
+
+        // 工数（ゴール）情報の同期: 複数名への対応 (currentGoalId or goalId)
+        const gId = data.currentGoalId || data.goalId;
+        if (gId) localStorage.setItem("currentGoalId", gId);
+        else localStorage.removeItem("currentGoalId");
+
+        const gTitle = data.currentGoal || data.currentGoalTitle || data.goalTitle;
+        if (gTitle) localStorage.setItem("currentGoal", gTitle);
+        else localStorage.removeItem("currentGoal");
+    } else {
+        localStorage.removeItem("isWorking");
+        localStorage.removeItem("currentTask");
+        localStorage.removeItem("startTime");
+        localStorage.removeItem("currentGoal");
+        localStorage.removeItem("currentGoalId");
+        localStorage.removeItem("preBreakTask");
+        localStorage.removeItem("gyomu_timer_current_status");
+    }
+
+    if (data.preBreakTask) {
+        let preTask = data.preBreakTask;
+        if (typeof preTask === 'string') {
+            try { preTask = JSON.parse(preTask); } catch (e) { console.error(e); }
+        }
+        localStorage.setItem("preBreakTask", JSON.stringify(preTask));
+        import("./timerState.js").then(State => State.setPreBreakTask(preTask));
+    }
+
+    await restoreTimerState();
+}
+
+// ★追加: D1ステータスポーリングを開始する関数
+function startD1StatusPolling() {
+    if (!userId || d1StatusPollingInterval) return;
+
+    console.log("D1 status polling started.");
+    const poll = async () => {
+        // タブの状態に関わらず実行（予約通知のため）
+        console.log(`[D1 Polling] Checking status at ${new Date().toLocaleTimeString()}${document.hidden ? ' (Background)' : ''}`);
+        try {
+            const resp = await fetch(`${WORKER_URL}/get-user-status?userId=${encodeURIComponent(userId)}`);
+            if (resp.ok) {
+                const myData = await resp.json();
+                if (myData) {
+                    await syncStatus(myData, 'd1');
+                }
+            }
+        } catch (error) {
+            console.error("D1 polling error:", error);
+        }
+    };
+
+    poll();
+    d1StatusPollingInterval = setInterval(poll, 30000); // 30秒おき
+}
+
+function stopD1StatusPolling() {
+    if (d1StatusPollingInterval) {
+        clearInterval(d1StatusPollingInterval);
+        d1StatusPollingInterval = null;
+        console.log("D1 status polling stopped.");
+    }
+}
+
 // ★追加: 自分自身のステータスをリアルタイム監視する関数
 function listenForMyStatus() {
     if (!userId || myStatusUnsubscribe) return;
 
     // Firestoreの自分のドキュメントを監視
-    myStatusUnsubscribe = onSnapshot(doc(db, "work_status", userId), async (docSnap) => { // asyncにする
+    myStatusUnsubscribe = onSnapshot(doc(db, "work_status", userId), async (docSnap) => {
         if (docSnap.exists()) {
-            const data = docSnap.data();
-
-            // --- [DEBUG] データ受信確認 ---
-            console.group("🔥 Firestore Update Detected");
-            console.log("Raw Data:", data);
-            // -----------------------------
-
-            // ★追加判定：Workerによって更新されたばかりかどうか
-            const isWorkerUpdate = data.lastUpdatedBy === 'worker';
-            // 以前の状態（ローカル）と比較
-            const prevTask = localStorage.getItem("currentTask");
-            
-            // FirestoreのTimestamp型対策
-            let dbStartTime = data.startTime;
-            if (dbStartTime && typeof dbStartTime.toDate === 'function') {
-                dbStartTime = dbStartTime.toDate().toISOString();
-            }
-
-            // --- [DEBUG] 条件判定の確認 ---
-            console.log("🔍 Condition Check:", {
-                isWorkerUpdate: isWorkerUpdate,
-                currentTaskIsBreak: data.currentTask === '休憩',
-                prevTaskIsNotBreak: prevTask !== '休憩',
-                localPrevTask: prevTask
-            });
-            // -----------------------------
-
-            // ■■■ Worker対応追加ブロック ■■■
-            if (isWorkerUpdate && data.currentTask === '休憩' && prevTask !== '休憩') {
-                console.log("✅ Workerブロックに突入しました！"); // [DEBUG]
-                triggerReservationNotification("休憩開始");
-
-                console.log("Workerによる休憩開始を検知。ローカル状態を強制同期します（ログ保存はスキップ）。");
-                
-                // 1. LocalStorageを強制上書き
-                localStorage.setItem("isWorking", "1");
-                localStorage.setItem("currentTask", "休憩");
-                if (dbStartTime) localStorage.setItem("startTime", dbStartTime);
-
-                // ▼▼▼ 追加: 休憩に入ったので、ローカルに残っている工数情報を確実に消す！ ▼▼▼
-                localStorage.removeItem("currentGoalId");
-                localStorage.removeItem("currentGoal");
-                // ▲▲▲ 追加ここまで ▲▲▲
-                
-                // 2. 休憩前のタスク情報があれば保存
-                if (data.preBreakTask) {
-
-                    // ▼▼▼ 【追加】データが「文字列」のままなら、オブジェクトに変換する ▼▼▼
-                    if (typeof data.preBreakTask === 'string') {
-                        try {
-                            data.preBreakTask = JSON.parse(data.preBreakTask);
-                            console.log("⚠️ 文字列のpreBreakTaskをオブジェクトに変換しました");
-                        } catch (e) {
-                            console.error("❌ preBreakTaskのパースに失敗:", e);
-                        }
-                    }
-                    // ▲▲▲ 追加ここまで ▲▲▲
-
-                    const goalSelect = document.getElementById("goal-select");
-                    const currentGoalId = goalSelect ? goalSelect.value : null;
-                    
-                    // 修正: オブジェクトに対して goalId をセットするのでエラーになりません
-                    if (currentGoalId && (!data.preBreakTask.goalId || data.preBreakTask.goalId === "")) {
-                        data.preBreakTask.goalId = currentGoalId;
-                        console.log("🔄 画面の値を使って goalId を補完しました:", currentGoalId);
-                    }                    
-                    console.log("💾 preBreakTaskを保存します:", data.preBreakTask); // [DEBUG]
-
-                    // LocalStorageへ保存
-                    localStorage.setItem("preBreakTask", JSON.stringify(data.preBreakTask));
-                    
-                    // ステートへ保存（awaitを使って、完了を確実に待つ）
-                    const State = await import("./timerState.js");
-                    State.setPreBreakTask(data.preBreakTask);
-                } else {
-                    console.warn("⚠️ data.preBreakTask が存在しません！"); // [DEBUG]
-                }
-
-                // 3. UIと内部ステートだけ更新して終了
-                await restoreTimerState(); // ここも念の為 await しておくと安心
-                
-                console.log("🛑 Workerブロック処理完了。returnします。"); // [DEBUG]
-                console.groupEnd();
-                return; 
-            } else {
-                console.log("⏭️ Workerブロックをスキップしました（条件不一致）。"); // [DEBUG]
-            }
-            // ■■■ ここまで ■■■
-
-
-            const dbIsWorking = data.isWorking === 1 || data.isWorking === true;
-            console.log("Standard Logic Check - dbIsWorking:", dbIsWorking); // [DEBUG]
-
-            if (dbIsWorking) {
-                // DBが「稼働中（休憩含む）」の場合
-                localStorage.setItem("isWorking", "1");
-                
-                if (data.currentTask) {
-                    localStorage.setItem("currentTask", data.currentTask);
-                }
-                
-                if (dbStartTime) {
-                    localStorage.setItem("startTime", dbStartTime);
-                }
-
-                // 工数情報の同期
-                if (data.currentGoalId) {
-                    localStorage.setItem("currentGoalId", data.currentGoalId);
-                } else {
-                    localStorage.removeItem("currentGoalId");
-                }
-
-                const goalTitle = data.currentGoalTitle || data.currentGoal;
-                if (goalTitle) {
-                    localStorage.setItem("currentGoal", goalTitle);
-                } else {
-                    localStorage.removeItem("currentGoal");
-                }
-
-            } else {
-                console.log("⬇️ 業務終了（停止中）ルートに入りました"); // [DEBUG]
-
-                // ★追加: Workerによる自動停止（帰宅）だった場合に通知を出す
-if (isWorkerUpdate) {
-                    // 更新時刻をチェックして、古すぎる通知（ログイン時など）を防ぐ
-                    let lastUpdate = null;
-                    if (data.updatedAt) {
-                        // FirestoreのTimestamp型か、文字列(ISO)かを判定してDate化
-                        if (typeof data.updatedAt.toDate === 'function') {
-                            lastUpdate = data.updatedAt.toDate();
-                        } else {
-                            lastUpdate = new Date(data.updatedAt);
-                        }
-                    }
-
-                    // 現在時刻との差分（秒）を計算
-                    const now = new Date();
-                    const diffSeconds = lastUpdate ? (now - lastUpdate) / 1000 : 999999;
-
-                    // 「10分以内（600秒）」に行われた変更の場合のみ通知する
-                    // ※PCの時計ズレも考慮して少し余裕を持たせています
-                    if (diffSeconds < 600) {
-                        triggerReservationNotification("帰宅");
-                    }
-                }                
-                // DBが「停止中（帰宅済）」の場合
-                localStorage.removeItem("isWorking");
-                localStorage.removeItem("currentTask");
-                localStorage.removeItem("startTime");
-                localStorage.removeItem("currentGoal");
-                localStorage.removeItem("currentGoalId");
-                localStorage.removeItem("preBreakTask");
-                localStorage.removeItem("gyomu_timer_current_status");
-            }
-
-            // 念のため、休憩前タスクがあれば必ず保存しておく
-            if (data.preBreakTask) {
-
-                // ▼▼▼ 追加: goalId チェックと補完ロジック ▼▼▼
-                    if (!data.preBreakTask.goalId && data.preBreakTask.goalTitle) {
-                        console.warn("⚠️ goalId が欠落しています。goalTitle から復旧を試みます:", data.preBreakTask.goalTitle);
-                        
-                        // 現在の画面にあるゴールプルダウンの選択肢から、同じタイトルの ID を探す
-                        // (※プルダウンの ID が "#goal-select" だと仮定した場合の例です。適宜IDを合わせてください)
-                        const goalSelect = document.getElementById("goal-select"); // ← ここのIDを確認してください
-                        if (goalSelect) {
-                            const matchingOption = Array.from(goalSelect.options).find(opt => opt.text.trim() === data.preBreakTask.goalTitle.trim());
-                            if (matchingOption) {
-                                data.preBreakTask.goalId = matchingOption.value;
-                                console.log("✅ goalId を復元しました:", data.preBreakTask.goalId);
-                            } else {
-                                console.error("❌ 一致するゴールが見つかりませんでした。");
-                            }
-                        }
-                    }
-                    // ▲▲▲ 追加ここまで ▲▲▲
-                
-                localStorage.setItem("preBreakTask", JSON.stringify(data.preBreakTask));
-                import("./timerState.js").then(State => State.setPreBreakTask(data.preBreakTask));
-            }
-
-            await restoreTimerState();
-            console.groupEnd();
-            console.log("🛑 Workerブロック処理完了。returnします。"); // [DEBUG]
-            return;
-
+            await syncStatus(docSnap.data(), 'firestore');
         } 
     }, (error) => {
         console.error("Error listening to my status:", error);
@@ -322,10 +334,13 @@ function stopListeningForMyStatus() {
  * イベントリスナーの設定
  */
 export function setupClientEventListeners() {
-    console.log("Setting up Client View event listeners...");
+    if (areClientEventListenersSetup) {
+        return; // リスナーが既にセットアップされていれば何もしない
+    }
+    console.log("Setting up Client View event listeners for the first time...");
 
     // Timer control buttons
-if (startBtn) startBtn.onclick = handleStartClick;
+    if (startBtn) startBtn.onclick = handleStartClick;
 if (stopBtn) stopBtn.onclick = () => handleStopClick(false);
 if (breakBtn) breakBtn.onclick = () => handleBreakClick(false);
     
@@ -365,6 +380,10 @@ if (breakBtn) breakBtn.onclick = () => handleBreakClick(false);
     breakReservationSaveBtn?.addEventListener("click", handleSaveBreakReservation);
     setStopReservationBtn?.addEventListener("click", handleSetStopReservation);
     cancelStopReservationBtn?.addEventListener("click", handleCancelStopReservation);
+    document.getElementById('test-notification-btn').addEventListener('click', () => {
+        triggerReservationNotification("テスト通知 (5秒後に届きます)");
+        alert("通知テストを開始しました。5秒以内にブラウザを最小化するか他のタブを開いて、通知が届くか確認してください。");
+    });
 
     // --- Navigation and Other Buttons ---
     backButton?.addEventListener("click", () => showView(VIEWS.MODE_SELECTION));
@@ -416,12 +435,15 @@ if (breakBtn) breakBtn.onclick = () => handleBreakClick(false);
         if (!isClientViewActive) return;
 
         if (document.hidden) {
+            // Firestoreは非アクティブ時に停止して節約する
             stopListeningForMyStatus();
         } else {
+            // アクティブになったら即座に同期
             listenForMyStatus();
         }
     });
 
+    areClientEventListenersSetup = true; // ★フラグを立てる
     console.log("Client View event listeners set up complete.");
 }
 
@@ -432,7 +454,6 @@ function listenForTomuraStatus() {
         clearInterval(tomuraStatusInterval);
     }
 
-    const WORKER_URL = "https://muddy-night-4bd4.sora-yamashita.workers.dev";
     const todayStr = new Date().toISOString().split("T")[0];
 
     const fetchStatus = async () => {

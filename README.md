@@ -56,15 +56,18 @@
 
 ```text
 ├── index.html              # アプリケーションのメインHTML
+├── 512.pngs32.png          # アプリアイコン画像
 ├── css/
 │   └── style.css           # アプリケーション全体のカスタムスタイル
 ├── js/
 │   ├── main.js             # アプリケーションのエントリーポイント、ビューの切り替え管理
+│   ├── domInjector.js      # HTMLテンプレートをDOMに注入・初期化する処理
 │   ├── firebase.js         # Firebase初期化 (Firestore, Auth, Offline Persistence)
 │   ├── okta.js             # Okta認証ロジック (サインインウィジェット設定)
 │   ├── fcm.js              # Firebase Cloud Messaging (プッシュ通知) の設定とトークン管理
 │   ├── utils.js            # 日付フォーマットや共通計算処理などのユーティリティ関数
 │   ├── excelExport.js      # SheetJSを用いた業務ログのExcelエクスポート機能
+│   ├── config.js           # JSモジュール用の設定読み込み
 │   ├── components/         # 再利用可能なUIコンポーネント
 │   │   ├── calendar.js     # カレンダー描画ロジック
 │   │   ├── chart.js        # Chart.jsを用いたグラフ描画ラッパー
@@ -74,17 +77,40 @@
 │   │       ├── core.js         # モーダルの開閉・生成のコアロジック
 │   │       ├── utils.js        # モーダル内のフォーム生成などのヘルパー
 │   │       ├── taskGoal.js     # タスク・工数設定用モーダルの中身
-│   │       └── adminAction.js  # 管理者アクション（削除確認等）用モーダル
+│   │       ├── adminAction.js  # 管理者アクション（削除確認等）用モーダル
+│   │       └── templates/      # 各モーダルのHTML構造テンプレート
+│   │           ├── addUserModalTemplate.js          # ユーザー追加モーダル
+│   │           ├── adminPasswordViewTemplate.js     # 管理者パスワード入力
+│   │           ├── breakReservationModalTemplate.js # 休憩予約設定
+│   │           ├── confirmationModalTemplate.js     # 確認ダイアログ
+│   │           ├── editContributionModalTemplate.js # 工数編集
+│   │           ├── editLogModalTemplate.js          # ログ編集
+│   │           ├── editMemoModalTemplate.js         # メモ編集
+│   │           ├── exportExcelModalTemplate.js      # Excel出力設定
+│   │           ├── fixCheckoutModalTemplate.js      # 退勤忘れ修正
+│   │           ├── goalDetailsModalTemplate.js      # 目標詳細表示
+│   │           ├── goalModalTemplate.js             # 目標設定
+│   │           └── helpModalTemplate.js             # ヘルプ表示
 │   └── views/              # 各画面（ビュー）ごとのビジネスロジック
-│       ├── modeSelection.js  # ログイン後のモード選択（従業員/管理者/進捗/個人詳細）画面
-│       ├── taskSettings.js   # 業務タスク・工数設定の管理画面
-│       ├── report.js         # 業務レポート（円グラフ・日次集計）画面
-│       ├── archive.js        # 完了済み工数のアーカイブ閲覧画面
-│       ├── profileSetup.js   # 初回ログイン時のプロフィール登録画面
-│       ├── client/           # 従業員（クライアント）ビュー関連
+│       ├── modeSelection.js # ログイン後のモード選択（従業員/管理者/進捗/個人詳細）画面
+│       ├── taskSettings.js  # 業務タスク・工数設定の管理画面
+│       ├── report.js        # 業務レポート（円グラフ・日次集計）画面
+│       ├── archive.js       # 完了済み工数のアーカイブ閲覧画面
+│       ├── profileSetup.js  # 初回ログイン時のプロフィール登録画面
+│       ├── templates/       # 各ビューのHTML構造テンプレート
+│       │   ├── approvalViewTemplate.js       # 承認画面テンプレート
+│       │   ├── archiveViewTemplate.js        # アーカイブ画面テンプレート
+│       │   ├── clientViewTemplate.js         # クライアント画面テンプレート
+│       │   ├── hostViewTemplate.js           # ホスト画面テンプレート
+│       │   ├── modeSelectionTemplate.js      # モード選択画面テンプレート
+│       │   ├── personalDetailViewTemplate.js # 個人詳細画面テンプレート
+│       │   ├── progressViewTemplate.js       # 進捗画面テンプレート
+│       │   ├── reportViewTemplate.js         # レポート画面テンプレート
+│       │   └── taskSettingsTemplate.js       # タスク設定画面テンプレート
+│       ├── client/          # 従業員（クライアント）ビュー関連
 │       │   ├── client.js       # 従業員ビューの初期化とイベントリスナー設定
 │       │   ├── clientUI.js     # 従業員画面のDOM操作・表示更新
-│       │   ├── clientActions.js# 退勤時間修正やメッセージ確認などのユーザーアクション
+│       │   ├── clientActions.js # 退勤時間修正やメッセージ確認などのユーザーアクション
 │       │   ├── timer.js        # タイマー機能の操作インターフェース
 │       │   ├── timerLogic.js   # タイマーの計測・Firestoreへの保存ロジック
 │       │   ├── timerState.js   # タイマーの状態（開始・休憩・停止）管理
@@ -94,19 +120,19 @@
 │       │   ├── goalProgress.js # 現在の工数（目標）進捗の表示ロジック
 │       │   ├── colleagues.js   # 同じ業務をしている同僚の表示ロジック
 │       │   └── statusUI.js     # タイマー状態に応じたUI切り替えヘルパー
-│       ├── host/             # 管理者（ホスト）ビュー関連
+│       ├── host/            # 管理者（ホスト）ビュー関連
 │       │   ├── host.js         # 管理者ダッシュボードのメインロジック
 │       │   ├── approval.js     # 従業員からの修正申請の承認・却下機能
-│       │   ├── statusDisplay.js# リアルタイム稼働状況（Worker API経由）の表示
+│       │   ├── statusDisplay.js # リアルタイム稼働状況（Worker API経由）の表示
 │       │   └── userManagement.js # ユーザー管理（一覧表示・編集・削除）
-│       ├── personalDetail/   # 個人詳細（カレンダー・ログ編集）ビュー関連
+│       ├── personalDetail/  # 個人詳細（カレンダー・ログ編集）ビュー関連
 │       │   ├── personalDetail.js # ビューの初期化とカレンダー制御
 │       │   ├── logData.js      # Firestoreからのログ取得・整形
 │       │   ├── logDisplay.js   # 日別詳細ログのリスト表示
 │       │   ├── logEditor.js    # ログの時間修正・メモ編集ロジック
 │       │   ├── requestModal.js # 修正申請送信用のモーダル制御
 │       │   └── adminActions.js # 管理者によるログ削除・強制操作機能
-│       └── progress/         # 業務進捗（ガントチャート・分析）ビュー関連
+│       └── progress/        # 業務進捗（ガントチャート・分析）ビュー関連
 │           ├── progress.js     # 進捗ビューのメインロジック
 │           ├── progressUI.js   # 進捗テーブル・グラフの描画
 │           ├── progressData.js # 進捗データの集計・計算処理
@@ -115,11 +141,18 @@
 │   ├── src/
 │   │   └── index.js        # Workerのメインロジック（予約実行、ステータスAPI、Cron）
 │   └── wrangler.toml       # Cloudflare Workersの設定ファイル（KV, Cron等）
+├── verification/           # 動作検証・テスト用スクリプト
+│   ├── verification.html   # 検証用HTMLインターフェース
+│   ├── verification.png    # 検証用画像リソース
+│   ├── verify_break_reservation_delete.html # 休憩予約削除の検証HTML
+│   ├── verify_break_reservation_delete.py   # 休憩予約削除の検証Pythonスクリプト
+│   └── verify_display_settings.py           # 表示設定の検証Pythonスクリプト
 ├── .github/workflows/
 │   └── ci.yml              # GitHub Actions (CI) 設定ファイル（ESLint実行）
 ├── generate-config.js      # 環境変数から config.js を生成するスクリプト
-├── firebase-messaging-sw.js# Firebase Cloud Messaging用 Service Worker
+├── firebase-messaging-sw.js # Firebase Cloud Messaging用 Service Worker
 ├── eslint.config.js        # ESLint（静的解析）の設定ファイル
+├── wrangler.toml           # Cloudflare Pages等のルート設定ファイル
 └── config.js               # アプリケーション設定（Firebase, Okta等のキー情報）
 ```
 

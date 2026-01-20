@@ -3,6 +3,7 @@
 // 定数
 export const LOCAL_STATUS_KEY = "gyomu_timer_current_status";
 export const WORKER_URL = "https://muddy-night-4bd4.sora-yamashita.workers.dev";
+const notifiedReservationIds = new Set();
 
 // 状態変数（モジュールスコープ）
 let state = {
@@ -46,6 +47,18 @@ export const setActiveReservations = (v) => { state.activeReservations = v; };
 export const setLastBreakNotificationTime = (v) => { state.lastBreakNotificationTime = v; };
 export const setLastEncouragementTime = (v) => { state.lastEncouragementTime = v; };
 
+export function isReservationNotified(id) {
+    return notifiedReservationIds.has(id);
+}
+
+export function markReservationAsNotified(id) {
+    notifiedReservationIds.add(id);
+    // 5分後にフラグをクリア（次回や翌日の同じ予約IDのために念のため）
+    setTimeout(() => {
+        notifiedReservationIds.delete(id);
+    }, 5 * 60 * 1000);
+}
+
 // まとめてリセットするヘルパー
 export function resetStateVariables() {
     state.currentTask = null;
@@ -58,3 +71,4 @@ export function resetStateVariables() {
     state.lastEncouragementTime = 0;
     // timerIntervalとmidnightStopTimerは別途クリアが必要
 }
+

@@ -20,48 +20,27 @@ export function showHelpModal(pageKey) {
 
 const helpContents = {
     client: {
-title: "従業員画面（業務記録）ヘルプ",
+        title: "従業員画面（業務記録）ヘルプ",
         content: `
-            <p class="font-semibold mb-2 text-gray-800">日々の業務記録と進捗管理を行う画面です。</p>
-            <div class="space-y-4 text-sm text-gray-600">
-                <div>
-                    <strong class="text-gray-700 block border-b pb-1 mb-1">📝 基本操作（記録）</strong>
-                    <ul class="list-disc list-inside pl-2 space-y-1">
-                        <li><strong>業務開始・変更:</strong> リストから業務を選び<span class="text-blue-600 font-bold">「業務変更」</span>を押すと計測が始まります。</li>
-                        <li><strong>休憩・再開:</strong> 離席時は「休憩」、戻ったら「再開」を押してください。</li>
-                        <li><strong>帰宅:</strong> 業務終了時は「帰宅」を押してタイマーを停止します。</li>
-                        <li><strong>メモ:</strong> 実行中の業務に対して、備忘録などのメモを残せます。</li>
-                    </ul>
-                </div>
-
-                <div>
-                    <strong class="text-gray-700 block border-b pb-1 mb-1">⏱️ 便利機能</strong>
-                    <ul class="list-disc list-inside pl-2 space-y-1">
-                        <li><strong>予約機能:</strong> 「13:00に休憩」など時間を指定してボタンを押すと、その時刻に自動で状態が切り替わります。</li>
-                        <li><strong>ミニ表示 (PiP):</strong> <span class="font-bold">「ミニ表示」</span>ボタンを押すと、常に最前面に小さなタイマー画面が表示されます。</li>
-                        <li><strong>同僚表示:</strong> 自分と同じ業務（または同じ工数目標）に取り組んでいるメンバーが表示されます。</li>
-                    </ul>
-                </div>
-
-                <div>
-                    <strong class="text-gray-700 block border-b pb-1 mb-1">🎯 工数・目標管理</strong>
-                    <p class="mb-1">業務に「目標（件数など）」が設定されている場合、進捗バーが表示されます。</p>
-                    <ul class="list-disc list-inside pl-2 space-y-1">
-                        <li>作業が進んだら数値を入力し、進捗を更新してください。</li>
-                        <li>完了時は、進捗管理画面からステータスを「完了」にできます。</li>
-                    </ul>
-                </div>
-
-                <div>
-                    <strong class="text-gray-700 block border-b pb-1 mb-1">📩 通知・履歴・修正</strong>
-                    <ul class="list-disc list-inside pl-2 space-y-1">
-                        <li><strong>メッセージ:</strong> 管理者からのメッセージを受信します。「メッセージ履歴」ボタンから過去の内容を確認できます。</li>
-                        <li><strong>修正申請:</strong> 「履歴」タブから過去のログを確認できます。時間の訂正や書き忘れの追加は、ここから申請してください。</li>
-                    </ul>
-                </div>
-            </div>`
+            <div class="w-full h-[65vh] bg-white rounded border border-gray-200 overflow-hidden">
+                <iframe 
+                    src="https://docs.google.com/document/d/e/2PACX-1vTLexuUJP55J8FKQG8s4rjxLS1r7rJcKgnIPapyYN4t8kKnYqArMnCA-ymkWaX_Wqf7pR8vkjmbzz_Q/pub?embedded=true" 
+                    class="w-full h-full block" 
+                    frameborder="0">
+                </iframe>
+            </div>
+            
+            <div class="mt-2 text-right">
+                <a href="https://docs.google.com/document/d/e/2PACX-1vTLexuUJP55J8FKQG8s4rjxLS1r7rJcKgnIPapyYN4t8kKnYqArMnCA-ymkWaX_Wqf7pR8vkjmbzz_Q/pub" 
+                   target="_blank" 
+                   rel="noopener noreferrer" 
+                   class="text-xs text-blue-600 hover:underline">
+                   別ウィンドウで拡大表示する ↗
+                </a>
+            </div>
+        `
     },
-    host: {
+        host: {
 title: "管理者画面（モニタリング）ヘルプ",
         content: `
             <p class="font-semibold mb-2 text-gray-800">チーム全体の稼働状況をリアルタイムで把握・管理するダッシュボードです。</p>

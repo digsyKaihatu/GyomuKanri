@@ -8,15 +8,21 @@ import { openExportExcelModal } from "../../excelExport.js";
 
 import { startListeningForStatusUpdates, stopListeningForStatusUpdates, forceStopUser } from "./statusDisplay.js";
 import { startListeningForUsers, stopListeningForUsers, handleUserDetailClick, handleDeleteAllLogs } from "./userManagement.js";
+import { WORKER_URL } from "../client/timerState.js";
 
-const backButton = document.getElementById("back-to-selection-host");
-const exportExcelButton = document.getElementById("export-excel-btn");
-const viewProgressButton = document.getElementById("view-progress-btn");
-const viewReportButton = document.getElementById("view-report-btn");
-const deleteAllLogsButton = document.getElementById("delete-all-logs-btn");
-const userListContainer = document.getElementById("summary-list"); 
-const helpButton = document.querySelector('#host-view .help-btn');
-const tomuraStatusRadios = document.querySelectorAll('input[name="tomura-status"]');
+// DOM要素 (遅延初期化)
+let backButton, exportExcelButton, viewProgressButton, viewReportButton, deleteAllLogsButton, userListContainer, helpButton, tomuraStatusRadios;
+
+function initializeDOMElements() {
+    backButton = document.getElementById("back-to-selection-host");
+    exportExcelButton = document.getElementById("export-excel-btn");
+    viewProgressButton = document.getElementById("view-progress-btn");
+    viewReportButton = document.getElementById("view-report-btn");
+    deleteAllLogsButton = document.getElementById("delete-all-logs-btn");
+    userListContainer = document.getElementById("summary-list");
+    helpButton = document.querySelector('#host-view .help-btn');
+    tomuraStatusRadios = document.querySelectorAll('input[name="tomura-status"]');
+}
 
 // --- 既存機能: 戸村さんステータスUI ---
 function injectTomuraLocationUI() {
@@ -115,6 +121,7 @@ function stopListeningForApprovals() {
 
 export function initializeHostView() {
     console.log("Initializing Host View...");
+    initializeDOMElements();
     
     injectTomuraLocationUI();
     injectApprovalButton();
@@ -124,6 +131,7 @@ export function initializeHostView() {
     startListeningForUsers();      
     listenForTomuraStatus();
     startListeningForApprovals();
+    setupHostEventListeners();
 }
 
 export function cleanupHostView() {
@@ -131,6 +139,9 @@ export function cleanupHostView() {
     stopListeningForStatusUpdates(); 
     stopListeningForUsers();      
     stopListeningForApprovals();
+    // It's good practice to also remove event listeners, but since they are added to elements
+    // that are part of the view and will be hidden/inactive, it's not strictly necessary
+    // unless you see memory leak issues. For now, we'll keep it simple.
 }
 
 export function setupHostEventListeners() {
@@ -159,8 +170,6 @@ tomuraStatusRadios.forEach((radio) => {
 
 // handleTomuraStatusChange と handleTomuraLocationChange を以下のように統合・修正
 async function updateTomuraStatusOnD1(newData) {
-    const WORKER_URL = "https://muddy-night-4bd4.sora-yamashita.workers.dev";
-    
     // 現在のデータを一度取得するか、UIの状態から構築して送信
     try {
         await fetch(`${WORKER_URL}/update-tomura-status`, {
@@ -201,9 +210,6 @@ function updateUI(data) {
 let tomuraPollingInterval = null;
 let lastTomuraDataCache = null;
 
-// WorkerのURLを定数化
-const TOMURA_WORKER_URL = "https://muddy-night-4bd4.sora-yamashita.workers.dev";
-
 // ★修正: 読み込み処理を独立させ、強制取得オプションを追加
 async function fetchTomuraStatus(force = false) {
     // タブが非アクティブ、かつ強制取得フラグがなければ処理を中断
@@ -212,7 +218,7 @@ async function fetchTomuraStatus(force = false) {
     }
 
     try {
-        const resp = await fetch(`${TOMURA_WORKER_URL}/get-tomura-status`);
+        const resp = await fetch(`${WORKER_URL}/get-tomura-status`);
         if (resp.ok) {
             const data = await resp.json();
             const dataStr = JSON.stringify(data);
@@ -243,9 +249,9 @@ document.addEventListener("visibilitychange", () => {
     if (!isHostViewActive) return;
 
     if (document.hidden) {
-        // 非アクティブになったら、リアルタイム系のリスナーを停止
+        // 非アクティブになったら、一部のリアルタイム系リスナーを停止
         stopListeningForUsers();
-        stopListeningForApprovals();
+        // ★修正: 承認通知はバックグラウンドでも受け取りたいため、stopListeningForApprovals() は呼ばない
     } else {
         // アクティブになったら、ポーリングとリアルタイムリスナーを再開
         fetchTomuraStatus(); // ★修正: listenの再呼び出しではなく、単発のfetchに
@@ -427,7 +433,7 @@ async function executeSendMessage(targetIds, title, bodyContent) {
         });
         await Promise.all(writePromises);
 
-        const WORKER_URL = "https://muddy-night-4bd4.sora-yamashita.workers.dev/send-message"; 
+        const sendMessageUrl = `${WORKER_URL}/send-message`;
         
         let errorReport = [];
         let successTotal = 0;
@@ -436,7 +442,7 @@ async function executeSendMessage(targetIds, title, bodyContent) {
             try {
                 console.log(`--- [送信中] UID: ${uid} ---`);
 
-                const response = await fetch(WORKER_URL, {
+                const response = await fetch(sendMessageUrl, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({

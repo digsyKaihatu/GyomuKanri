@@ -174,7 +174,6 @@ async function handleOktaLoginSuccess() {
         if (appContainer) appContainer.classList.remove('hidden');
 
         if (onLoginSuccessCallback) {
-            console.log("Executing post-login callback...");
             onLoginSuccessCallback();
         }
 

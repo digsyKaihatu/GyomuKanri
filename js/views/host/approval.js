@@ -8,7 +8,6 @@ let unsubscribe = null;
 const handleBackClick = () => showView(VIEWS.HOST);
 
 export function initializeApprovalView() {
-    console.log("Initializing Approval View...");
     const container = document.getElementById(VIEWS.APPROVAL);
     if (!container) return; 
 

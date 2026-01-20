@@ -101,5 +101,4 @@ export function renderUnifiedCalendar(config) {
         }
     });
 
-    console.log(`Calendar rendered for ${year}-${month + 1}`);
 }

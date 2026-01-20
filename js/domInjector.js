@@ -60,7 +60,6 @@ export function injectAllTemplates() {
     // Join all template strings and insert them at the end of the container,
     // without overwriting existing content.
     appContainer.insertAdjacentHTML('beforeend', allTemplates.join(''));
-    console.log(`${allTemplates.length} templates have been injected into the DOM.`);
     // Add a signal attribute to the body to indicate that the injection is complete.
     document.body.dataset.templatesInjected = 'true';
 }

@@ -24,7 +24,7 @@ const helpContents = {
         content: `
             <div class="w-full h-[65vh] bg-white rounded border border-gray-200 overflow-hidden">
                 <iframe 
-                    src="https://docs.google.com/document/d/e/2PACX-1vTLexuUJP55J8FKQG8s4rjxLS1r7rJcKgnIPapyYN4t8kKnYqArMnCA-ymkWaX_Wqf7pR8vkjmbzz_Q/pub?embedded=true" 
+                    src="https://docs.google.com/document/d/e/2PACX-1vTLexuUJP55J8FKQG8s4rjxLS1r7rJcKgnIPapyYN4t8kKnYqArMnCA-ymkWaX_Wqf7pR8vkjmbzz_Q/pub?embedded=true&t=${Date.now()}" 
                     class="w-full h-full block" 
                     frameborder="0">
                 </iframe>

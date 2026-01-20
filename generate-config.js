@@ -1,11 +1,5 @@
 const fs = require('fs');
 
-// --- 診断用ログ出力 ---
-console.log("--- [DEBUG] Environment Variable Check ---");
-console.log("FIREBASE_API_KEY exists:", !!process.env.FIREBASE_API_KEY);
-console.log("VAPID_KEY exists:", !!process.env.VAPID_KEY); // ★追加: 確認用ログ
-console.log("------------------------------------------");
-
 // ★修正: fcmConfig を追加
 const configContent = `
 export const firebaseConfig = {
@@ -38,4 +32,3 @@ if (!fs.existsSync('./js')) {
 }
 
 fs.writeFileSync('./js/config.js', configContent);
-console.log('js/config.js generated successfully.');

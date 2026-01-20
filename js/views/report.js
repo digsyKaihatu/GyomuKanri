@@ -27,7 +27,6 @@ function initializeDOMElements() {
 // --- 初期化・クリーンアップ関数 ---
 
 export async function initializeReportView() {
-    console.log("Initializing Report View...");
     initializeDOMElements();
     currentReportDate = new Date();
     selectedReportDateStr = null;
@@ -37,7 +36,6 @@ export async function initializeReportView() {
 }
 
 export function cleanupReportView() {
-    console.log("Cleaning up Report View...");
     // Remove event listeners to prevent memory leaks
     reportPrevMonthBtn?.removeEventListener("click", handlePrevMonthClick);
     reportNextMonthBtn?.removeEventListener("click", handleNextMonthClick);
@@ -63,7 +61,6 @@ export function setupReportEventListeners() {
 
 async function fetchAndRenderForCurrentMonth() {
     const { start, end } = getMonthDateRange(currentReportDate);
-    console.log(`Fetching report logs for ${start} to ${end}`);
 
     if(reportTitleEl) reportTitleEl.textContent = "データを読み込み中...";
 

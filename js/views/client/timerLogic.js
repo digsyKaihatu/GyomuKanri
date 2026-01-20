@@ -302,8 +302,9 @@ export function startTimerLoop() {
                 // 1. 予定時間を過ぎている (diffMillis >= 0)
                 // 2. 過ぎてから1分以内である (diffMillis < 60000) -> 古い予約の暴発防止
                 // 3. まだこの予約IDは通知していない (!State.isReservationNotified)
-                if (diffMillis >= 0 && diffMillis < 60000 && !State.isReservationNotified(res.id)) {
-                    
+
+                // 【修正後】上限(60000)を撤廃し、予約状態なら必ず通知するように変更
+                if (diffMillis >= 0 && !State.isReservationNotified(res.id)) {
                     // 最初にフラグを立てて重複を防ぐ
                     State.markReservationAsNotified(res.id);
                     

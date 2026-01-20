@@ -30,7 +30,6 @@ export function updateStatusesCache(newStatuses) {
  * ユーザーリストの監視を開始する
  */
 export function startListeningForUsers() {
-    console.log("【UserMng】① ユーザー監視機能を開始します");
 
     const userListContainer = document.getElementById("summary-list");
     
@@ -42,27 +41,22 @@ export function startListeningForUsers() {
     userListContainer.innerHTML = '<p class="text-center text-gray-500 py-4">ユーザー情報を読み込み中... (データ取得待ち)</p>';
 
     // コレクション参照の作成
-    console.log("【UserMng】② DB接続(user_profiles)を試みます...");
     const q = collection(db, "user_profiles");
     
     // データ監視の登録
     userListUnsubscribe = onSnapshot(q, (snapshot) => {
         // ★ここが表示されない場合、DBからデータが返ってきていません
-        console.log(`【UserMng】③ データ受信成功！ ドキュメント数: ${snapshot.size}`);
 
         if (snapshot.empty) {
             console.warn("【UserMng】データが0件です。DBの user_profiles コレクションは空ではありませんか？");
         }
 
         const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        console.log("【UserMng】④ 取得データ中身:", users);
 
         // 描画関数の呼び出し
         try {
             renderUserList(users, userListContainer);
-            console.log("【UserMng】⑤ 描画処理(renderUserList)が完了しました");
         } catch (e) {
-            console.error("【UserMng】描画エラー: renderUserList内でエラーが発生しました", e);
         }
 
     }, (error) => {
@@ -76,7 +70,6 @@ export function startListeningForUsers() {
  */
 export function stopListeningForUsers() {
     if (userListUnsubscribe) {
-        console.log("Stopping user list listener...");
         userListUnsubscribe();
         userListUnsubscribe = null;
     }
@@ -92,7 +85,6 @@ export function handleUserDetailClick(target) {
         const userId = trigger.dataset.id;
         const userName = trigger.dataset.name;
         if (userId) {
-            console.log(`Navigating to details for ${userName} (${userId})`);
             showView(VIEWS.PERSONAL_DETAIL, { userId: userId, userName: userName });
         }
     }
@@ -124,7 +116,6 @@ export async function handleAddNewUser() {
         });
 
         input.value = "";
-        console.log(`User ${name} added.`);
         
         const modal = document.getElementById("add-user-modal");
         if(modal) closeModal(modal);
@@ -146,7 +137,6 @@ export async function handleDeleteAllLogs() {
         async () => {
             hideConfirmationModal();
             try {
-                console.log("Deleting all work logs...");
                 const q = query(collection(db, "work_logs"));
                 const snapshot = await getDocs(q);
 
@@ -258,7 +248,6 @@ function renderUserList(users, container) {
             const newRole = e.target.value;
             try {
                 await updateDoc(doc(db, "user_profiles", userId), { role: newRole });
-                console.log(`Role updated for ${userId} to ${newRole}`);
             } catch (err) {
                 console.error("Error updating role:", err);
                 alert("権限の更新に失敗しました。");

@@ -18,26 +18,26 @@ export function showHelpModal(pageKey) {
     const contentEl = document.getElementById("help-modal-content");
     if (!helpModal || !titleEl || !contentEl) return;
 
-const [iframeKey, setIframeKey] = useState(0);
-    const reloadDoc = () => {
-  setIframeKey(k => k + 1)
-}
-
+// 【修正1】useStateは削除し、単なる変数としてタイムスタンプを生成
+    // これによりURLが毎回変わり、強制的に最新の内容が読み込まれます
+    const timestamp = new Date().getTime();
+    const docBaseUrl = "https://docs.google.com/document/d/e/2PACX-1vTLexuUJP55J8FKQG8s4rjxLS1r7rJcKgnIPapyYN4t8kKnYqArMnCA-ymkWaX_Wqf7pR8vkjmbzz_Q/pub";
+    
 const helpContents = {
-    client: {
-        title: "従業員画面（業務記録）ヘルプ",
-        content: `
+client: {
+            title: "従業員画面（業務記録）ヘルプ",
+            // 【修正2】key={iframeKey} を削除し、URLにタイムスタンプを埋め込む
+            content: `
             <div class="w-full h-[65vh] bg-white rounded border border-gray-200 overflow-hidden">
                 <iframe 
-                key={iframeKey}
-                    src="https://docs.google.com/document/d/e/2PACX-1vTLexuUJP55J8FKQG8s4rjxLS1r7rJcKgnIPapyYN4t8kKnYqArMnCA-ymkWaX_Wqf7pR8vkjmbzz_Q/pub?embedded=true" 
+                    src="${docBaseUrl}?embedded=true&t=${timestamp}" 
                     class="w-full h-full block" 
                     frameborder="0">
                 </iframe>
             </div>
             
             <div class="mt-2 text-right">
-                <a href="https://docs.google.com/document/d/e/2PACX-1vTLexuUJP55J8FKQG8s4rjxLS1r7rJcKgnIPapyYN4t8kKnYqArMnCA-ymkWaX_Wqf7pR8vkjmbzz_Q/pub" 
+                <a href="${docBaseUrl}" 
                    target="_blank" 
                    rel="noopener noreferrer" 
                    class="text-xs text-blue-600 hover:underline">
@@ -45,7 +45,8 @@ const helpContents = {
                 </a>
             </div>
         `
-    },
+        },
+    
         host: {
 title: "管理者画面（モニタリング）ヘルプ",
         content: `

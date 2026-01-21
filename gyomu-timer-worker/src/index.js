@@ -38,7 +38,7 @@ export default {
       }
 
       // --- エンドポイント2: 特定ユーザーのステータスを詳細取得 ---
-      if (url.pathname === "/get-user-status" || url.pathname === "/get-my-status") {
+      if (url.pathname === "/get-user-status" || url.pathname === "/get-my-status" || url.pathname === "/get-status") {
         const userId = url.searchParams.get("userId");
         const result = await env.DB.prepare("SELECT * FROM work_status WHERE userId = ?")
           .bind(userId).first();

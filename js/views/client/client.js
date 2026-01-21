@@ -77,6 +77,9 @@ let areClientEventListenersSetup = false; // ★リスナー重複登録防止�
 /**
  * クライアント画面を離れる際、または初期化前のクリーンアップ処理
  */
+
+let pollingWorker; // 変数定義を変更
+
 export function cleanupClientView() {
     
     // 1. 【修正】戸村さんのステータス監視（タイマー）を止める
@@ -283,26 +286,43 @@ if (Math.abs(diffSeconds) < 600) { // 10分以内の更新のみ通知
 }
 
 // ★追加: D1ステータスポーリングを開始する関数
-function startD1StatusPolling() {
-    if (!userId || d1StatusPollingInterval) return;
 
-    const poll = async () => {
-        // タブの状態に関わらず実行（予約通知のため）
-        try {
-            const resp = await fetch(`${WORKER_URL}/get-user-status?userId=${encodeURIComponent(userId)}`);
-            if (resp.ok) {
-                const myData = await resp.json();
-                if (myData) {
-                    await syncStatus(myData, 'd1');
-                }
-            }
-        } catch (error) {
-            console.error("D1 polling error:", error);
+// ★重要: これがないと動きません。startD1StatusPolling の上あたりに追加してください
+const poll = async () => {
+    if (!userId) return;
+    try {
+        // userIdを使ってD1(Worker)から最新ステータスを取得
+        const resp = await fetch(`${WORKER_URL}/get-status?userId=${userId}`);
+        if (resp.ok) {
+            const data = await resp.json();
+            // 取得したデータで同期を実行
+            await syncStatus(data, 'd1');
         }
-    };
+    } catch (e) {
+        console.error("Polling error:", e);
+    }
+};
 
-    poll();
-    d1StatusPollingInterval = setInterval(poll, 30000); // 30秒おき
+export function startD1StatusPolling() {
+    // 既存のsetIntervalがあれば消す（念のため）
+    if (typeof d1StatusPollingInterval !== 'undefined') clearInterval(d1StatusPollingInterval);
+
+    // Workerがまだなければ作成
+    if (!pollingWorker) {
+        pollingWorker = new Worker('js/pollingWorker.js');
+        
+        // Workerから「時間だよ」と連絡が来たら poll() を実行
+        pollingWorker.onmessage = function(e) {
+            if (e.data === 'tick') {
+                poll();
+            }
+        };
+
+        // Workerを開始
+        pollingWorker.postMessage('start');
+    }
+
+    poll(); // 初回即時実行
 }
 
 function stopD1StatusPolling() {

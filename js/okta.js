@@ -3,7 +3,7 @@
 // ★修正: インポート名を fetchDisplayPreferences に変更
 import { db, setUserId, setUserName, setAuthLevel, showView, VIEWS, fetchDisplayPreferences, updateGlobalTaskObjects } from './main.js'; 
 import { checkForCheckoutCorrection } from './utils.js'; 
-import { collection, query, where, getDocs, doc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { collection, query, where, getDocs, doc, setDoc, updateDoc, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { oktaConfig } from "./config.js";
 
 // --- Okta Configuration ---
@@ -147,9 +147,35 @@ async function handleOktaLoginSuccess() {
             await updateDoc(doc(db, "user_profiles", appUserId), updateData);
 
         } else {
-            alert(`ログインエラー: ユーザー登録が見つかりません。\nEmail: ${oktaEmail}\nName: ${oktaName}`);
-            return;
-        }
+// ★【修正箇所】: ユーザーが見つからない場合、新規作成する
+
+            // 以前のコード（削除）:
+            // alert(`ログインエラー: ユーザー登録が見つかりません。\nEmail: ${oktaEmail}\nName: ${oktaName}`);
+            // return;
+
+            // 新しいコード:
+            console.log("新規ユーザーとして登録します:", oktaName);
+
+            try {
+                // user_profiles に新規ドキュメントを追加
+                const newUserRef = await addDoc(collection(db, "user_profiles"), {
+                    name: oktaName,           // Oktaの名前
+                    displayName: oktaName,    // 表示名
+                    email: oktaEmail,         // Email
+                    oktaUserId: oktaUserId,   // Okta ID
+                    role: "client",           // デフォルト権限
+                    createdAt: new Date().toISOString()
+                });
+
+                appUserId = newUserRef.id;    // 新しいIDをセット
+                appUserName = oktaName;       // 名前をセット
+
+            } catch (err) {
+                console.error("ユーザー自動作成エラー:", err);
+                alert("ユーザーの自動作成に失敗しました。");
+                return;
+            }
+        }        
 
         let appAuthLevel = 'none';
         if (oktaGroups.includes('Admin')) appAuthLevel = 'admin';

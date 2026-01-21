@@ -21,31 +21,30 @@ export function showHelpModal(pageKey) {
 // 【修正1】useStateは削除し、単なる変数としてタイムスタンプを生成
     // これによりURLが毎回変わり、強制的に最新の内容が読み込まれます
     const timestamp = new Date().getTime();
-    const docBaseUrl = "https://docs.google.com/document/d/e/2PACX-1vTLexuUJP55J8FKQG8s4rjxLS1r7rJcKgnIPapyYN4t8kKnYqArMnCA-ymkWaX_Wqf7pR8vkjmbzz_Q/pub";
+    const docBaseUrl = "https://docs.google.com/document/d/19d1aHsmVkLSyDEAcDjS3CAYUfWMYWxzg-KLdNOgtMCg/preview";
     
 const helpContents = {
 client: {
-            title: "従業員画面（業務記録）ヘルプ",
-            // 【修正2】key={iframeKey} を削除し、URLにタイムスタンプを埋め込む
-            content: `
-            <div class="w-full h-[65vh] bg-white rounded border border-gray-200 overflow-hidden">
-                <iframe 
-                    src="${docBaseUrl}?embedded=true&t=${timestamp}" 
-                    class="w-full h-full block" 
-                    frameborder="0">
-                </iframe>
-            </div>
-            
-            <div class="mt-2 text-right">
-                <a href="${docBaseUrl}" 
-                   target="_blank" 
-                   rel="noopener noreferrer" 
-                   class="text-xs text-blue-600 hover:underline">
-                   別ウィンドウで拡大表示する ↗
-                </a>
-            </div>
-        `
-        },
+    title: "従業員画面（業務記録）ヘルプ",
+    content: `
+        <div class="w-full h-[65vh] bg-white rounded border border-gray-200 overflow-hidden">
+            <iframe 
+                src="${docBaseUrl}" 
+                class="w-full h-full block" 
+                frameborder="0">
+            </iframe>
+        </div>
+        
+        <div class="mt-2 text-right">
+            <a href="${docBaseUrl}" 
+               target="_blank" 
+               rel="noopener noreferrer" 
+               class="text-xs text-blue-600 hover:underline">
+               別ウィンドウで拡大表示する ↗
+            </a>
+        </div>
+    `
+},
     
         host: {
 title: "管理者画面（モニタリング）ヘルプ",

@@ -18,28 +18,34 @@ export function showHelpModal(pageKey) {
     const contentEl = document.getElementById("help-modal-content");
     if (!helpModal || !titleEl || !contentEl) return;
 
+// 【修正1】useStateは削除し、単なる変数としてタイムスタンプを生成
+    // これによりURLが毎回変わり、強制的に最新の内容が読み込まれます
+    const timestamp = new Date().getTime();
+    const docBaseUrl = "https://docs.google.com/document/d/19d1aHsmVkLSyDEAcDjS3CAYUfWMYWxzg-KLdNOgtMCg/preview";
+    
 const helpContents = {
-    client: {
-        title: "従業員画面（業務記録）ヘルプ",
-        content: `
-            <div class="w-full h-[65vh] bg-white rounded border border-gray-200 overflow-hidden">
-                <iframe 
-                    src="https://docs.google.com/document/d/e/2PACX-1vTLexuUJP55J8FKQG8s4rjxLS1r7rJcKgnIPapyYN4t8kKnYqArMnCA-ymkWaX_Wqf7pR8vkjmbzz_Q/pub?embedded=true" 
-                    class="w-full h-full block" 
-                    frameborder="0">
-                </iframe>
-            </div>
-            
-            <div class="mt-2 text-right">
-                <a href="https://docs.google.com/document/d/e/2PACX-1vTLexuUJP55J8FKQG8s4rjxLS1r7rJcKgnIPapyYN4t8kKnYqArMnCA-ymkWaX_Wqf7pR8vkjmbzz_Q/pub" 
-                   target="_blank" 
-                   rel="noopener noreferrer" 
-                   class="text-xs text-blue-600 hover:underline">
-                   別ウィンドウで拡大表示する ↗
-                </a>
-            </div>
-        `
-    },
+client: {
+    title: "従業員画面（業務記録）ヘルプ",
+    content: `
+        <div class="w-full h-[65vh] bg-white rounded border border-gray-200 overflow-hidden">
+            <iframe 
+                src="${docBaseUrl}" 
+                class="w-full h-full block" 
+                frameborder="0">
+            </iframe>
+        </div>
+        
+        <div class="mt-2 text-right">
+            <a href="${docBaseUrl}" 
+               target="_blank" 
+               rel="noopener noreferrer" 
+               class="text-xs text-blue-600 hover:underline">
+               別ウィンドウで拡大表示する ↗
+            </a>
+        </div>
+    `
+},
+    
         host: {
 title: "管理者画面（モニタリング）ヘルプ",
         content: `

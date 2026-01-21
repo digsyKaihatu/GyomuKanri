@@ -226,6 +226,25 @@ if (Math.abs(diffSeconds) < 600) { // 10分以内の更新のみ通知
     }
     // ■■■ ここまで ■■■
 
+    // ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼
+    // ★追加：チラつき防止のガード節
+    // 現在のローカル状態と比較し、変更がなければここで終了してUI再構築（restoreTimerState）を防ぐ
+    const currentIsWorkingLocal = localStorage.getItem("isWorking") === "1";
+    const newIsWorkingData = (data.isWorking === 1 || data.isWorking === true);
+
+    // ゴールIDの取得と正規化
+    const currentGoalIdLocal = localStorage.getItem("currentGoalId");
+    const newGoalIdData = data.currentGoalId || data.goalId;
+
+    // 「勤務状態」「タスク名」「ゴールID」がすべて一致している場合は更新不要
+    if (currentIsWorkingLocal === newIsWorkingData &&
+        prevTask === data.currentTask && // prevTaskは関数の冒頭で定義済み
+        currentGoalIdLocal == newGoalIdData // nullとundefinedの差を許容するため緩やかな等価演算(==)を使用
+    ) {
+        return; // UI更新をスキップ
+    }
+    // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
     // 通常の同期ロジック
     const dbIsWorking = data.isWorking === 1 || data.isWorking === true;
     if (dbIsWorking) {

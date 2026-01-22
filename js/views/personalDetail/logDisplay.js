@@ -50,6 +50,9 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
                 dailyWorkSummary[summaryKey] += (log.duration || 0);
             }
 
+            // ★追加: 工数登録ログ(type="goal")の場合は、ここで処理を中断し、タイムラインには表示させない
+            if (log.type === "goal") return;
+
             // タイムライン表示
             const taskDisplay = log.goalTitle
                 ? `${escapeHtml(log.task)} <span class="text-xs text-gray-500">(${escapeHtml(log.goalTitle)})</span>`

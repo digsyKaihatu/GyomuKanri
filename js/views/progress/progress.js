@@ -1,9 +1,6 @@
 // js/views/progress/progress.js
-// ★ dbとFirestore関数をインポート
-// ★修正: js/views/progress/progress.js から見て main.js は ../../main.js (Correct)
 import { db, allTaskObjects, handleGoBack, showView, VIEWS, escapeHtml } from "../../main.js";
 import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-// ★修正: js/views/progress/ から js/components/ は ../../components/
 import { openGoalModal, showHelpModal } from "../../components/modal/index.js";
 import { destroyCharts } from "../../components/chart.js";
 
@@ -33,9 +30,9 @@ let progressWeekOffset = 0;
 let progressMonthOffset = 0;
 let progressChartType = "contribution";
 let progressLineChartInstance = null;
-let selectedTaskLogs = []; // ★ 選択されたタスクのログを保持するローカル変数
+let selectedTaskLogs = []; 
 
-// DOM要素 (遅延初期化)
+// DOM要素
 let taskListContainer, goalListContainer, goalDetailsContainer, chartContainer, weeklySummaryContainer, backButton, viewArchiveButton, helpButton;
 
 function initializeDOMElements() {
@@ -52,21 +49,18 @@ function initializeDOMElements() {
 export async function initializeProgressView() {
     initializeDOMElements();
     
-    // ★ 全件取得は削除。初期化時はタスクリストの表示のみ。
+    // 初期化時はログをクリア
     selectedTaskLogs = []; 
-    
     progressWeekOffset = 0;
     progressMonthOffset = 0;
 
     renderProgressTaskList(allTaskObjects, selectedProgressTaskName, handleTaskClick);
 
     if (selectedProgressTaskName) {
-        // タスクが選択済みの場合は、そのタスクのログをフェッチして再描画
-        await fetchLogsForTask(selectedProgressTaskName);
-        
         renderProgressGoalList(allTaskObjects, selectedProgressTaskName, selectedProgressGoalId, handleGoalClick);
         if (selectedProgressGoalId) {
-            renderDetailsAndSummary();
+            // ★変更: ここでログ取得と描画を行う
+            await renderDetailsAndSummary();
         } else {
             clearGoalDetailsAndSummary(goalDetailsContainer, chartContainer, weeklySummaryContainer, [progressLineChartInstance]);
             progressLineChartInstance = null;
@@ -104,8 +98,10 @@ export function setupProgressEventListeners() {
                  selectedProgressGoalId = null;
                  clearGoalDetailsAndSummary(goalDetailsContainer, chartContainer, weeklySummaryContainer, [progressLineChartInstance]);
                  progressLineChartInstance = null;
-                 // データ更新の可能性があるためログ再取得（工数完了ログなどが追加されるため）
-                 await fetchLogsForTask(taskName); 
+                 
+                 // ★変更: データ更新のため再描画（この中で必要な期間だけ再取得される）
+                 await renderDetailsAndSummary();
+                 
                  renderProgressTaskList(allTaskObjects, selectedProgressTaskName, handleTaskClick);
                  renderProgressGoalList(allTaskObjects, selectedProgressTaskName, null, handleGoalClick);
              });
@@ -127,12 +123,12 @@ export function setupProgressEventListeners() {
         if (target.id === 'chart-toggle-contribution') {
             if (progressChartType !== 'contribution') {
                 progressChartType = 'contribution';
-                renderDetailsAndSummary();
+                renderDetailsAndSummary(); // 再描画のみ（データは既存のものを使用）
             }
         } else if (target.id === 'chart-toggle-efficiency') {
              if (progressChartType !== 'efficiency') {
                 progressChartType = 'efficiency';
-                renderDetailsAndSummary();
+                renderDetailsAndSummary(); // 再描画のみ
             }
         }
      });
@@ -141,6 +137,7 @@ export function setupProgressEventListeners() {
         const target = event.target.closest('button');
         if (!target) return;
 
+        // ★変更: ページ移動時は renderDetailsAndSummary を呼ぶことで自動的に新期間のデータをfetchする
         if (target.id === 'progress-prev-week-btn') {
             progressWeekOffset--;
             renderDetailsAndSummary();
@@ -159,19 +156,24 @@ export function setupProgressEventListeners() {
      });
 }
 
-// ★ 新規: 指定されたタスクのログを全期間分取得する
-async function fetchLogsForTask(taskName) {
-    // UIにローディング表示などを出すとより良い
-    
+// ★変更: 期間指定でログを取得する形に修正
+async function fetchLogsForTask(taskName, startDate, endDate) {
+    if (!taskName || !startDate || !endDate) return;
+
+    // UIにローディング表示（簡易的）
+    if(weeklySummaryContainer) weeklySummaryContainer.innerHTML = '<p class="text-gray-500 text-center p-4">データを読み込み中...</p>';
+    if(chartContainer) chartContainer.innerHTML = '';
+
     try {
         const q = query(
             collection(db, "work_logs"),
-            where("task", "==", taskName)
+            where("task", "==", taskName),
+            where("date", ">=", startDate), // 開始日以降
+            where("date", "<=", endDate)   // 終了日以前
         );
-        // タスク作成日がデータとして存在しないため、全期間の該当タスクログを取得する仕様
+        
         const snapshot = await getDocs(q);
         
-        // Timestamp変換を含めてローカル変数に格納
         selectedTaskLogs = snapshot.docs.map((d) => {
              const data = d.data();
              const log = { id: d.id, ...data };
@@ -183,19 +185,25 @@ async function fetchLogsForTask(taskName) {
     } catch (error) {
         console.error("Error fetching task logs:", error);
         selectedTaskLogs = [];
-        alert("ログデータの取得中にエラーが発生しました。");
+        // インデックス未作成エラーの可能性が高い場合の案内
+        if (error.message.includes("indexes")) {
+            alert("この期間のデータを表示するにはインデックスが必要です。\nブラウザのコンソール(F12)を開き、表示されたリンクをクリックしてインデックスを作成してください。");
+        } else {
+            alert("ログデータの取得中にエラーが発生しました。");
+        }
     }
 }
 
 async function handleTaskClick(taskName) {
     selectedProgressTaskName = taskName;
     selectedProgressGoalId = null;
+    progressWeekOffset = 0;
+    progressMonthOffset = 0;
 
     updateTaskSelectionUI(taskListContainer, taskName);
     
-    // ★ タスクがクリックされた時点でログを取得
-    await fetchLogsForTask(taskName);
-
+    // ★変更: タスククリック時は、まずリスト表示のみ行い、ログ取得はしない（工数選択待ち、または自動で今週を表示）
+    // 今回は「工数を選択してください」状態にする
     renderProgressGoalList(allTaskObjects, selectedProgressTaskName, null, handleGoalClick);
     
     clearGoalDetailsAndSummary(goalDetailsContainer, chartContainer, weeklySummaryContainer, [progressLineChartInstance]);
@@ -212,7 +220,8 @@ function handleGoalClick(goalId) {
     renderDetailsAndSummary();
 }
 
-function renderDetailsAndSummary() {
+// ★変更: 描画関数内でデータ取得を行うフローに変更
+async function renderDetailsAndSummary() {
     if (!selectedProgressTaskName || !selectedProgressGoalId) {
         clearGoalDetailsAndSummary(goalDetailsContainer, chartContainer, weeklySummaryContainer, [progressLineChartInstance]);
         progressLineChartInstance = null;
@@ -235,9 +244,15 @@ function renderDetailsAndSummary() {
     const readOnlyMode = window.isProgressViewReadOnly === true;
     renderProgressGoalDetails(goal, task.name, readOnlyMode, goalDetailsContainer);
 
+    // 1. 表示すべき期間を計算
     const weekDates = calculateDateRange(progressWeekOffset, progressMonthOffset);
+    const startDate = weekDates[0];
+    const endDate = weekDates[6];
 
-    // ★ allUserLogs ではなく selectedTaskLogs を渡す
+    // 2. ★ここで必要な期間のデータだけをFirestoreから取得
+    await fetchLogsForTask(selectedProgressTaskName, startDate, endDate);
+
+    // 3. 取得したデータを使って集計・描画
     const finalGoalIdForFilter = goal.id || goal.title;
     const chartAndTableData = aggregateWeeklyData(selectedTaskLogs, finalGoalIdForFilter, weekDates);
 

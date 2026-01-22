@@ -8,6 +8,15 @@
  */
 export async function triggerEncouragementNotification(elapsedSeconds, type = 'encouragement') {
     const latestTaskName = localStorage.getItem("currentTask") || "業務";
+    
+    // ★追加: 工数名の取得と表示名の整形
+    const currentGoal = localStorage.getItem("currentGoal");
+    let displayName = latestTaskName;
+    
+    if (currentGoal && currentGoal !== "なし" && currentGoal !== "工数を選択 (任意)") {
+        displayName = `${latestTaskName} (${currentGoal})`;
+    }
+
     const hours = Math.floor(elapsedSeconds / 3600);
     const minutes = Math.floor((elapsedSeconds % 3600) / 60);
 
@@ -17,7 +26,8 @@ export async function triggerEncouragementNotification(elapsedSeconds, type = 'e
     }
     timeString += `${minutes}分`;
 
-    const message = `【${latestTaskName}】を${timeString}継続しています！`;
+    // ★修正: displayName を使用する
+    const message = `【${displayName}】を${timeString}継続しています！`;
     
     let title = "お疲れ様です！";
     if (type === 'breather') {

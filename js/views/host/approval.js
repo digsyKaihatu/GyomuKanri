@@ -250,7 +250,7 @@ async function handleApprove(reqDoc) {
                 goalTitle: req.data.goalTitle || null,
                 contribution: req.data.count || 0,
                 memo: req.data.memo || "",
-                type: req.data.goalId ? "goal" : "work"
+                type: "work" // 常に "work" にする（またはこの行を削除）
             });
 
             // 目標進捗更新（加算）
@@ -275,7 +275,7 @@ async function handleApprove(reqDoc) {
                 goalTitle: req.data.goalTitle || null,
                 contribution: req.data.count || 0,
                 memo: req.data.memo || "",
-                type: req.data.goalId ? "goal" : "work"
+                type: "work" // 常に "work" にする（またはこの行を削除）
             });
 
             // 目標進捗更新（差分）

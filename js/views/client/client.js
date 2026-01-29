@@ -4,6 +4,7 @@
 import { showView, VIEWS, db, userName, userId } from "../../main.js";
 import { doc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import * as State from "./timerState.js"; // ★追加: これが必要です
+import { checkForCheckoutCorrection } from "../../utils.js";
 
 // timer.js から操作関数をインポート
 import { 

@@ -111,6 +111,13 @@ export async function initializeClientView({ tasks }) {
 
     await restoreTimerState();
 
+    // ★追加: ここで退勤忘れチェックを実行
+    // utils.js 側で画面チェックを入れたので、ここでは呼ぶだけでOK
+    checkForCheckoutCorrection(userId);
+
+    // ★追加: 自分自身のステータス変化を監視開始 (自動切り替えに必須)
+    listenForMyStatus();
+
     // ★修正ポイント: ここで退勤忘れフラグをチェックする
     // main.jsなどで共通で動かしている監視の中でポップアップを出すのではなく、
     // 「従業員画面に来た時」にだけ判定を行うようにします。

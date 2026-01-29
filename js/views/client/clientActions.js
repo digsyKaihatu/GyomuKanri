@@ -95,8 +95,8 @@ export async function handleFixCheckout() {
             hideConfirmationModal
         );
         
-        // 念のためリロード
-        setTimeout(() => location.reload(), 1000);
+        // ★修正ポイント: ここにあった setTimeout(() => location.reload(), 1000); を削除しました。
+        // これにより、不必要な再読み込みによるポップアップの再出現を防ぎます。
 
     } catch (error) {
         console.error("Error fixing checkout:", error);

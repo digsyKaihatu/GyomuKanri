@@ -85,6 +85,14 @@ export async function checkForCheckoutCorrection(uid) {
          console.warn("Cannot check for checkout correction: UID is missing.");
          return;
     }
+
+    // 【★追加】ガード節: 現在「従業員画面」が開いていないなら処理しない
+    // VIEWS 定数は main.js にあるため、単純に ID 文字列で判定します
+    const clientView = document.getElementById("client-view");
+    if (!clientView || !clientView.classList.contains("active-view")) {
+        return;
+    }
+    
     const statusRef = doc(db, "work_status", uid);
     try {
         const statusSnap = await getDoc(statusRef);

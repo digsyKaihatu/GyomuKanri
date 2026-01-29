@@ -513,3 +513,26 @@ function listenForTomuraStatus() {
     // 10秒おきに最新の状態を確認
     tomuraStatusInterval = setInterval(fetchStatus, 60000);
 }
+
+/**
+ * 退勤忘れモーダルの表示判定
+ */
+async function checkAndShowFixCheckoutModal() {
+    if (!userId) return;
+    
+    // Firestoreから自分の最新ステータスを取得してフラグを確認
+    const { getDoc, doc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+    const statusSnap = await getDoc(doc(db, "work_status", userId));
+    
+    if (statusSnap.exists() && statusSnap.data().needsCheckoutCorrection) {
+        // 従業員画面にいる時だけモーダルを表示
+        const fixCheckoutModal = document.getElementById("fix-checkout-modal");
+        if (fixCheckoutModal) {
+            // キャンセルボタンを隠す（強制モード）
+            const cancelBtn = fixCheckoutModal.querySelector("#fix-checkout-cancel-btn");
+            if (cancelBtn) cancelBtn.style.display = "none";
+            
+            fixCheckoutModal.classList.remove("hidden");
+        }
+    }
+}

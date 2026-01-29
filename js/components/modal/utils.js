@@ -22,6 +22,7 @@ export function showHelpModal(pageKey) {
     // これによりURLが毎回変わり、強制的に最新の内容が読み込まれます
     const timestamp = new Date().getTime();
     const docBaseUrl = "https://docs.google.com/document/d/19d1aHsmVkLSyDEAcDjS3CAYUfWMYWxzg-KLdNOgtMCg/preview";
+    const docBaseUrl_Admin = "https://docs.google.com/document/d/1Lz_55NO-VXwCQwdPLOaUIPES-lwmGsebC_2AE75q-FA/preview";
     
 const helpContents = {
 client: {
@@ -48,37 +49,25 @@ client: {
     
         host: {
 title: "管理者画面（モニタリング）ヘルプ",
-        content: `
-            <p class="font-semibold mb-2 text-gray-800">チーム全体の稼働状況をリアルタイムで把握・管理するダッシュボードです。</p>
-            <div class="space-y-4 text-sm text-gray-600">
-                <div>
-                    <strong class="text-gray-700 block border-b pb-1 mb-1">👀 リアルタイム監視</strong>
-                    <ul class="list-disc list-inside pl-2 space-y-1">
-                        <li><strong>稼働状況サマリー:</strong> 現在の稼働人数と、どの業務に何人従事しているかが上部に表示されます。</li>
-                        <li><strong>ユーザーリスト:</strong> 全従業員の現在の状態（稼働中/未稼働）、業務名、経過時間がリアルタイム更新されます。</li>
-                        <li><strong>詳細確認:</strong> ユーザー名をクリックすると、その人の詳細ログ（個人記録画面）へ移動します。</li>
-                    </ul>
-                </div>
-
-                <div>
-                    <strong class="text-gray-700 block border-b pb-1 mb-1">🔔 アクション・操作</strong>
-                    <ul class="list-disc list-inside pl-2 space-y-1">
-                        <li><strong>メッセージ送信:</strong> 「メッセージを作成」ボタンから、特定の個人や現在稼働中のグループにポップアップ通知を送れます。</li>
-                        <li><strong>申請承認:</strong> 従業員からの修正申請がある場合、ボタンに<span class="text-orange-600 font-bold">件数バッジ</span>が表示されます。ここから承認画面へ進んでください。</li>
-                        <li><strong>強制停止:</strong> 退勤を忘れているメンバーの業務を強制的に終了させることができます。</li>
-                    </ul>
-                </div>
-
-                <div>
-                    <strong class="text-gray-700 block border-b pb-1 mb-1">👥 ユーザー・データ管理</strong>
-                    <ul class="list-disc list-inside pl-2 space-y-1">
-                        <li><strong>権限設定:</strong> ユーザーリストのプルダウンから、管理権限（管理者/業務管理者/一般）を変更できます。</li>
-                        <li><strong>Excel出力:</strong> 「Excel出力」ボタンから、月次の勤務集計データをダウンロードできます。</li>
-                        <li><strong>レポート・進捗:</strong> 上部メニューから、全体の業務比率（レポート）や工数進捗（進捗管理）を確認できます。</li>
-                    </ul>
-                </div>
-            </div>`
-    },
+    content: `
+        <div class="w-full h-[65vh] bg-white rounded border border-gray-200 overflow-hidden">
+            <iframe 
+                src="${docBaseUrl_Admin}" 
+                class="w-full h-full block" 
+                frameborder="0">
+            </iframe>
+        </div>
+        
+        <div class="mt-2 text-right">
+            <a href="${docBaseUrl_Admin}" 
+               target="_blank" 
+               rel="noopener noreferrer" 
+               class="text-xs text-blue-600 hover:underline">
+               別ウィンドウで拡大表示する ↗
+            </a>
+        </div>
+    `
+},
     taskSettings: {
 title: "業務マスター設定ヘルプ",
         content: `

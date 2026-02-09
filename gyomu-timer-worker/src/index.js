@@ -116,22 +116,23 @@ export default {
 // --- エンドポイント: メッセージ送信 (修正版) ---
       if (url.pathname === "/send-message" && request.method === "POST") {
         try {
-          // 1. フロントから「対象ユーザーID(単体または配列)」「タイトル」「本文」を受け取る
+          // 1. フロントからデータを受け取る
           const reqJson = await request.json();
+          // IDは単体でも配列でも受け取れるようにする
           const targetUserIds = Array.isArray(reqJson.targetUserId) ? reqJson.targetUserId : [reqJson.targetUserId];
           const { title, messageBody } = reqJson;
 
           // 2. Googleへの認証トークンを取得 (既存の関数を再利用)
+          // ★注意: Cloudflareの環境変数に FIREBASE_SERVICE_ACCOUNT が設定されている必要があります
           const serviceAccount = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT);
           const accessToken = await getAccessToken(serviceAccount);
           const projectId = serviceAccount.project_id;
 
           let successCount = 0;
 
-          // 3. 対象ユーザーごとに処理
+          // 3. 対象ユーザーごとに通知送信
           for (const uid of targetUserIds) {
-            // A. Firestoreからユーザー情報(トークン)を取得
-            // (D1ではなくFirestoreの user_profiles コレクションを見に行く)
+            // Firestoreからユーザー情報を取得 (D1ではなくFirestoreを見に行く)
             const fsUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/user_profiles/${uid}`;
             const fsResp = await fetch(fsUrl, {
               headers: { 'Authorization': `Bearer ${accessToken}` }
@@ -140,11 +141,10 @@ export default {
             if (!fsResp.ok) continue; // ユーザーが見つからなければスキップ
 
             const fsData = await fsResp.json();
-            // Firestoreのデータ構造からトークン配列を取り出す
-            // 構造: fields -> fcmTokens -> arrayValue -> values -> [{stringValue: "..."}]
+            // トークン配列を取り出す (FirestoreのJSON構造に対応)
             const tokens = fsData.fields?.fcmTokens?.arrayValue?.values?.map(v => v.stringValue) || [];
 
-            // B. トークンを持っている全端末に通知を送信 (FCM HTTP v1 API)
+            // 保持している全端末に送信
             for (const token of tokens) {
               const fcmUrl = `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`;
               const messagePayload = {
@@ -155,12 +155,11 @@ export default {
                     body: messageBody || ""
                   },
                   data: {
-                    source: 'worker' // フロントエンド側での判定用に付与
+                    source: 'worker' // フロントでworkerからの通知と識別するために付与
                   }
                 }
               };
 
-              // 送信実行
               await fetch(fcmUrl, {
                 method: 'POST',
                 headers: {

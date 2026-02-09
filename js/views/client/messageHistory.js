@@ -43,6 +43,8 @@ function listenForUnreadMessages() {
         where("read", "==", false)
     );
 
+    let isInitialLoad = true;
+
     // リアルタイムで未読数を監視
     onSnapshot(q, (snapshot) => {
         const btn = document.getElementById("open-messages-btn");

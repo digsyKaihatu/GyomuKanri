@@ -113,13 +113,79 @@ export default {
         return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
       }
 
-      // --- エンドポイント: メッセージ送信 ---
+// --- エンドポイント: メッセージ送信 (修正版) ---
       if (url.pathname === "/send-message" && request.method === "POST") {
-        return new Response(JSON.stringify({ success: true, sent: 1 }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" }
-        });
-      }
+        try {
+          // 1. フロントから「対象ユーザーID(単体または配列)」「タイトル」「本文」を受け取る
+          const reqJson = await request.json();
+          const targetUserIds = Array.isArray(reqJson.targetUserId) ? reqJson.targetUserId : [reqJson.targetUserId];
+          const { title, messageBody } = reqJson;
 
+          // 2. Googleへの認証トークンを取得 (既存の関数を再利用)
+          const serviceAccount = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT);
+          const accessToken = await getAccessToken(serviceAccount);
+          const projectId = serviceAccount.project_id;
+
+          let successCount = 0;
+
+          // 3. 対象ユーザーごとに処理
+          for (const uid of targetUserIds) {
+            // A. Firestoreからユーザー情報(トークン)を取得
+            // (D1ではなくFirestoreの user_profiles コレクションを見に行く)
+            const fsUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/user_profiles/${uid}`;
+            const fsResp = await fetch(fsUrl, {
+              headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+
+            if (!fsResp.ok) continue; // ユーザーが見つからなければスキップ
+
+            const fsData = await fsResp.json();
+            // Firestoreのデータ構造からトークン配列を取り出す
+            // 構造: fields -> fcmTokens -> arrayValue -> values -> [{stringValue: "..."}]
+            const tokens = fsData.fields?.fcmTokens?.arrayValue?.values?.map(v => v.stringValue) || [];
+
+            // B. トークンを持っている全端末に通知を送信 (FCM HTTP v1 API)
+            for (const token of tokens) {
+              const fcmUrl = `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`;
+              const messagePayload = {
+                message: {
+                  token: token,
+                  notification: {
+                    title: title || "管理者からのメッセージ",
+                    body: messageBody || ""
+                  },
+                  data: {
+                    source: 'worker' // フロントエンド側での判定用に付与
+                  }
+                }
+              };
+
+              // 送信実行
+              await fetch(fcmUrl, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${accessToken}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(messagePayload)
+              });
+              successCount++;
+            }
+          }
+
+          return new Response(JSON.stringify({ success: true, sent: successCount }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+
+        } catch (e) {
+          console.error("Send Message Error:", e);
+          return new Response(JSON.stringify({ success: false, error: e.message }), {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        }
+      }
+      
       // --- エンドポイント7: 管理者による強制停止 ---
       if (url.pathname === "/force-stop" && request.method === "POST") {
         const { userId } = await request.json();

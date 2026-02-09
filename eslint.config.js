@@ -25,6 +25,7 @@ export default [
         OktaAuth: "readonly",
         // Firebaseのグローバル変数 (CDN経由の場合。通常は不要だが念のため)
         // firebase: "readonly",
+        "type": "module",
       },
     },
     // 3. 特定のルールをカスタマイズ (必要に応じて)

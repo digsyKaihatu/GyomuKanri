@@ -226,6 +226,9 @@ export function updateTaskDisplaysForSelection() {
     }
 
     if (!selectedTaskName) return;
+    
+    // ★追加: 業務が選択されたら、休憩中などで無効化されていた工数選択を有効に戻す
+    goalSelect.disabled = false;
 
     // 「その他」の処理
     if (selectedTaskName === "その他") {

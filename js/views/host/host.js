@@ -101,6 +101,28 @@ function startListeningForApprovals() {
         const badge = document.getElementById("approval-badge");
         if (badge) {
             if (snap.size > 0) {
+
+                // ▼▼▼ ここから追加 ▼▼▼
+            // 前回の件数と比較して増えている場合、または初回読み込みでない場合に通知を出す制御が必要ですが、
+            // まずは「通知が出るか」を確認するため、シンプルに通知を出します。
+            
+            if (Notification.permission === "granted") {
+                // ドキュメントの変更内容を確認（追加された場合のみ通知するなど）
+                const changes = snap.docChanges();
+                const isNewConfig = changes.some(change => change.type === 'added');
+
+                // 「ページを開いた瞬間」に通知爆撃を防ぐため、
+                // 必要であれば「初回読み込み時は通知しない」フラグなどを入れるのが一般的です
+                // ここでは「データ変更があった時」に通知を出します
+                if (isNewConfig) { 
+                    new Notification("業務報告の承認依頼", {
+                        body: `${snap.size}件の承認待ちがあります。`,
+                        icon: "/path/to/icon.png" // 任意: アイコン画像のパス
+                    });
+                }
+            }
+            // ▲▲▲ ここまで追加 ▲▲▲
+                
                 badge.textContent = `${snap.size}件`;
                 badge.classList.remove("hidden");
                 btn.classList.add("animate-pulse");

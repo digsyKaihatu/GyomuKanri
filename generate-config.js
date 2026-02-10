@@ -1,6 +1,7 @@
-const fs = require('fs');
+// generate-config.js
+import fs from 'fs'; // ★修正: require('fs') を import fs from 'fs' に変更
 
-// ★修正: fcmConfig を追加
+// 環境変数から設定値を埋め込む
 const configContent = `
 export const firebaseConfig = {
     apiKey: "${process.env.FIREBASE_API_KEY || ''}",
@@ -22,13 +23,20 @@ export const groqConfig = {
 };
 
 export const fcmConfig = {
-    vapidKey: "${process.env.VAPID_KEY || ''}"
+    vapidKey: "${process.env.VAPID_KEY || ''}" 
 };
 `;
 
-// ... (以下変更なし)
+// ディレクトリがなければ作成
 if (!fs.existsSync('./js')) {
     fs.mkdirSync('./js');
 }
 
-fs.writeFileSync('./js/config.js', configContent);
+// ファイル書き込み
+try {
+    fs.writeFileSync('./js/config.js', configContent);
+    console.log('js/config.js has been generated successfully.');
+} catch (err) {
+    console.error('Error writing js/config.js:', err);
+    process.exit(1);
+}

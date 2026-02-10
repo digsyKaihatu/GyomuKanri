@@ -43,10 +43,30 @@ function listenForUnreadMessages() {
         where("read", "==", false)
     );
 
+    let isInitialLoad = true;
+
     // リアルタイムで未読数を監視
     onSnapshot(q, (snapshot) => {
         const btn = document.getElementById("open-messages-btn");
         const badge = document.getElementById("unread-badge");
+
+        // ▼▼▼ 追加: デスクトップ通知のロジック ▼▼▼
+        if (!isInitialLoad) {
+            snapshot.docChanges().forEach((change) => {
+                if (change.type === "added") {
+                    const data = change.doc.data();
+                    // ブラウザの通知許可があれば通知を出す
+                    if (Notification.permission === "granted") {
+                        new Notification(data.title || "新しいメッセージ", {
+                            body: data.body || "管理者からメッセージが届きました",
+                            icon: "/512.pngs32.png" // アイコン画像のパス（必要に応じて変更）
+                        });
+                    }
+                }
+            });
+        }
+        isInitialLoad = false; // 初回処理完了
+        // ▲▲▲ 追加ここまで ▲▲▲
         
         if (!btn || !badge) return;
 

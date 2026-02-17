@@ -1,13 +1,12 @@
 // js/components/modal/taskGoal.js
 import { db } from "../../firebase.js";
-import { doc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+// ★ runTransaction を追加
+import { doc, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { allTaskObjects, updateGlobalTaskObjects, escapeHtml } from "../../main.js";
 import { showModal, closeModal, showConfirmationModal, taskModal, goalModal } from "./core.js";
 
-/**
- * 1. 業務(Task)の追加・編集モーダルを開く
- * 元の openTaskModal の全入力を網羅
- */
+// ... (openTaskModal, openGoalModal は変更なし) ...
+
 export function openTaskModal(task = null) {
     const title = document.getElementById("task-modal-title");
     const nameIn = document.getElementById("task-name-input");
@@ -20,7 +19,7 @@ export function openTaskModal(task = null) {
         nameIn.value = task.name;
         catSel.value = task.category || "A";
         memoIn.value = task.memo || "";
-        taskModal.dataset.editingName = task.name; // 変更前の名前を保存
+        taskModal.dataset.editingName = task.name;
     } else {
         title.textContent = "新しい業務を追加";
         nameIn.value = ""; catSel.value = "A"; memoIn.value = "";
@@ -30,10 +29,6 @@ export function openTaskModal(task = null) {
     nameIn.focus();
 }
 
-/**
- * 2. 工数(Goal)の追加・編集モーダルを開く
- * 元のコードの全入力項目（目標値、期限、工数期限、メモ）を完備
- */
 export function openGoalModal(mode, taskName, goalId = null) {
     const title = document.getElementById("goal-modal-title");
     const taskIn = document.getElementById("goal-modal-task-name");
@@ -53,10 +48,9 @@ export function openGoalModal(mode, taskName, goalId = null) {
     taskIn.value = taskName;
     idIn.value = goalId || "";
 
-if (mode === 'edit' && goalId) {
+    if (mode === 'edit' && goalId) {
         title.textContent = "工数の編集";
         const task = allTaskObjects.find(t => t.name === taskName);
-        // ★ ID または タイトルで検索
         const goal = task?.goals?.find(g => g.id === goalId || g.title === goalId);
     
         if (goal) {
@@ -75,7 +69,7 @@ if (mode === 'edit' && goalId) {
 }
 
 /**
- * 3. 工数の完了処理 (Firebase連携)
+ * 3. 工数の完了処理 (Firebase連携) - 修正版
  */
 export async function handleCompleteGoal(taskName, goalId) {
     const task = allTaskObjects.find(t => t.name === taskName);
@@ -83,15 +77,14 @@ export async function handleCompleteGoal(taskName, goalId) {
     if (!goal) return;
 
     showConfirmationModal(`「${goal.title}」を完了にしますか？`, async () => {
-        const updatedGoals = task.goals.map(g => 
-            g.id === goalId ? { ...g, isCompleted: true, completedAt: new Date().toISOString() } : g
-        );
-        await updateFirestoreGoals(taskName, updatedGoals);
+        await updateFirestoreGoalsSafe(taskName, (goals) => {
+            return goals.map(g => g.id === goalId ? { ...g, isCompleted: true, completedAt: new Date().toISOString() } : g);
+        });
     });
 }
 
 /**
- * 4. 工数の削除処理 (Firebase連携)
+ * 4. 工数の削除処理 (Firebase連携) - 修正版
  */
 export async function handleDeleteGoal(taskName, goalId) {
     const task = allTaskObjects.find(t => t.name === taskName);
@@ -99,13 +92,14 @@ export async function handleDeleteGoal(taskName, goalId) {
     if (!goal) return;
 
     showConfirmationModal(`「${goal.title}」を削除しますか？\nこの操作は戻せません。`, async () => {
-        const updatedGoals = task.goals.filter(g => g.id !== goalId);
-        await updateFirestoreGoals(taskName, updatedGoals);
+        await updateFirestoreGoalsSafe(taskName, (goals) => {
+            return goals.filter(g => g.id !== goalId);
+        });
     });
 }
 
 /**
- * 5. 工数の復元処理 (Firebase連携)
+ * 5. 工数の復元処理 (Firebase連携) - 修正版
  */
 export async function handleRestoreGoalClick(taskName, goalId) {
     const task = allTaskObjects.find(t => t.name === taskName);
@@ -113,24 +107,45 @@ export async function handleRestoreGoalClick(taskName, goalId) {
     if (!goal) return;
 
     showConfirmationModal(`「${goal.title}」を未完了に戻しますか？`, async () => {
-        const updatedGoals = task.goals.map(g => 
-            g.id === goalId ? { ...g, isCompleted: false, completedAt: null } : g
-        );
-        await updateFirestoreGoals(taskName, updatedGoals);
+        await updateFirestoreGoalsSafe(taskName, (goals) => {
+            return goals.map(g => g.id === goalId ? { ...g, isCompleted: false, completedAt: null } : g);
+        });
     });
 }
 
 /**
- * Firestore更新の共通補助関数
+ * Firestore更新の共通補助関数（トランザクション版）
  */
-async function updateFirestoreGoals(taskName, updatedGoals) {
+async function updateFirestoreGoalsSafe(taskName, updateGoalsLogic) {
+    const tasksRef = doc(db, "settings", "tasks");
     try {
-        const newTaskList = allTaskObjects.map(t => t.name === taskName ? { ...t, goals: updatedGoals } : t);
-        await updateDoc(doc(db, "settings", "tasks"), { list: newTaskList });
+        const newTaskList = await runTransaction(db, async (transaction) => {
+            const sfDoc = await transaction.get(tasksRef);
+            if (!sfDoc.exists()) throw "Document does not exist!";
+            
+            const currentList = sfDoc.data().list || [];
+            const taskIndex = currentList.findIndex(t => t.name === taskName);
+            
+            if (taskIndex === -1) throw new Error("TASK_NOT_FOUND");
+            
+            // Goalsを更新するロジックを適用
+            const updatedGoals = updateGoalsLogic(currentList[taskIndex].goals || []);
+            currentList[taskIndex].goals = updatedGoals;
+            
+            transaction.set(tasksRef, { list: currentList });
+            return currentList;
+        });
+
+        // 成功時のUI更新
         updateGlobalTaskObjects(newTaskList);
-        location.reload(); // UIを確実に最新状態にするため
+        location.reload(); // ※元のコードがリロードしていたため維持していますが、refreshUIBasedOnTaskUpdate()等があればそちらが望ましいです
+
     } catch (e) {
         console.error("Firestore Update Error:", e);
-        alert("更新に失敗しました。");
+        if (e.message === "TASK_NOT_FOUND") {
+            alert("対象の業務が見つかりません。削除された可能性があります。");
+        } else {
+            alert("更新に失敗しました。");
+        }
     }
 }

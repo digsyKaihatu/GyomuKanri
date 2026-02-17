@@ -50,7 +50,7 @@ function injectAddRequestButton() {
     if (header) {
         const btn = document.createElement("button");
         btn.id = "add-request-btn";
-        btn.className = "bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded shadow ml-4" tooltip;
+        btn.className = "bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded shadow ml-4 tooltip";
 btn.innerHTML = `
             ＋ 業務タイムライン追加申請
             <span class="tooltip-text">

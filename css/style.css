@@ -130,7 +130,6 @@
   color: #fff; /* 文字色 */
   border-radius: 3px; /* 角丸 */
   transition: 0.3s ease-in; /* アニメーション */
- z-index: 1000; /* 手前に表示 */
 }
 
 /* ホバー時にツールチップの非表示を解除 */

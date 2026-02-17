@@ -50,8 +50,13 @@ function injectAddRequestButton() {
     if (header) {
         const btn = document.createElement("button");
         btn.id = "add-request-btn";
-        btn.className = "bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded shadow ml-4";
-        btn.textContent = "＋ 業務タイムライン追加申請";
+        btn.className = "bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded shadow ml-4 tooltip";
+btn.innerHTML = `
+            ＋ 業務タイムライン追加申請
+            <span class="tooltip-text">
+                業務を入れ忘れてしまった場合はこちら
+            </span>
+        `;
         btn.onclick = () => {
             // 選択中の日付があればその日、なければ今日
             const targetDate = selectedDateStr || new Date().toISOString().split("T")[0];

@@ -62,12 +62,15 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
             const isAdmin = authLevel === 'admin';
             const isSelf = currentUserForDetailView === currentUserName;
             
-            // ★修正: ボタン表示ロジック
+// ★修正: ボタン表示ロジック
             // 「時間修正」「メモ修正」は、管理者または本人なら表示（元の機能）
             let editButtons = "";
             if (isAdmin || isSelf) {
                 editButtons = `
-                    <button class="edit-log-btn text-xs bg-blue-500 text-white font-bold py-1 px-2 rounded hover:bg-blue-600" data-log-id="${log.id}" data-duration="${log.duration || 0}" data-task-name="${escapeHtml(log.task)}">時間修正</button>
+                    <button class="edit-log-btn text-xs bg-blue-500 text-white font-bold py-1 px-2 rounded hover:bg-blue-600 tooltip" data-log-id="${log.id}" data-duration="${log.duration || 0}" data-task-name="${escapeHtml(log.task)}">
+                    時間修正
+                    <span class="tooltip-text" style="z-index: 10;">業務名は合っているけど<br>時間だけ修正したい場合はこちら</span>
+                    </button>
                     <button class="edit-memo-btn text-xs bg-gray-500 text-white font-bold py-1 px-2 rounded hover:bg-gray-600" data-log-id="${log.id}" data-memo="${escapeHtml(log.memo || "")}">メモ修正</button>
                 `;
             }
@@ -76,12 +79,13 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
             let requestButton = "";
             if (isSelf) {
                 requestButton = `
-                    <button onclick="handleRequestUpdateClick('${log.id}')" class="text-xs bg-yellow-500 text-white font-bold py-1 px-2 rounded hover:bg-yellow-600 ml-2">
+                    <button onclick="handleRequestUpdateClick('${log.id}')" class="text-xs bg-yellow-500 text-white font-bold py-1 px-2 rounded hover:bg-yellow-600 ml-2 tooltip">
                         変更申請
+                        <span class="tooltip-text" style="z-index: 10;">時間は合っているけど<br>業務名や件数工数を<br>忘れた場合はこちら</span>
                     </button>
                 `;
             }
-
+            
             const bgClass = log.task === "休憩" ? "bg-yellow-50" : "bg-gray-50";
             const textClass = log.task === "休憩" ? "text-yellow-800" : "text-gray-800";
 

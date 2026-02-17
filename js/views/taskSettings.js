@@ -8,7 +8,6 @@ import {
     showView, 
     VIEWS, 
     userId,
-    // ★追加: メインロジックから更新用関数をインポート
     updateGlobalTaskObjects, 
     refreshUIBasedOnTaskUpdate 
 } from "../main.js";
@@ -19,7 +18,8 @@ import {
     collection, 
     query, 
     where, 
-    getDoc 
+    getDoc,
+    runTransaction // ★追加: トランザクション機能
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { 
     openGoalModal, 
@@ -69,21 +69,16 @@ export async function initializeTaskSettingsView() {
     const input = document.getElementById("new-task-input");
     if(input) input.value = '';
 
-    // リロード後の復元処理（手動リロード時のために残しておく）
     const highlightTaskName = sessionStorage.getItem("highlightTaskName");
     if (highlightTaskName) {
         sessionStorage.removeItem("highlightTaskName");
-        
         const actionMessage = sessionStorage.getItem("actionMessage");
         if (actionMessage) {
             alert(actionMessage);
             sessionStorage.removeItem("actionMessage");
         }
-        
         restoreSelectionStateWithRetry(highlightTaskName);
     }
-
-    // Set up event listeners for the view
     setupTaskSettingsEventListeners();
 }
 
@@ -127,9 +122,7 @@ export function renderTaskEditor() {
 
     if (!taskListEditor || !addTaskForm) return;
 
-    // 常に最新データを取得
     const currentTasks = getAllTaskObjects();
-
     const isHost = authLevel === "admin" || currentUserRole === "host";
     const isManager = isHost || currentUserRole === "manager";
 
@@ -151,7 +144,6 @@ export function renderTaskEditor() {
         const div = document.createElement("div");
         div.className = "p-4 bg-gray-100 rounded-lg shadow-sm mb-4 task-item transition-all duration-1000"; 
         div.dataset.taskName = task.name;
-        // 復元用のID付与
         div.id = `task-row-${task.name}`;
 
         const deleteButtonHtml = (isHost && task.name !== "休憩")
@@ -173,8 +165,6 @@ export function renderTaskEditor() {
              </div>
         `;
 
-        // ★修正: ここにあった goalsListHtml の生成処理を削除しました
-
         div.innerHTML = `
             <div class="flex justify-between items-center">
                 <span class="font-semibold text-lg text-gray-800">${escapeHtml(task.name)}</span>
@@ -195,35 +185,23 @@ export function renderTaskEditor() {
     });
 }
 
-/**
- * 要素が見つかるまで待機して選択状態を復元する（リトライ機能付き）
- */
 function restoreSelectionStateWithRetry(taskName, retryCount = 0) {
     if (!taskName) return;
-
-    // IDで要素を探す
     const element = document.getElementById(`task-row-${taskName}`);
-
     if (element) {
-        // スクロール
         element.scrollIntoView({ behavior: "smooth", block: "center" });
-        
-        // ハイライト
         element.classList.remove("bg-gray-100");
         element.classList.add("bg-yellow-100", "ring-4", "ring-yellow-400");
-        
         setTimeout(() => {
             element.classList.remove("bg-yellow-100", "ring-4", "ring-yellow-400");
             element.classList.add("bg-gray-100");
         }, 2000);
-
     } else {
-        // 見つからない場合：まだ描画されていない可能性があるためリトライ
-        if (retryCount < 20) { // 最大2秒待つ (100ms * 20回)
+        if (retryCount < 20) {
             setTimeout(() => {
                 restoreSelectionStateWithRetry(taskName, retryCount + 1);
             }, 100);
-    }
+        }
     }
 }
 
@@ -246,6 +224,46 @@ async function handleTaskEditorClick(event) {
     }
 }
 
+// ★【重要】トランザクションを使用して安全に更新するヘルパー関数
+// これが「DBを正とする」動作の核になります
+async function updateTasksSafe(updateLogic) {
+    const tasksRef = doc(db, "settings", "tasks");
+    
+    try {
+        // トランザクション開始：DBの最新状態を読み込んでから処理する
+        const newTaskList = await runTransaction(db, async (transaction) => {
+            const sfDoc = await transaction.get(tasksRef);
+            if (!sfDoc.exists()) throw "Document does not exist!";
+            
+            const currentList = sfDoc.data().list || [];
+            
+            // コールバック関数でデータを加工（ここで追加・変更・削除を行う）
+            // JSONパースでディープコピーして渡すことで安全性を確保
+            const updatedList = updateLogic(JSON.parse(JSON.stringify(currentList)));
+            
+            // 加工後のデータを書き込み
+            transaction.set(tasksRef, { list: updatedList });
+            return updatedList;
+        });
+
+        // 成功したら、ローカルのメモリと画面も更新する（リロード不要）
+        updateGlobalTaskObjects(newTaskList);
+        await refreshUIBasedOnTaskUpdate();
+        return true; // 成功
+        
+    } catch (e) {
+        console.error("Transaction failed: ", e);
+        if (e.message === "ALREADY_EXISTS") {
+            alert("その業務名は既に存在しています（他の人が追加した可能性があります）。");
+        } else if (e.message === "TASK_NOT_FOUND") {
+            alert("対象の業務が見つかりません。削除された可能性があります。");
+        } else {
+            alert("保存に失敗しました。他の人が同時に変更を行っている可能性があります。もう一度試してください。");
+        }
+        return false; // 失敗
+    }
+}
+
 async function handleSaveGoal() {
     const taskName = goalModalTaskNameInput.value;
     const goalId = goalModalGoalIdInput.value;
@@ -257,52 +275,43 @@ async function handleSaveGoal() {
         return;
     }
 
-    const currentTasks = getAllTaskObjects();
-    const taskIndex = currentTasks.findIndex((t) => t.name === taskName);
-    if (taskIndex === -1) return;
+    // トランザクション内で更新を実行
+    const success = await updateTasksSafe((taskList) => {
+        const taskIndex = taskList.findIndex((t) => t.name === taskName);
+        if (taskIndex === -1) throw new Error("TASK_NOT_FOUND");
 
-    const updatedTasks = JSON.parse(JSON.stringify(currentTasks));
-    const task = updatedTasks[taskIndex];
+        const task = taskList[taskIndex];
 
-    if (goalId) {
-        const goalIndex = task.goals.findIndex((g) => g.id === goalId || g.title === goalId);
-        if (goalIndex !== -1) {
-            task.goals[goalIndex] = {
-                ...task.goals[goalIndex],
+        if (goalId) {
+            const goalIndex = task.goals.findIndex((g) => g.id === goalId || g.title === goalId);
+            if (goalIndex !== -1) {
+                task.goals[goalIndex] = {
+                    ...task.goals[goalIndex],
+                    title, target,
+                    deadline: goalModalDeadlineInput.value,
+                    effortDeadline: goalModalEffortDeadlineInput.value,
+                    memo: goalModalMemoInput.value.trim(),
+                };
+            }
+        } else {
+            const newGoal = {
+                id: "goal_" + Date.now(),
                 title, target,
                 deadline: goalModalDeadlineInput.value,
                 effortDeadline: goalModalEffortDeadlineInput.value,
                 memo: goalModalMemoInput.value.trim(),
+                current: 0, isComplete: false,
             };
+            if (!task.goals) task.goals = [];
+            task.goals.push(newGoal);
         }
-    } else {
-        const newGoal = {
-            id: "goal_" + Date.now(),
-            title, target,
-            deadline: goalModalDeadlineInput.value,
-            effortDeadline: goalModalEffortDeadlineInput.value,
-            memo: goalModalMemoInput.value.trim(),
-            current: 0, isComplete: false,
-        };
-        if (!task.goals) task.goals = [];
-        task.goals.push(newGoal);
-    }
+        return taskList;
+    });
 
-    try {
-        await saveAllTasksToFirestore(updatedTasks);
-        
-        // ★修正: リロードせずにメモリと画面を更新
-        updateGlobalTaskObjects(updatedTasks);
+    if (success) {
         closeGoalModal();
-        await refreshUIBasedOnTaskUpdate();
-        
-        // ハイライト復元と完了メッセージ
         restoreSelectionStateWithRetry(taskName);
         alert("工数を保存しました。");
-
-    } catch (error) {
-        console.error("Error saving goal:", error);
-        alert("保存中にエラーが発生しました。");
     }
 }
 
@@ -316,50 +325,46 @@ async function handleAddTask() {
         return;
     }
 
-    const currentTasks = getAllTaskObjects();
-    if (currentTasks.some((t) => t.name === newTaskName)) {
+    // 簡易ローカルチェック（UX向上のため）
+    if (getAllTaskObjects().some((t) => t.name === newTaskName)) {
         alert("既に存在する業務名です。");
         return;
     }
 
-    const updatedTasks = [...currentTasks, { name: newTaskName, memo: "", goals: [] }];
-    try {
-        await saveAllTasksToFirestore(updatedTasks);
+    // トランザクション内で追加を実行
+    const success = await updateTasksSafe((taskList) => {
+        // DB上の最新データに対して重複チェック
+        if (taskList.some((t) => t.name === newTaskName)) {
+            throw new Error("ALREADY_EXISTS");
+        }
+        taskList.push({ name: newTaskName, memo: "", goals: [] });
+        return taskList;
+    });
 
-        // ★修正: リロードせずに更新
-        updateGlobalTaskObjects(updatedTasks);
-        await refreshUIBasedOnTaskUpdate();
-        
+    if (success) {
         newTaskIn.value = "";
         restoreSelectionStateWithRetry(newTaskName);
         alert(`業務「${newTaskName}」を追加しました。`);
-
-    } catch (error) { console.error(error); }
+    }
 }
 
 async function handleSaveTaskMemo(taskName, taskItemElement) {
     const memoInput = taskItemElement?.querySelector(".task-memo-editor");
     const newMemo = memoInput.value.trim();
     
-    const currentTasks = getAllTaskObjects();
-    const taskIndex = currentTasks.findIndex((t) => t.name === taskName);
-    if (taskIndex === -1) return;
-    if (currentTasks[taskIndex].memo === newMemo) return;
-
-    const updatedTasks = JSON.parse(JSON.stringify(currentTasks));
-    updatedTasks[taskIndex].memo = newMemo;
-
-    try {
-        await saveAllTasksToFirestore(updatedTasks);
+    // トランザクション内で更新を実行
+    const success = await updateTasksSafe((taskList) => {
+        const taskIndex = taskList.findIndex((t) => t.name === taskName);
+        if (taskIndex === -1) throw new Error("TASK_NOT_FOUND");
         
-        // ★修正: リロードせずに更新
-        updateGlobalTaskObjects(updatedTasks);
-        await refreshUIBasedOnTaskUpdate();
-        
+        taskList[taskIndex].memo = newMemo;
+        return taskList;
+    });
+
+    if (success) {
         restoreSelectionStateWithRetry(taskName);
         alert("メモを保存しました。");
-
-    } catch(error) { console.error(error); }
+    }
 }
 
 function handleDeleteTask(taskNameToDelete) {
@@ -369,21 +374,14 @@ function handleDeleteTask(taskNameToDelete) {
         `業務「${escapeHtml(taskNameToDelete)}」を削除しますか？\n\nこの業務に紐づく工数も全て削除されます。\n（関連する業務ログは削除されません）\n\nこの操作は元に戻せません。`,
         async () => {
             hideConfirmationModal();
-            const currentTasks = getAllTaskObjects();
-            const updatedTasks = currentTasks.filter(t => t.name !== taskNameToDelete);
+            
+            // トランザクション内で削除を実行
+            const success = await updateTasksSafe((taskList) => {
+                return taskList.filter(t => t.name !== taskNameToDelete);
+            });
 
-            try {
-                await saveAllTasksToFirestore(updatedTasks);
-                
-                // ★修正: リロードせずに更新
-                updateGlobalTaskObjects(updatedTasks);
-                await refreshUIBasedOnTaskUpdate();
-                
+            if (success) {
                 alert(`業務「${escapeHtml(taskNameToDelete)}」を削除しました。`);
-
-            } catch(error) { 
-                console.error(error);
-                alert("削除中にエラーが発生しました。");
             }
         },
         () => {  }
@@ -425,12 +423,6 @@ async function toggleMembersList(button, taskName) {
         button.textContent = "担当者別 合計時間 [+]";
         container.classList.add("hidden");
     }
-}
-
-async function saveAllTasksToFirestore(tasksToSave) {
-    if (!tasksToSave) throw new Error("Invalid task list");
-    const tasksRef = doc(db, "settings", "tasks");
-    await setDoc(tasksRef, { list: tasksToSave });
 }
 
 function closeGoalModal() {

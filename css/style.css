@@ -120,8 +120,14 @@
   position: absolute; /* 絶対配置 */
   left: 50%; /* 親に対して中央配置 */
   transform: translateX(-50%); /* 親に対して中央配置 */
-  bottom: -30px; /* 親要素下からの位置 */
-  display: inline-block;
+ /* ▼▼▼ 修正箇所 ▼▼▼ */
+  /* bottom指定を削除し、top指定に変更します */
+  
+  /* 親（ボタン）の底辺（100%）の位置に、ツールチップの上辺を合わせる */
+  top: 100%; 
+  
+  /* ボタンとツールチップの間に少し隙間を空ける */
+  margin-top: 10px;  display: inline-block;
   padding: 5px; /* 余白 */
   white-space: nowrap; /* テキストを折り返さない */
   font-size: 0.8rem; /* フォントサイズ */

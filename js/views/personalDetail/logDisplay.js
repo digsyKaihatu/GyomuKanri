@@ -81,7 +81,7 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
                 requestButton = `
                     <button onclick="handleRequestUpdateClick('${log.id}')" class="text-xs bg-yellow-500 text-white font-bold py-1 px-2 rounded hover:bg-yellow-600 ml-2 tooltip">
                         変更申請
-                        <span class="tooltip-text" style="z-index: 10;">時間は合っているけど<br>業務名や件数、工数を入力し忘れた場合はこちら</span>
+                        <span class="tooltip-text" style="z-index: 10;">時間は合っているけど<br>業務名や件数、工数を<br>入力し忘れた場合はこちら</span>
                     </button>
                 `;
             }

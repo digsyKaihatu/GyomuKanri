@@ -67,7 +67,10 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
             let editButtons = "";
             if (isAdmin || isSelf) {
                 editButtons = `
-                    <button class="edit-log-btn text-xs bg-blue-500 text-white font-bold py-1 px-2 rounded hover:bg-blue-600" data-log-id="${log.id}" data-duration="${log.duration || 0}" data-task-name="${escapeHtml(log.task)}">時間修正</button>
+                    <button class="edit-log-btn text-xs bg-blue-500 text-white font-bold py-1 px-2 rounded hover:bg-blue-600" data-log-id="${log.id}" data-duration="${log.duration || 0}" data-task-name="${escapeHtml(log.task)}" tooltip>
+                    時間修正
+                    <span class="tooltip-text">業務名は合っているけど時間だけ修正したい場合はこちら</span>
+                    </button>
                     <button class="edit-memo-btn text-xs bg-gray-500 text-white font-bold py-1 px-2 rounded hover:bg-gray-600" data-log-id="${log.id}" data-memo="${escapeHtml(log.memo || "")}">メモ修正</button>
                 `;
             }
@@ -76,8 +79,9 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
             let requestButton = "";
             if (isSelf) {
                 requestButton = `
-                    <button onclick="handleRequestUpdateClick('${log.id}')" class="text-xs bg-yellow-500 text-white font-bold py-1 px-2 rounded hover:bg-yellow-600 ml-2">
+                    <button onclick="handleRequestUpdateClick('${log.id}')" class="text-xs bg-yellow-500 text-white font-bold py-1 px-2 rounded hover:bg-yellow-600 ml-2" tooltip>
                         変更申請
+                        <span class="tooltip-text">時間は合っているけど業務名や件数、工数を入力し忘れた場合はこちら</span>
                     </button>
                 `;
             }

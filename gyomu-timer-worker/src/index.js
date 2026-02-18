@@ -74,19 +74,22 @@ export default {
         return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
       }
 
-      // --- エンドポイント6: フロントエンドからの手動ステータス同期 ---
+// --- エンドポイント6: フロントエンドからの手動ステータス同期 ---
       if ((url.pathname === "/update-status" || url.pathname === "/start-work") && request.method === "POST") {
         const data = await request.json();
 
         const currentGoal = data.currentGoal || null;
         const currentGoalId = data.currentGoalId || null;
+        // ★追加: 今日の一言を受け取る
+        const wordOfTheDay = data.wordOfTheDay || null;
+
         const nowIso = new Date().toISOString();
         const preBreakTask = data.preBreakTask ? (typeof data.preBreakTask === 'string' ? data.preBreakTask : JSON.stringify(data.preBreakTask)) : null;
 
-        // ★修正: 明示的な10カラムのINSERT (ユーザー指定順序: userId, userName, isWorking, currentTask, startTime, preBreakTask, currentGoal, currentGoalId, updatedAt, lastUpdatedBy)
+        // ★修正: wordOfTheDay をカラムに追加 (INSERTとUPDATE両方)
         await env.DB.prepare(`
-          INSERT INTO work_status (userId, userName, isWorking, currentTask, startTime, preBreakTask, currentGoal, currentGoalId, updatedAt, lastUpdatedBy)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO work_status (userId, userName, isWorking, currentTask, startTime, preBreakTask, currentGoal, currentGoalId, wordOfTheDay, updatedAt, lastUpdatedBy)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(userId) DO UPDATE SET
             userName=excluded.userName,
             isWorking=excluded.isWorking,
@@ -95,6 +98,7 @@ export default {
             preBreakTask=excluded.preBreakTask,
             currentGoal=excluded.currentGoal,
             currentGoalId=excluded.currentGoalId,
+            wordOfTheDay=excluded.wordOfTheDay, 
             updatedAt=excluded.updatedAt,
             lastUpdatedBy=excluded.lastUpdatedBy
         `).bind(
@@ -106,6 +110,7 @@ export default {
             preBreakTask,
             currentGoal,
             currentGoalId,
+            wordOfTheDay, // ★バインド変数に追加
             nowIso,
             'client'
         ).run();

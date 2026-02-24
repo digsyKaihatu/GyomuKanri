@@ -23,7 +23,8 @@ export async function executeStartTask(selectedTask, selectedGoalId, selectedGoa
         currentGoal: selectedGoalTitle,
         currentGoalId: selectedGoalId,
         startTime: new Date().toISOString(),
-        preBreakTask: State.getPreBreakTask()
+        preBreakTask: State.getPreBreakTask(),
+        wordOfTheDay: localStorage.getItem("wordOfTheDay") || ""
     };
 
     try {

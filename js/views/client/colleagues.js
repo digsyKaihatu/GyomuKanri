@@ -82,13 +82,21 @@ function updateColleaguesUI(colleagues) {
 
     container.classList.remove("hidden");
     listEl.innerHTML = colleagues.map(c => `
-        <li class="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 p-2 rounded border border-gray-100">
-            <span class="h-2 w-2 bg-green-500 rounded-full animate-pulse"></span>
-            <span class="font-medium">${escapeHtml(c.userName || '匿名ユーザー')}</span>
-            ${c.currentGoal ? `
-                <span class="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded border border-orange-200">
-                    ${escapeHtml(c.currentGoal)}
-                </span>
+        <li class="flex flex-col gap-1 text-sm text-gray-600 bg-gray-50 p-2 rounded border border-gray-100">
+            <div class="flex items-center gap-2">
+                <span class="h-2 w-2 bg-green-500 rounded-full animate-pulse"></span>
+                <span class="font-medium">${escapeHtml(c.userName || '匿名ユーザー')}</span>
+                ${c.currentGoal ? `
+                    <span class="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded border border-orange-200">
+                        ${escapeHtml(c.currentGoal)}
+                    </span>
+                ` : ""}
+            </div>
+            
+            ${c.wordOfTheDay ? `
+                <div class="ml-4 text-xs text-gray-500 italic">
+                    💬 ${escapeHtml(c.wordOfTheDay)}
+                </div>
             ` : ""}
         </li>
     `).join("");

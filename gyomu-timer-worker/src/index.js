@@ -280,6 +280,17 @@ export default {
           continue; 
         }
 
+        // ▼▼▼ ここを追加 ▼▼▼
+        // 休憩予約だが、現在業務中でない場合はスキップ（予約日時は翌日に更新）
+        if (res.action === "break" && (!currentStatus || currentStatus.isWorking === 0)) {
+          const scheduledDate = new Date(res.scheduledTime);
+          const nextDateIso = new Date(scheduledDate.getTime() + 24 * 60 * 60 * 1000).toISOString();
+          await env.DB.prepare("UPDATE reservations SET scheduledTime = ? WHERE id = ?")
+            .bind(nextDateIso, res.id).run();
+          continue; 
+        }
+        // ▲▲▲ ここまで ▲▲▲
+
         // --- 1. Firebaseへのログ送信 & 休憩前タスクの保存準備 ---
         if (currentStatus && currentStatus.isWorking === 1) {
           try {

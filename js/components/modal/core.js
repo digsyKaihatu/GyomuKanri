@@ -12,6 +12,7 @@ export let editContributionModal;
 export let breakReservationModal;
 export let addUserModal;
 export let taskModal;
+export let selfCheckModal; // ← 追加
 
 let modalMessage;
 let modalConfirmBtn;
@@ -31,6 +32,7 @@ export function initModals() {
     breakReservationModal = document.getElementById("break-reservation-modal");
     addUserModal = document.getElementById("add-user-modal");
     taskModal = document.getElementById("task-modal");
+    selfCheckModal = document.getElementById("self-check-modal"); // ← 追加
 
     modalMessage = document.getElementById("modal-message");
     modalConfirmBtn = document.getElementById("modal-confirm-btn");

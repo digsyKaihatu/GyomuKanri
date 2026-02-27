@@ -32,7 +32,7 @@ import {
 
 import { handleFixCheckout } from "./clientActions.js";
 import { toggleMiniDisplay } from "./miniDisplay.js";
-import { openBreakReservationModal, fixCheckoutModal, showHelpModal } from "../../components/modal/index.js";
+import { openBreakReservationModal, fixCheckoutModal, showHelpModal, showModal, selfCheckModal } from "../../components/modal/index.js";
 import { stopColleaguesListener } from "./colleagues.js";
 
 // --- DOM Element references ---
@@ -40,12 +40,14 @@ let startBtn, stopBtn, breakBtn, taskSelect, goalSelect, otherTaskInput, taskDis
 let addBreakReservationBtn, breakReservationList, breakReservationSaveBtn, setStopReservationBtn, cancelStopReservationBtn;
 let backButton, myRecordsButton, viewMyProgressButton, fixCheckoutButton, fixCheckoutSaveBtn;
 let helpButton;
+let selfCheckBtn; // ← これを追加
 
 
 function initClientViewDOM() {
     startBtn = document.getElementById("start-btn");
     stopBtn = document.getElementById("stop-btn");
     breakBtn = document.getElementById("break-btn");
+    selfCheckBtn = document.getElementById("self-check-btn"); // ← これを追加
     taskSelect = document.getElementById("task-select");
     goalSelect = document.getElementById("goal-select");
     otherTaskInput = document.getElementById("other-task-input");
@@ -459,6 +461,11 @@ if (breakBtn) breakBtn.onclick = () => handleBreakClick(false);
 
     // Help Button
     helpButton?.addEventListener('click', () => showHelpModal('client'));
+
+    // ▼ セルフチェックボタンを押した時の処理 ▼
+    selfCheckBtn?.addEventListener('click', () => {
+        if (selfCheckModal) showModal(selfCheckModal);
+    });
 
     document.addEventListener("visibilitychange", () => {
         const isClientViewActive = document.getElementById(VIEWS.CLIENT)?.classList.contains('active-view');

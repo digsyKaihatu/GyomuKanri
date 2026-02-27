@@ -20,6 +20,7 @@ import { editContributionModalTemplate } from './components/modal/templates/edit
 import { breakReservationModalTemplate } from './components/modal/templates/breakReservationModalTemplate.js';
 import { addUserModalTemplate } from './components/modal/templates/addUserModalTemplate.js';
 import { adminPasswordViewTemplate } from './components/modal/templates/adminPasswordViewTemplate.js';
+import { selfCheckModalTemplate } from './components/modal/templates/selfCheckModalTemplate.js';
 
 // This array will hold all the imported HTML templates.
 const allTemplates = [
@@ -43,7 +44,8 @@ const allTemplates = [
     editContributionModalTemplate,
     breakReservationModalTemplate,
     addUserModalTemplate,
-    adminPasswordViewTemplate
+    adminPasswordViewTemplate,
+    selfCheckModalTemplate
 ];
 
 /**

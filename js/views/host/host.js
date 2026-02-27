@@ -230,15 +230,21 @@ let lastTomuraDataCache = null;
 
 // ★修正: 読み込み処理を独立させ、強制取得オプションを追加
 async function fetchTomuraStatus(force = false) {
-    // タブが非アクティブ、かつ強制取得フラグがなければ処理を中断
-    if (document.hidden && !force) {
-        return;
-    }
+    if (document.hidden && !force) return;
 
     try {
         const resp = await fetch(`${WORKER_URL}/get-tomura-status`);
         if (resp.ok) {
-            const data = await resp.json();
+            let data = await resp.json();
+            
+            // ▼ ここから追加：日付チェック ▼
+            const todayStr = new Date().toISOString().split("T")[0];
+            if (data.date && data.date !== todayStr) {
+                // 日付が今日でなければデフォルト値にする
+                data = { status: "声掛けNG", location: "出社" };
+            }
+            // ▲ ここまで ▲
+
             const dataStr = JSON.stringify(data);
 
             if (dataStr !== lastTomuraDataCache) {

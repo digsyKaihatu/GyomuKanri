@@ -32,7 +32,7 @@ import {
 
 import { handleFixCheckout } from "./clientActions.js";
 import { toggleMiniDisplay } from "./miniDisplay.js";
-import { openBreakReservationModal, fixCheckoutModal, showHelpModal } from "../../components/modal/index.js";
+import { openBreakReservationModal, fixCheckoutModal, showHelpModal, showModal, selfCheckModal } from "../../components/modal/index.js";
 import { stopColleaguesListener } from "./colleagues.js";
 
 // --- DOM Element references ---
@@ -459,6 +459,11 @@ if (breakBtn) breakBtn.onclick = () => handleBreakClick(false);
 
     // Help Button
     helpButton?.addEventListener('click', () => showHelpModal('client'));
+
+    // ▼ セルフチェックボタンを押した時の処理 ▼
+    selfCheckBtn?.addEventListener('click', () => {
+        if (selfCheckModal) showModal(selfCheckModal);
+    });
 
     document.addEventListener("visibilitychange", () => {
         const isClientViewActive = document.getElementById(VIEWS.CLIENT)?.classList.contains('active-view');

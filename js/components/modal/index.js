@@ -18,7 +18,8 @@ export function setupModalEventListeners() {
         { btn: 'break-reservation-cancel-btn', modalId: 'break-reservation-modal' },
         { btn: 'admin-password-cancel-btn', modalId: 'admin-password-view' },
         { btn: 'message-cancel-btn', modalId: 'message-modal' },
-        { btn: 'fix-checkout-cancel-btn', modalId: 'fix-checkout-modal' }
+        { btn: 'fix-checkout-cancel-btn', modalId: 'fix-checkout-modal' },
+        { btn: 'self-check-cancel-btn', modalId: 'self-check-modal' } // ← これを追加
         // 必要に応じて追加
     ];
 

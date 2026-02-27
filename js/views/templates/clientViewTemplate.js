@@ -84,6 +84,9 @@ export const clientViewTemplate = `
            <button id="break-btn" class="w-full bg-yellow-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-yellow-600 transition shadow-sm disabled:opacity-50" disabled>
             休憩開始
           </button>
+          <button id="self-check-btn" class="w-full bg-purple-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-purple-600 transition shadow-sm">
+            セルフチェックをする
+          </button>
         </div>
       </div>
 

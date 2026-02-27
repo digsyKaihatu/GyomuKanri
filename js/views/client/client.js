@@ -40,12 +40,14 @@ let startBtn, stopBtn, breakBtn, taskSelect, goalSelect, otherTaskInput, taskDis
 let addBreakReservationBtn, breakReservationList, breakReservationSaveBtn, setStopReservationBtn, cancelStopReservationBtn;
 let backButton, myRecordsButton, viewMyProgressButton, fixCheckoutButton, fixCheckoutSaveBtn;
 let helpButton;
+let selfCheckBtn; // ← これを追加
 
 
 function initClientViewDOM() {
     startBtn = document.getElementById("start-btn");
     stopBtn = document.getElementById("stop-btn");
     breakBtn = document.getElementById("break-btn");
+    selfCheckBtn = document.getElementById("self-check-btn"); // ← これを追加
     taskSelect = document.getElementById("task-select");
     goalSelect = document.getElementById("goal-select");
     otherTaskInput = document.getElementById("other-task-input");

@@ -42,13 +42,15 @@ export async function triggerEncouragementNotification(elapsedSeconds, type = 'e
 export async function triggerReservationNotification(actionName) {
     let title = "予約時間のお知らせ";
     let message = `予約設定で${actionName}しました`;
+    let isLeave = false; // ★追加：帰宅フラグ
 
     if (actionName === "休憩開始") {
         title = "休憩時間になりました";
         message = "自動的に休憩に切り替わりました。ゆっくり休んでください。";
     } else if (actionName === "帰宅") {
         title = "自動帰宅しました";
-        message = "本日もお疲れ様でした！";
+        message = "セルフチェックを忘れずにお願いします！";
+        isLeave = true; // ★追加：帰宅の場合はtrueにしてボタン自動クリックの対象にする
     } else if (actionName.startsWith("テスト")) {
         title = "通知テスト";
         message = actionName;
@@ -58,7 +60,8 @@ export async function triggerReservationNotification(actionName) {
     const delay = actionName.startsWith("テスト") ? 5000 : 0;
     setTimeout(() => {
         // ★修正: 予約通知などは少し長め(15秒)あるいはデフォルト動作にするなら時間を渡す
-        showBrowserNotification(title, message, 15000);
+        // ★修正: isLeaveフラグを渡す
+        showBrowserNotification(title, message, 15000, isLeave);
     }, delay);
 }
 
@@ -72,8 +75,8 @@ export async function triggerBreakNotification(elapsedSeconds) {
 }
 
 // ブラウザ通知を表示する共通関数
-// ★修正: duration 引数を追加 (デフォルト 15000ms)
-async function showBrowserNotification(title, message, duration = 15000) {
+// ★修正: duration 引数を追加 (デフォルト 15000ms)、isLeaveフラグを追加
+async function showBrowserNotification(title, message, duration = 15000, isLeave = false) {
     if (!("Notification" in window)) {
         console.warn("[Notification] Browser does not support Notification API");
         return;
@@ -97,7 +100,8 @@ async function showBrowserNotification(title, message, duration = 15000) {
                         tag: tag,
                         renotify: true,
                         // ★修正: すぐ消す場合は requireInteraction を false にする
-                        requireInteraction: duration > 10000 
+                        requireInteraction: duration > 10000,
+                        data: { isLeave: isLeave } // ★追加: Service Worker側にフラグを渡す
                     });
 
                     // ★追加: Service Workerの通知を指定時間後に閉じる
@@ -119,12 +123,14 @@ async function showBrowserNotification(title, message, duration = 15000) {
                 console.warn("[Notification] Service Worker notification failed, falling back to foreground:", swErr);
             }
         }
-        createNotification(title, message, duration);
+        // ★修正: isLeave を渡す
+        createNotification(title, message, duration, isLeave);
     } else if (permission !== "denied") {
         try {
             permission = await Notification.requestPermission();
             if (permission === "granted") {
-                createNotification(title, message, duration);
+                // ★修正: isLeave を渡す
+                createNotification(title, message, duration, isLeave);
             }
         } catch (error) {
             console.error("Error requesting notification permission:", error);
@@ -132,8 +138,8 @@ async function showBrowserNotification(title, message, duration = 15000) {
     }
 }
 
-// ★修正: duration 引数を追加
-function createNotification(title, message, duration) {
+// ★修正: duration 引数を追加、isLeaveフラグを追加
+function createNotification(title, message, duration, isLeave = false) {
     try {
         const notification = new Notification(title, {
             body: message,
@@ -145,6 +151,14 @@ function createNotification(title, message, duration) {
         notification.onclick = () => {
             window.focus();
             notification.close();
+
+            // ★追加: 帰宅通知の場合はセルフチェックボタンをクリック
+            if (isLeave) {
+                const selfCheckBtn = document.getElementById("self-check-btn");
+                if (selfCheckBtn) {
+                    selfCheckBtn.click();
+                }
+            }
         };
 
         // ★修正: 引数の duration を使用

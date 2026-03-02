@@ -349,3 +349,17 @@ if (document.readyState === 'loading') {
     initialize();
 }
 
+// js/main.js
+
+// ★追加: Service Workerからのメッセージを受け取り、セルフチェックボタンを押す
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data && event.data.action === 'openSelfCheck') {
+            const selfCheckBtn = document.getElementById('self-check-btn');
+            if (selfCheckBtn) {
+                selfCheckBtn.click();
+            }
+        }
+    });
+}
+

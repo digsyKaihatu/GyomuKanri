@@ -1,56 +1,33 @@
-// ★ESMのimportではなく、importScriptsを使用
-importScripts("https://www.gstatic.com/firebasejs/11.6.1/firebase-app-compat.js");
-importScripts("https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging-compat.js");
+// firebase-messaging-sw.js
 
-// ★URLパラメータから設定値を取り出す
-const params = new URLSearchParams(self.location.search);
-const config = Object.fromEntries(params);
-
-// Firebase初期化 (compat版なので firebase.initializeApp を使う)
-firebase.initializeApp(config);
-
-const messaging = firebase.messaging();
-
-// バックグラウンド通知ハンドラ
-messaging.onBackgroundMessage((payload) => {
-    
-    // 通知の表示
-    const notificationTitle = payload.notification.title;
-    const notificationOptions = {
-        body: payload.notification.body,
-        icon: '/512.pngs32.png',
-        badge: '/512.pngs32.png'
-    };
-
-    self.registration.showNotification(notificationTitle, notificationOptions);
-});
-
-// ★追加：通知がクリックされた時の処理
+// ★最優先で動作させるため、Firebaseの読み込みより前にクリックイベントを定義します
 self.addEventListener('notificationclick', function(event) {
+    // 帰宅通知かどうかをチェック (isLeaveフラグがなければFirebase等の処理に任せる)
+    if (!event.notification.data || !event.notification.data.isLeave) {
+        return; 
+    }
+
     event.notification.close(); // 通知を閉じる
-    
-    // 通知作成時に渡した isLeave フラグを受け取る
-    const isLeave = event.notification.data && event.notification.data.isLeave;
     
     event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
-            // 既に開いているアプリのタブを探す
-            for (let i = 0; i < clientList.length; i++) {
-                let client = clientList[i];
-                if (client.url.includes(self.registration.scope) && 'focus' in client) {
-                    client.focus(); // タブを一番上にする
-                    
-                    if (isLeave) {
-                        // アプリ側にボタンを押すようメッセージを送信
-                        client.postMessage({ action: 'openSelfCheck' });
-                    }
-                    return;
-                }
+            // アプリのタブが既に開いているか探す
+            if (clientList.length > 0) {
+                // 複数あれば現在フォーカスされているもの、なければ最初のタブを取得
+                let client = clientList.find(c => c.focused) || clientList[0];
+                
+                // タブを一番上（アクティブ）にする
+                return client.focus().then(focusedClient => {
+                    const targetClient = focusedClient || client;
+                    // アプリ側に「セルフチェックを開いて」とメッセージを送る
+                    targetClient.postMessage({ action: 'openSelfCheck' });
+                });
             }
-            // タブが開いていなければ新しく開く
+            
+            // アプリのタブが1つも開いていなければ新しく開く
             if (clients.openWindow) {
                 return clients.openWindow('/').then(client => {
-                    if (client && isLeave) {
+                    if (client) {
                         // 読み込みを待ってからメッセージを送信
                         setTimeout(() => {
                             client.postMessage({ action: 'openSelfCheck' });
@@ -60,4 +37,26 @@ self.addEventListener('notificationclick', function(event) {
             }
         })
     );
+});
+
+// --- 以降は元のFirebase設定 ---
+importScripts("https://www.gstatic.com/firebasejs/11.6.1/firebase-app-compat.js");
+importScripts("https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging-compat.js");
+
+const params = new URLSearchParams(self.location.search);
+const config = Object.fromEntries(params);
+
+firebase.initializeApp(config);
+
+const messaging = firebase.messaging();
+
+messaging.onBackgroundMessage((payload) => {
+    const notificationTitle = payload.notification.title;
+    const notificationOptions = {
+        body: payload.notification.body,
+        icon: '/512.pngs32.png',
+        badge: '/512.pngs32.png'
+    };
+
+    self.registration.showNotification(notificationTitle, notificationOptions);
 });

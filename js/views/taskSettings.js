@@ -35,6 +35,7 @@ let goalModal, goalModalTaskNameInput, goalModalGoalIdInput, goalModalTitleInput
     goalModalMemoInput, goalModalSaveBtn, goalModalCancelBtn;
 
 let currentUserRole = "general";
+let areTaskSettingsEventListenersSetup = false;
 
 function initializeDOMElements() {
     goalModal = document.getElementById("goal-modal");

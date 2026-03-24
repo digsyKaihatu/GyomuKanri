@@ -86,6 +86,7 @@ export async function initializeTaskSettingsView() {
  * イベントリスナー設定
  */
 export function setupTaskSettingsEventListeners() {
+    if (areTaskSettingsEventListenersSetup) return;
     const viewProgressButton = document.getElementById("view-progress-from-settings-btn");
     viewProgressButton?.addEventListener('click', () => {
         window.isProgressViewReadOnly = false;
@@ -111,6 +112,7 @@ export function setupTaskSettingsEventListeners() {
 
     goalModalSaveBtn?.addEventListener("click", handleSaveGoal);
     goalModalCancelBtn?.addEventListener("click", closeGoalModal);
+    areTaskSettingsEventListenersSetup = true;
 }
 
 /**

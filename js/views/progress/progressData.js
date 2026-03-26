@@ -60,7 +60,6 @@ export function aggregateWeeklyData(allUserLogs, goalId, weekDates) {
                 .reduce((sum, log) => sum + (log.duration || 0), 0);
             
             const totalContribution = logsForDay
-                .filter(l => l.type === "goal")
                 .reduce((sum, log) => sum + (log.contribution || 0), 0);
 
             const hours = totalDuration / 3600;

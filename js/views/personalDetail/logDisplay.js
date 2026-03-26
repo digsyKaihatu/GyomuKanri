@@ -37,14 +37,19 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
             const endTimeStr = formatTime(log.endTime);
 
             // 集計処理
-            if (log.type === "goal" && log.goalTitle && log.task) {
+
+            // ① 目標貢献（件数）の集計：typeに関わらず、件数(contribution)が入っていれば加算
+            if (log.goalTitle && log.task && (log.contribution > 0 || log.type === "goal")) {
                 const key = `[${log.task}] ${log.goalTitle}`;
                 if (!goalContributions[key]) {
                     goalContributions[key] = { contribution: 0, logs: [] };
                 }
                 goalContributions[key].contribution += (log.contribution || 0);
                 goalContributions[key].logs.push(log);
-            } else if (log.task && log.task !== "休憩") {
+            } 
+            
+            // ② 業務時間（時間）の集計：休憩以外、かつ進捗専用ログ(type="goal")以外なら加算
+            if (log.task && log.task !== "休憩" && log.type !== "goal") {
                 const summaryKey = log.goalTitle ? `${log.task} (${log.goalTitle})` : log.task;
                 if (!dailyWorkSummary[summaryKey]) dailyWorkSummary[summaryKey] = 0;
                 dailyWorkSummary[summaryKey] += (log.duration || 0);
@@ -169,11 +174,15 @@ export function showMonthlyLogs(currentCalendarDate, logsForMonth, detailsTitleE
         const monthlyGoalContributions = {};
 
         logsForMonth.forEach((log) => {
-            if (log.type === "goal" && log.goalTitle && log.task) {
+            // ① 目標貢献（件数）の集計
+            if (log.goalTitle && log.task && (log.contribution > 0 || log.type === "goal")) {
                  const key = `[${log.task}] ${log.goalTitle}`;
                  if (!monthlyGoalContributions[key]) monthlyGoalContributions[key] = 0;
                  monthlyGoalContributions[key] += (log.contribution || 0);
-            } else if (log.task && log.task !== "休憩") {
+            } 
+            
+            // ② 業務時間（時間）の集計
+            if (log.task && log.task !== "休憩" && log.type !== "goal") {
                 const summaryKey = log.goalTitle ? `${log.task} (${log.goalTitle})` : log.task;
                 if (!monthlySummary[summaryKey]) monthlySummary[summaryKey] = 0;
                 monthlySummary[summaryKey] += (log.duration || 0);

@@ -258,7 +258,7 @@ async function handleApprove(reqDoc) {
                 await updateGoalProgress(req.data.task, req.data.goalId, req.data.count);
             }
 
-        } else if (req.type === "update") {
+} else if (req.type === "update") {
             // 既存ログ更新
             const logRef = doc(db, "work_logs", req.targetLogId);
             const logSnap = await getDoc(logRef);
@@ -274,10 +274,11 @@ async function handleApprove(reqDoc) {
                 goalId: req.data.goalId || null,
                 goalTitle: req.data.goalTitle || null,
                 contribution: req.data.count || 0,
-                memo: req.data.memo || "",
-                type: "work" // 常に "work" にする（またはこの行を削除）
+                memo: req.data.memo || ""
+                // 変更前: type: "work" // 常に "work" にする（またはこの行を削除）
+                // 変更後: ↓ 行ごと削除するかコメントアウトしてください
             });
-
+            
             // 目標進捗更新（差分）
             if (oldLog.goalId && oldLog.contribution > 0) {
                 await updateGoalProgress(oldLog.task, oldLog.goalId, -oldLog.contribution);

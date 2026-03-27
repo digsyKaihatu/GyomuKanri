@@ -3,6 +3,9 @@
 import { db, userId, escapeHtml } from "../../main.js";
 import { collection, query, where, orderBy, limit, getDocs, onSnapshot, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+// ▼▼▼ 修正1：ファイルの上部（importの下あたり）にリスナーを保存する変数を追加 ▼▼▼
+let unreadMessagesUnsubscribe = null;
+
 /**
  * メッセージ履歴ボタンを画面上部に注入する
  */
@@ -37,6 +40,11 @@ export function injectMessageHistoryButton() {
 // 未読メッセージ監視ロジック
 function listenForUnreadMessages() {
     if (!userId) return;
+
+    // ▼▼▼ 修正2：既に監視が動いている場合は、二重登録を防ぐために処理をストップ ▼▼▼
+    if (unreadMessagesUnsubscribe) {
+        return; // 既に監視中なら何もしないで終了
+    }
     
     const q = query(
         collection(db, "user_profiles", userId, "messages"),
@@ -45,8 +53,8 @@ function listenForUnreadMessages() {
 
     let isInitialLoad = true;
 
-    // リアルタイムで未読数を監視
-    onSnapshot(q, (snapshot) => {
+    // ▼▼▼ 修正3：onSnapshot の返り値（監視解除用の関数）を変数に保存する ▼▼▼
+    unreadMessagesUnsubscribe = onSnapshot(q, (snapshot) => {
         const btn = document.getElementById("open-messages-btn");
         const badge = document.getElementById("unread-badge");
 

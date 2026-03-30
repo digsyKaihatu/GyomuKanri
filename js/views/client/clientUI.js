@@ -37,7 +37,7 @@ export function setupClientUI() {
     renderTaskOptions(allTaskObjects);
     renderTaskDisplaySettings(allTaskObjects, userDisplayPreferences);
     setupWordOfTheDayListener(); // statusUI.js から
-    injectMessageHistoryButton(); // messageHistory.js から
+    // injectMessageHistoryButton(); // ← ★この行をコメントアウト（または削除）
 }
 
 /**

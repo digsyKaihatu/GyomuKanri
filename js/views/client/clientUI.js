@@ -5,11 +5,11 @@ import { doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-
 import { getCurrentTask, getCurrentGoalId } from "./timer.js";
 
 // ★分割したファイルをインポート
-import { injectMessageHistoryButton } from "./messageHistory.js";
+// import { injectMessageHistoryButton } from "./messageHistory.js"; // ← コメントアウト
 import { setupWordOfTheDayListener } from "./statusUI.js";
 
 // ★他のファイルからも使えるように再エクスポート
-export * from "./messageHistory.js";
+// export * from "./messageHistory.js"; // ← コメントアウト
 export * from "./statusUI.js";
 
 // --- DOM Elements ---
@@ -37,7 +37,7 @@ export function setupClientUI() {
     renderTaskOptions(allTaskObjects);
     renderTaskDisplaySettings(allTaskObjects, userDisplayPreferences);
     setupWordOfTheDayListener(); // statusUI.js から
-    injectMessageHistoryButton(); // messageHistory.js から
+    // injectMessageHistoryButton(); // ← ★この行をコメントアウト（または削除）
 }
 
 /**

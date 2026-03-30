@@ -1,7 +1,7 @@
 // js/views/client/messageHistory.js
 
 import { db, userId, escapeHtml } from "../../main.js";
-import { collection, query, where, orderBy, limit, getDocs, onSnapshot, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { collection, query, where, orderBy, limit, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // ▼▼▼ 修正1：ファイルの上部（importの下あたり）にリスナーを保存する変数を追加 ▼▼▼
 let unreadMessagesUnsubscribe = null;
@@ -34,51 +34,26 @@ export function injectMessageHistoryButton() {
     document.getElementById("open-messages-btn").addEventListener("click", showMessageHistoryModal);
 
     // 未読メッセージを監視してボタンを強調する
-    listenForUnreadMessages();
+    fetchUnreadMessages();
 }
 
-// 未読メッセージ監視ロジック
-function listenForUnreadMessages() {
+// 未読メッセージ取得ロジック（1回のみ取得）
+async function fetchUnreadMessages() {
     if (!userId) return;
-
-    // ▼▼▼ 修正2：既に監視が動いている場合は、二重登録を防ぐために処理をストップ ▼▼▼
-    if (unreadMessagesUnsubscribe) {
-        return; // 既に監視中なら何もしないで終了
-    }
     
     const q = query(
         collection(db, "user_profiles", userId, "messages"),
         where("read", "==", false)
     );
 
-    let isInitialLoad = true;
-
-    // ▼▼▼ 修正3：onSnapshot の返り値（監視解除用の関数）を変数に保存する ▼▼▼
-    unreadMessagesUnsubscribe = onSnapshot(q, (snapshot) => {
+    try {
+        const snapshot = await getDocs(q); // onSnapshot ではなく getDocs に変更
+        const count = snapshot.size;
+        
         const btn = document.getElementById("open-messages-btn");
         const badge = document.getElementById("unread-badge");
-
-        // ▼▼▼ 追加: デスクトップ通知のロジック ▼▼▼
-        if (!isInitialLoad) {
-            snapshot.docChanges().forEach((change) => {
-                if (change.type === "added") {
-                    const data = change.doc.data();
-                    // ブラウザの通知許可があれば通知を出す
-                    if (Notification.permission === "granted") {
-                        new Notification(data.title || "新しいメッセージ", {
-                            body: data.body || "管理者からメッセージが届きました",
-                            icon: "/512.pngs32.png" // アイコン画像のパス（必要に応じて変更）
-                        });
-                    }
-                }
-            });
-        }
-        isInitialLoad = false; // 初回処理完了
-        // ▲▲▲ 追加ここまで ▲▲▲
-        
         if (!btn || !badge) return;
 
-        const count = snapshot.size;
         if (count > 0) {
             // 未読あり: 赤バッジ表示、ボタンをオレンジにして点滅させる
             badge.textContent = count > 99 ? "99+" : count;
@@ -93,7 +68,9 @@ function listenForUnreadMessages() {
             btn.classList.remove("animate-pulse", "bg-orange-600", "hover:bg-orange-700");
             btn.classList.add("bg-indigo-600", "hover:bg-indigo-700");
         }
-    });
+    } catch (error) {
+        console.error("未読メッセージの取得に失敗しました:", error);
+    }
 }
 
 /**

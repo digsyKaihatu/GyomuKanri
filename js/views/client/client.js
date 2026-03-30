@@ -131,7 +131,7 @@ export async function initializeClientView({ tasks }) {
     renderTaskOptions(tasks, taskSelect);
     renderTaskDisplaySettings(tasks);
     
-    injectMessageHistoryButton();
+    // injectMessageHistoryButton(); // ← ★この行をコメントアウト（または削除）
     
     listenForTomuraStatus();
     

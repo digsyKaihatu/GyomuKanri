@@ -146,7 +146,7 @@ export function initializeHostView() {
     
     injectTomuraLocationUI();
     injectApprovalButton();
-    injectMessageFeature(); 
+    // injectMessageFeature(); // ← ★この行をコメントアウト（または削除）
 
     startListeningForStatusUpdates(); 
     startListeningForUsers();      

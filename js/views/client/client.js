@@ -26,7 +26,7 @@ import {
     renderTaskOptions, 
     renderTaskDisplaySettings, 
     updateTomuraStatusDisplay,
-    injectMessageHistoryButton,
+    //injectMessageHistoryButton,//　メッセージボタンをオミット
     initializeDOMElements as initializeClientUIDOMElements
 } from "./clientUI.js";
 

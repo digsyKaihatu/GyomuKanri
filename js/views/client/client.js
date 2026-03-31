@@ -120,9 +120,6 @@ export async function initializeClientView({ tasks }) {
 
     // ★追加: 自分自身のステータス変化を監視開始 (自動切り替えに必須)
     listenForMyStatus();
-
-    // ★追加: 自分自身のステータス変化を監視開始 (自動切り替えに必須)
-    listenForMyStatus();
     startD1StatusPolling(); // ★追加: D1側も監視開始
 
     listenForUserReservations();

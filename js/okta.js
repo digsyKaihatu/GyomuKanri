@@ -200,7 +200,7 @@ async function handleOktaLoginSuccess() {
         if (appContainer) appContainer.classList.remove('hidden');
 
         if (onLoginSuccessCallback) {
-            onLoginSuccessCallback();
+            await onLoginSuccessCallback();
         }
 
         showView(VIEWS.MODE_SELECTION);

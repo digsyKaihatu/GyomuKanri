@@ -147,7 +147,7 @@ function renderReportCharts(logs) {
     let grandTotalDuration = 0;
 
     // ★ここを追加：タスクごとの詳細集計用Map
-　　const taskStats = new Map();
+    const taskStats = new Map();
 
     logs.forEach(log => {
         if (!log.userName || !log.task || log.task === "休憩" || log.type === "goal") return;

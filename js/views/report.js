@@ -155,6 +155,10 @@ function renderReportCharts(logs) {
         const taskName = log.task.startsWith("その他_") ? log.task.substring(4) : log.task;
         const userId = log.userId || log.userName; 
 
+        // ★ここを追加： userName と goalTitle を定義する
+        const userName = log.userName;
+        const goalTitle = log.goalTitle || "未分類";
+
         if (!userStats.has(userId)) {
             userStats.set(userId, { name: log.userName, tasks: new Map() });
         }
@@ -289,8 +293,8 @@ function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge,
         const color = backgroundColors[index] || '#cccccc';
 
         const li = document.createElement("li");
-        // ★修正: クリック可能な場合はカーソルを変更し、レイアウトを縦並び(flex-col)に変更
-        const cursorClass = allUserStats ? "cursor-pointer" : "";
+        // ★修正：allUserStats を taskStatsMap に変更
+        const cursorClass = taskStatsMap ? "cursor-pointer" : "";
         li.className = `flex flex-col px-2 py-1 hover:bg-gray-50 rounded border-b border-gray-100 last:border-0 ${cursorClass}`;
         
         // 業務名の行

@@ -73,10 +73,11 @@ async function fetchAndRenderForCurrentMonth() {
         const snapshot = await getDocs(q);
         currentMonthLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         
-        renderReportCalendar();       
+        renderReportCalendar();        
         renderReportChartsForMonth(); 
 
     } catch (error) {
+        // eslint-disable-next-line no-console
         console.error("Error fetching report logs:", error);
         if(reportChartsContainer) reportChartsContainer.innerHTML = `<p class="text-red-500 text-center">データの取得中にエラーが発生しました。</p>`;
     }
@@ -146,7 +147,6 @@ function renderReportCharts(logs) {
     const grandTotalTasks = new Map();
     let grandTotalDuration = 0;
 
-    // ★ここを追加：タスクごとの詳細集計用Map
     const taskStats = new Map();
 
     logs.forEach(log => {
@@ -155,10 +155,8 @@ function renderReportCharts(logs) {
         const taskName = log.task.startsWith("その他_") ? log.task.substring(4) : log.task;
         const userId = log.userId || log.userName; 
 
-        // ★ここを追加： userName と goalTitle を定義する
         const userName = log.userName;
         const goalTitle = log.goalTitle || "未分類";
-        // ★追加: ログから納期情報を取得
         const goalDeadline = log.goalDeadline || log.effortDeadline || log.deadline || "";
 
         if (!userStats.has(userId)) {
@@ -172,7 +170,6 @@ function renderReportCharts(logs) {
         grandTotalTasks.set(taskName, totalTaskDuration + (log.duration || 0));
         grandTotalDuration += (log.duration || 0);
 
-        // ★ここから追加：工数や従業員ごとの詳細集計
         if (!taskStats.has(taskName)) {
             taskStats.set(taskName, { users: new Map(), goals: new Map() });
         }
@@ -180,17 +177,14 @@ function renderReportCharts(logs) {
         tStat.users.set(userName, (tStat.users.get(userName) || 0) + (log.duration || 0));
 
         if (!tStat.goals.has(goalTitle)) {
-            // ★修正: deadline プロパティも持たせる
             tStat.goals.set(goalTitle, { duration: 0, users: new Map(), deadline: goalDeadline });
         }
         const gStat = tStat.goals.get(goalTitle);
-        // ★追加: もし最初のログで納期が空でも、後のログに納期があれば更新する
         if (!gStat.deadline && goalDeadline) {
             gStat.deadline = goalDeadline;
         }
         gStat.duration += (log.duration || 0);
         gStat.users.set(userName, (gStat.users.get(userName) || 0) + (log.duration || 0));
-        // ★追加ここまで
     });
 
     if (grandTotalDuration === 0) {
@@ -210,7 +204,6 @@ function renderReportCharts(logs) {
     totalWrapper.className = "w-full md:w-2/3 mx-auto mb-12 bg-white p-6 rounded-lg shadow-md border border-gray-100";
     reportChartsContainer.appendChild(totalWrapper);
 
-    // ★修正: 全体合計のカード作成時に userStats (内訳用データ) を渡す
     createChartCard(totalWrapper, "全従業員", grandTotalTasks, grandTotalDuration, true, taskStats);
 
     // B. 個別従業員用コンテナ
@@ -234,7 +227,6 @@ function renderReportCharts(logs) {
             stats.tasks.forEach(d => totalUserDuration += d);
 
             if (totalUserDuration > 0) {
-                // 個別カードには内訳データ(userStats)は渡さない(null)
                 createChartCard(card, stats.name, stats.tasks, totalUserDuration, false, null);
                 gridContainer.appendChild(card);
             }
@@ -249,7 +241,7 @@ function renderReportCharts(logs) {
  * @param {Map} tasksMap タスクデータ
  * @param {number} totalDuration 合計時間
  * @param {boolean} isLarge 全体表示かどうか
- * @param {Map} allUserStats 内訳表示用の全ユーザーデータ (省略可)
+ * @param {Map} taskStatsMap 内訳表示用の全ユーザーデータ (省略可)
  */
 function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge, taskStatsMap = null) {
     // 1. ヘッダー
@@ -289,7 +281,6 @@ function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge,
 
     // 3. 詳細リスト
     const listContainer = document.createElement("div");
-    // ★修正: リストの高さを拡大 (max-h-40 -> max-h-96)
     listContainer.className = "mt-4 text-sm text-gray-600 max-h-96 overflow-y-auto custom-scrollbar";
     
     const ul = document.createElement("ul");
@@ -300,7 +291,6 @@ function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge,
         const color = backgroundColors[index] || '#cccccc';
 
         const li = document.createElement("li");
-        // ★修正：allUserStats を taskStatsMap に変更
         const cursorClass = taskStatsMap ? "cursor-pointer" : "";
         li.className = `flex flex-col px-2 py-1 hover:bg-gray-50 rounded border-b border-gray-100 last:border-0 ${cursorClass}`;
         
@@ -320,7 +310,7 @@ function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge,
         `;
         li.appendChild(rowDiv);
 
-        // ★修正: 内訳表示用のコンテナを追加
+        // 内訳表示用のコンテナを追加
         if (taskStatsMap) {
             const breakdownDiv = document.createElement("div");
             breakdownDiv.className = "hidden pl-6 mt-2 pb-2 text-xs text-gray-600 border-l-2 border-gray-200 ml-1.5 space-y-1 bg-gray-50 rounded-r";
@@ -352,7 +342,7 @@ function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge,
                             const goalsSorted = Array.from(tStat.goals.entries()).sort((a, b) => b[1].duration - a[1].duration);
                             goalsSorted.forEach(([gTitle, gStat]) => {
                                 
-                                // ★追加: 納期を mm/dd 形式にフォーマット
+                                // 納期を mm/dd 形式にフォーマット
                                 let deadlineHtml = "";
                                 if (gStat.deadline) {
                                     const d = new Date(gStat.deadline);
@@ -375,6 +365,15 @@ function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge,
                                             <span class="font-mono text-blue-800">${formatHoursMinutes(gStat.duration)}</span>
                                         </div>
                                     </div>`;
+                                
+                                html += `<div class="hidden goal-breakdown pl-4 mt-1 space-y-1">`;
+                                const gUsersSorted = Array.from(gStat.users.entries()).sort((a, b) => b[1] - a[1]);
+                                gUsersSorted.forEach(([guName, gdur]) => {
+                                    html += `
+                                        <div class="flex justify-between hover:bg-gray-200 p-1 rounded px-2 text-gray-600">
+                                            <span>${escapeHtml(guName)}</span>
+                                            <span class="font-mono">${formatHoursMinutes(gdur)}</span>
+                                        </div>`;
                                 });
                                 html += `</div></div>`;
                             });
@@ -387,7 +386,7 @@ function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge,
                                 toggle.addEventListener('click', (e2) => {
                                     e2.stopPropagation();
                                     const targetBreakdown = toggle.nextElementSibling;
-                                    const icon = toggle.querySelector('.goal-toggle-icon'); // ★クラスでアイコンを探す
+                                    const icon = toggle.querySelector('.goal-toggle-icon');
                                     
                                     if (targetBreakdown.classList.contains("hidden")) {
                                         targetBreakdown.classList.remove("hidden");

@@ -226,7 +226,7 @@ function renderReportCharts(logs) {
 
         const sortedUsers = Array.from(userStats.entries()).sort((a, b) => a[1].name.localeCompare(b[1].name, "ja"));
 
-        sortedUsers.forEach((_userId, stats]) => {
+        sortedUsers.forEach(([_userId, stats]) => {
             const card = document.createElement("div");
             card.className = "bg-white p-4 rounded shadow border border-gray-200 flex flex-col";
             

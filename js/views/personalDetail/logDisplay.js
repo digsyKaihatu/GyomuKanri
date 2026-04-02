@@ -55,9 +55,6 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
                 dailyWorkSummary[summaryKey] += (log.duration || 0);
             }
 
-            // ★追加: 工数登録ログ(type="goal")の場合は、ここで処理を中断し、タイムラインには表示させない
-            if (log.type === "goal") return;
-
             // タイムライン表示
             const taskDisplay = log.goalTitle
                 ? `${escapeHtml(log.task)} <span class="text-xs text-gray-500">(${escapeHtml(log.goalTitle)})</span>`
@@ -67,20 +64,22 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
             const isAdmin = authLevel === 'admin';
             const isSelf = currentUserForDetailView === currentUserName;
             
-// ★修正: ボタン表示ロジック
-            // 「時間修正」「メモ修正」は、管理者または本人なら表示（元の機能）
             let editButtons = "";
             if (isAdmin || isSelf) {
-                editButtons = `
-                    <button class="edit-log-btn text-xs bg-blue-500 text-white font-bold py-1 px-2 rounded hover:bg-blue-600 tooltip" data-log-id="${log.id}" data-duration="${log.duration || 0}" data-task-name="${escapeHtml(log.task)}">
-                    時間修正
-                    <span class="tooltip-text" style="z-index: 10;">業務名は合っているけど<br>時間だけ修正したい場合はこちら</span>
-                    </button>
+                // ★追加: 工数のみのログ(type === "goal")には「時間」がないため、時間修正ボタンは非表示にする
+                if (log.type !== "goal") {
+                    editButtons += `
+                        <button class="edit-log-btn text-xs bg-blue-500 text-white font-bold py-1 px-2 rounded hover:bg-blue-600 tooltip" data-log-id="${log.id}" data-duration="${log.duration || 0}" data-task-name="${escapeHtml(log.task)}">
+                        時間修正
+                        <span class="tooltip-text" style="z-index: 10;">業務名は合っているけど<br>時間だけ修正したい場合はこちら</span>
+                        </button>
+                    `;
+                }
+                editButtons += `
                     <button class="edit-memo-btn text-xs bg-gray-500 text-white font-bold py-1 px-2 rounded hover:bg-gray-600" data-log-id="${log.id}" data-memo="${escapeHtml(log.memo || "")}">メモ修正</button>
                 `;
             }
 
-            // 「変更申請」は、本人の場合に追加で表示
             let requestButton = "";
             if (isSelf) {
                 requestButton = `
@@ -91,17 +90,32 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
                 `;
             }
             
-            const bgClass = log.task === "休憩" ? "bg-yellow-50" : "bg-gray-50";
-            const textClass = log.task === "休憩" ? "text-yellow-800" : "text-gray-800";
+            // ★追加: 工数ログか休憩ログかで背景色や文字色を出し分ける
+            const bgClass = log.task === "休憩" ? "bg-yellow-50" : (log.type === "goal" ? "bg-green-50" : "bg-gray-50");
+            const textClass = log.task === "休憩" ? "text-yellow-800" : (log.type === "goal" ? "text-green-800" : "text-gray-800");
+
+            // ★追加: 工数ログの場合は終了時間を表示しない（「10:00 - 」のようにならないため）
+            const timeDisplayHtml = log.type === "goal"
+                ? `<span class="font-mono text-sm bg-green-200 text-green-900 px-2 py-1 rounded">${startTimeStr} (進捗のみ)</span>`
+                : `<span class="font-mono text-sm bg-gray-200 px-2 py-1 rounded">${startTimeStr} - ${endTimeStr}</span>`;
+
+            // ★追加: 時間と件数のテキスト表記
+            let detailText = "";
+            if (log.type !== "goal") {
+                detailText += `合計: ${formatDuration(log.duration || 0)}`;
+                if (log.contribution) detailText += ` / ${log.contribution}件`;
+            } else {
+                detailText += `進捗: ${log.contribution}件`;
+            }
 
             timelineHtml += `<li class="p-3 ${bgClass} rounded-lg">
                 <div class="flex justify-between items-center">
                     <span class="font-semibold ${textClass}">${taskDisplay}</span>
-                    <span class="font-mono text-sm bg-gray-200 px-2 py-1 rounded">${startTimeStr} - ${endTimeStr}</span>
+                    ${timeDisplayHtml}
                 </div>
                 ${memoHtml}
                 <div class="flex justify-between items-center mt-1">
-                     <div class="text-gray-500 text-sm">合計: ${formatDuration(log.duration || 0)} ${log.contribution ? `/ ${log.contribution}件` : ''}</div>
+                     <div class="text-gray-500 text-sm">${detailText}</div>
                      <div class="flex gap-1">
                         ${editButtons}
                         ${requestButton}

@@ -200,11 +200,11 @@ async function handleOktaLoginSuccess() {
         if (appContainer) appContainer.classList.remove('hidden');
 
         if (onLoginSuccessCallback) {
-            onLoginSuccessCallback();
+            await onLoginSuccessCallback();
+        } else {
+            // コールバックがない場合のみデフォルトでモード選択画面へ
+            showView(VIEWS.MODE_SELECTION);
         }
-
-        showView(VIEWS.MODE_SELECTION);
-
     } catch (error) {
         console.error("Error processing Okta login success:", error);
         alert(`ログイン処理エラー: ${error.message}`);

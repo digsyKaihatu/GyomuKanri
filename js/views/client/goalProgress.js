@@ -139,7 +139,7 @@ export function renderSingleGoalDisplay(task, goalId) {
             <div class="flex gap-2 items-center">
                 <input type="number" id="goal-contribution-input" 
                     class="flex-grow p-2 border border-gray-300 rounded text-sm" 
-                    placeholder="件数を追加" min="1">
+                    placeholder="件数を追加" min="1" autocomplete="off">
                 <button id="update-goal-btn" 
                     class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded text-sm transition">
                     登録

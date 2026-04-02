@@ -347,8 +347,13 @@ function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge,
                                 html += `<div class="mt-2 pl-2 border-l-2 border-blue-200">`;
                                 html += `
                                     <div class="flex justify-between items-center cursor-pointer hover:bg-gray-200 p-1 rounded goal-toggle">
-                                        <span class="text-blue-700 font-medium">↳ ${escapeHtml(gTitle)}</span>
-                                        <span class="font-mono text-blue-800">${formatHoursMinutes(gStat.duration)} <span class="text-[10px] ml-1">▼</span></span>
+                                        <div class="flex items-center truncate mr-2 flex-1" title="${escapeHtml(gTitle)}">
+                                            <span class="text-blue-700 font-medium truncate">↳ ${escapeHtml(gTitle)}</span>
+                                            <span class="text-[10px] text-blue-700 ml-2 goal-toggle-icon">▼</span>
+                                        </div>
+                                        <div class="flex items-center whitespace-nowrap">
+                                            <span class="font-mono text-blue-800">${formatHoursMinutes(gStat.duration)}</span>
+                                        </div>
                                     </div>`;
                                 
                                 html += `<div class="hidden goal-breakdown pl-4 mt-1 space-y-1">`;
@@ -371,12 +376,14 @@ function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge,
                                 toggle.addEventListener('click', (e2) => {
                                     e2.stopPropagation();
                                     const targetBreakdown = toggle.nextElementSibling;
+                                    const icon = toggle.querySelector('.goal-toggle-icon'); // ★クラスでアイコンを探す
+                                    
                                     if (targetBreakdown.classList.contains("hidden")) {
                                         targetBreakdown.classList.remove("hidden");
-                                        toggle.querySelector('span:last-child span').textContent = '▲';
+                                        if (icon) icon.textContent = '▲';
                                     } else {
                                         targetBreakdown.classList.add("hidden");
-                                        toggle.querySelector('span:last-child span').textContent = '▼';
+                                        if (icon) icon.textContent = '▼';
                                     }
                                 });
                             });

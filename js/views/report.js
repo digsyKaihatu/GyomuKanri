@@ -4,7 +4,7 @@ import { collection, query, where, getDocs } from "https://www.gstatic.com/fireb
 import { handleGoBack } from "../main.js"; 
 import { renderUnifiedCalendar } from "../components/calendar.js";
 import { renderChart, destroyCharts } from "../components/chart.js";
-import { formatDuration, formatHoursMinutes, getMonthDateRange, escapeHtml } from "../utils.js";
+import { formatHoursMinutes, getMonthDateRange, escapeHtml } from "../utils.js";
 
 let currentReportDate = new Date();
 let activeReportCharts = [];
@@ -158,6 +158,8 @@ function renderReportCharts(logs) {
         // ★ここを追加： userName と goalTitle を定義する
         const userName = log.userName;
         const goalTitle = log.goalTitle || "未分類";
+        // ★追加: ログから納期情報を取得
+        const goalDeadline = log.goalDeadline || log.effortDeadline || log.deadline || "";
 
         if (!userStats.has(userId)) {
             userStats.set(userId, { name: log.userName, tasks: new Map() });
@@ -171,19 +173,24 @@ function renderReportCharts(logs) {
         grandTotalDuration += (log.duration || 0);
 
         // ★ここから追加：工数や従業員ごとの詳細集計
-    if (!taskStats.has(taskName)) {
-        taskStats.set(taskName, { users: new Map(), goals: new Map() });
-    }
-    const tStat = taskStats.get(taskName);
-    tStat.users.set(userName, (tStat.users.get(userName) || 0) + (log.duration || 0));
+        if (!taskStats.has(taskName)) {
+            taskStats.set(taskName, { users: new Map(), goals: new Map() });
+        }
+        const tStat = taskStats.get(taskName);
+        tStat.users.set(userName, (tStat.users.get(userName) || 0) + (log.duration || 0));
 
-    if (!tStat.goals.has(goalTitle)) {
-        tStat.goals.set(goalTitle, { duration: 0, users: new Map() });
-    }
-    const gStat = tStat.goals.get(goalTitle);
-    gStat.duration += (log.duration || 0);
-    gStat.users.set(userName, (gStat.users.get(userName) || 0) + (log.duration || 0));
-    // ★追加ここまで
+        if (!tStat.goals.has(goalTitle)) {
+            // ★修正: deadline プロパティも持たせる
+            tStat.goals.set(goalTitle, { duration: 0, users: new Map(), deadline: goalDeadline });
+        }
+        const gStat = tStat.goals.get(goalTitle);
+        // ★追加: もし最初のログで納期が空でも、後のログに納期があれば更新する
+        if (!gStat.deadline && goalDeadline) {
+            gStat.deadline = goalDeadline;
+        }
+        gStat.duration += (log.duration || 0);
+        gStat.users.set(userName, (gStat.users.get(userName) || 0) + (log.duration || 0));
+        // ★追加ここまで
     });
 
     if (grandTotalDuration === 0) {
@@ -219,7 +226,7 @@ function renderReportCharts(logs) {
 
         const sortedUsers = Array.from(userStats.entries()).sort((a, b) => a[1].name.localeCompare(b[1].name, "ja"));
 
-        sortedUsers.forEach(([userId, stats]) => {
+        sortedUsers.forEach((_userId, stats]) => {
             const card = document.createElement("div");
             card.className = "bg-white p-4 rounded shadow border border-gray-200 flex flex-col";
             
@@ -344,26 +351,30 @@ function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge,
                             // ② 工数ごとの合計（さらにクリックで従業員ごとの時間を展開）
                             const goalsSorted = Array.from(tStat.goals.entries()).sort((a, b) => b[1].duration - a[1].duration);
                             goalsSorted.forEach(([gTitle, gStat]) => {
+                                
+                                // ★追加: 納期を mm/dd 形式にフォーマット
+                                let deadlineHtml = "";
+                                if (gStat.deadline) {
+                                    const d = new Date(gStat.deadline);
+                                    if (!isNaN(d.getTime())) {
+                                        const mm = String(d.getMonth() + 1).padStart(2, '0');
+                                        const dd = String(d.getDate()).padStart(2, '0');
+                                        deadlineHtml = `<span class="text-xs text-gray-500 ml-3 font-normal whitespace-nowrap">納期: ${mm}/${dd}</span>`;
+                                    }
+                                }
+
                                 html += `<div class="mt-2 pl-2 border-l-2 border-blue-200">`;
                                 html += `
                                     <div class="flex justify-between items-center cursor-pointer hover:bg-gray-200 p-1 rounded goal-toggle">
                                         <div class="flex items-center truncate mr-2 flex-1" title="${escapeHtml(gTitle)}">
                                             <span class="text-blue-700 font-medium truncate">↳ ${escapeHtml(gTitle)}</span>
-                                            <span class="text-[10px] text-blue-700 ml-2 goal-toggle-icon">▼</span>
+                                            ${deadlineHtml}
+                                            <span class="text-[10px] text-blue-700 ml-2 goal-toggle-icon flex-shrink-0">▼</span>
                                         </div>
                                         <div class="flex items-center whitespace-nowrap">
                                             <span class="font-mono text-blue-800">${formatHoursMinutes(gStat.duration)}</span>
                                         </div>
                                     </div>`;
-                                
-                                html += `<div class="hidden goal-breakdown pl-4 mt-1 space-y-1">`;
-                                const gUsersSorted = Array.from(gStat.users.entries()).sort((a, b) => b[1] - a[1]);
-                                gUsersSorted.forEach(([guName, gdur]) => {
-                                    html += `
-                                        <div class="flex justify-between hover:bg-gray-200 p-1 rounded px-2 text-gray-600">
-                                            <span>${escapeHtml(guName)}</span>
-                                            <span class="font-mono">${formatHoursMinutes(gdur)}</span>
-                                        </div>`;
                                 });
                                 html += `</div></div>`;
                             });

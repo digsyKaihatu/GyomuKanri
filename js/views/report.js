@@ -146,6 +146,9 @@ function renderReportCharts(logs) {
     const grandTotalTasks = new Map();
     let grandTotalDuration = 0;
 
+    // ★ここを追加：タスクごとの詳細集計用Map
+　　const taskStats = new Map();
+
     logs.forEach(log => {
         if (!log.userName || !log.task || log.task === "休憩" || log.type === "goal") return;
 
@@ -162,6 +165,21 @@ function renderReportCharts(logs) {
         const totalTaskDuration = grandTotalTasks.get(taskName) || 0;
         grandTotalTasks.set(taskName, totalTaskDuration + (log.duration || 0));
         grandTotalDuration += (log.duration || 0);
+
+        // ★ここから追加：工数や従業員ごとの詳細集計
+    if (!taskStats.has(taskName)) {
+        taskStats.set(taskName, { users: new Map(), goals: new Map() });
+    }
+    const tStat = taskStats.get(taskName);
+    tStat.users.set(userName, (tStat.users.get(userName) || 0) + (log.duration || 0));
+
+    if (!tStat.goals.has(goalTitle)) {
+        tStat.goals.set(goalTitle, { duration: 0, users: new Map() });
+    }
+    const gStat = tStat.goals.get(goalTitle);
+    gStat.duration += (log.duration || 0);
+    gStat.users.set(userName, (gStat.users.get(userName) || 0) + (log.duration || 0));
+    // ★追加ここまで
     });
 
     if (grandTotalDuration === 0) {
@@ -182,7 +200,7 @@ function renderReportCharts(logs) {
     reportChartsContainer.appendChild(totalWrapper);
 
     // ★修正: 全体合計のカード作成時に userStats (内訳用データ) を渡す
-    createChartCard(totalWrapper, "全従業員", grandTotalTasks, grandTotalDuration, true, userStats);
+    createChartCard(totalWrapper, "全従業員", grandTotalTasks, grandTotalDuration, true, taskStats);
 
     // B. 個別従業員用コンテナ
     if (userStats.size > 0) {
@@ -222,7 +240,7 @@ function renderReportCharts(logs) {
  * @param {boolean} isLarge 全体表示かどうか
  * @param {Map} allUserStats 内訳表示用の全ユーザーデータ (省略可)
  */
-function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge, allUserStats = null) {
+function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge, taskStatsMap = null) {
     // 1. ヘッダー
     const header = document.createElement("div");
     header.className = "flex justify-between items-center mb-4 border-b pb-2";
@@ -292,7 +310,7 @@ function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge,
         li.appendChild(rowDiv);
 
         // ★修正: 内訳表示用のコンテナを追加
-        if (allUserStats) {
+        if (taskStatsMap) {
             const breakdownDiv = document.createElement("div");
             breakdownDiv.className = "hidden pl-6 mt-2 pb-2 text-xs text-gray-600 border-l-2 border-gray-200 ml-1.5 space-y-1 bg-gray-50 rounded-r";
             
@@ -303,23 +321,60 @@ function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge,
                 if (breakdownDiv.classList.contains("hidden")) {
                     // 表示: データがまだなければ生成
                     if (breakdownDiv.innerHTML === "") {
-                        const contributors = [];
-                        allUserStats.forEach((stats) => {
-                            const userTaskDuration = stats.tasks.get(taskName);
-                            if (userTaskDuration > 0) {
-                                contributors.push({ name: stats.name, duration: userTaskDuration });
-                            }
-                        });
-                        contributors.sort((a, b) => b.duration - a.duration);
-                        
-                        if (contributors.length === 0) {
+                        const tStat = taskStatsMap.get(taskName);
+                        if (!tStat) {
                             breakdownDiv.innerHTML = "<div class='p-2'>データなし</div>";
                         } else {
-                            contributors.forEach(c => {
-                                const dEl = document.createElement("div");
-                                dEl.className = "flex justify-between hover:bg-gray-200 p-1 rounded px-2";
-                                dEl.innerHTML = `<span>${escapeHtml(c.name)}</span><span class="font-mono">${formatHoursMinutes(c.duration)}</span>`;
-                                breakdownDiv.appendChild(dEl);
+                            let html = "";
+                            
+                            // ① 従業員ごとのタスク合計表示
+                            const usersSorted = Array.from(tStat.users.entries()).sort((a, b) => b[1] - a[1]);
+                            usersSorted.forEach(([uName, dur]) => {
+                                html += `
+                                    <div class="flex justify-between bg-gray-100 p-1 rounded px-2 mb-1">
+                                        <span class="font-semibold text-gray-700">${escapeHtml(uName)}</span>
+                                        <span class="font-mono text-gray-800">${formatHoursMinutes(dur)}</span>
+                                    </div>`;
+                            });
+
+                            // ② 工数ごとの合計（さらにクリックで従業員ごとの時間を展開）
+                            const goalsSorted = Array.from(tStat.goals.entries()).sort((a, b) => b[1].duration - a[1].duration);
+                            goalsSorted.forEach(([gTitle, gStat]) => {
+                                html += `<div class="mt-2 pl-2 border-l-2 border-blue-200">`;
+                                html += `
+                                    <div class="flex justify-between items-center cursor-pointer hover:bg-gray-200 p-1 rounded goal-toggle">
+                                        <span class="text-blue-700 font-medium">↳ ${escapeHtml(gTitle)}</span>
+                                        <span class="font-mono text-blue-800">${formatHoursMinutes(gStat.duration)} <span class="text-[10px] ml-1">▼</span></span>
+                                    </div>`;
+                                
+                                html += `<div class="hidden goal-breakdown pl-4 mt-1 space-y-1">`;
+                                const gUsersSorted = Array.from(gStat.users.entries()).sort((a, b) => b[1] - a[1]);
+                                gUsersSorted.forEach(([guName, gdur]) => {
+                                    html += `
+                                        <div class="flex justify-between hover:bg-gray-200 p-1 rounded px-2 text-gray-600">
+                                            <span>${escapeHtml(guName)}</span>
+                                            <span class="font-mono">${formatHoursMinutes(gdur)}</span>
+                                        </div>`;
+                                });
+                                html += `</div></div>`;
+                            });
+
+                            breakdownDiv.innerHTML = html;
+
+                            // 工数の開閉イベントを設定
+                            const goalToggles = breakdownDiv.querySelectorAll('.goal-toggle');
+                            goalToggles.forEach(toggle => {
+                                toggle.addEventListener('click', (e2) => {
+                                    e2.stopPropagation();
+                                    const targetBreakdown = toggle.nextElementSibling;
+                                    if (targetBreakdown.classList.contains("hidden")) {
+                                        targetBreakdown.classList.remove("hidden");
+                                        toggle.querySelector('span:last-child span').textContent = '▲';
+                                    } else {
+                                        targetBreakdown.classList.add("hidden");
+                                        toggle.querySelector('span:last-child span').textContent = '▼';
+                                    }
+                                });
                             });
                         }
                     }

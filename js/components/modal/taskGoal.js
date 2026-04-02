@@ -38,6 +38,13 @@ export function openGoalModal(mode, taskName, goalId = null) {
     const deadlineIn = document.getElementById("goal-modal-deadline-input");
     const effortIn = document.getElementById("goal-modal-effort-deadline-input");
     const memoIn = document.getElementById("goal-modal-memo-input");
+    
+    // ★追加: 複数登録用の要素
+    const batchIn = document.getElementById("goal-modal-batch-input");
+    const titleLabel = document.getElementById("goal-modal-title-label");
+    const toggleBtn = document.getElementById("toggle-batch-input-btn");
+    const targetLabel = document.querySelector('label[for="goal-modal-target-input"]');
+
     goalModal.dataset.currentGoalId = goalId || "";
 
     if (idIn) idIn.value = goalId || "";
@@ -45,11 +52,19 @@ export function openGoalModal(mode, taskName, goalId = null) {
 
     if (!goalModal) return;
 
-    taskIn.value = taskName;
-    idIn.value = goalId || "";
+    // ★追加: モーダルを開くたびにデフォルト(単一登録)にリセット
+    if (titleIn && batchIn && titleLabel && toggleBtn) {
+        titleIn.classList.remove("hidden");
+        batchIn.classList.add("hidden");
+        titleLabel.innerHTML = '工数タイトル <span class="text-red-500">*</span>';
+        toggleBtn.textContent = "複数の一括登録";
+        batchIn.value = "";
+    }
 
     if (mode === 'edit' && goalId) {
         title.textContent = "工数の編集";
+        if (targetLabel) targetLabel.innerHTML = '目標値 (件数など) <span class="text-red-500">*</span>';
+        
         const task = allTaskObjects.find(t => t.name === taskName);
         const goal = task?.goals?.find(g => g.id === goalId || g.title === goalId);
     
@@ -60,12 +75,23 @@ export function openGoalModal(mode, taskName, goalId = null) {
             effortIn.value = goal.effortDeadline || "";
             memoIn.value = goal.memo || "";
         }
+        
+        if (toggleBtn) toggleBtn.classList.add("hidden"); // 編集時は一括ボタンを隠す
     } else {
         title.textContent = `[${escapeHtml(taskName)}] に工数を追加`;
+        if (targetLabel) targetLabel.innerHTML = '目標値 (件数など) <span class="text-red-500">*</span>';
         [titleIn, targetIn, deadlineIn, effortIn, memoIn].forEach(i => i.value = "");
+        
+        if (toggleBtn) toggleBtn.classList.remove("hidden"); // 追加時は一括ボタンを表示
     }
+    
     showModal(goalModal);
-    titleIn.focus();
+    
+    if (titleIn && !titleIn.classList.contains("hidden")) {
+        titleIn.focus();
+    } else if (batchIn) {
+        batchIn.focus();
+    }
 }
 
 /**

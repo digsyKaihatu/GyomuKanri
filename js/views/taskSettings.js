@@ -32,7 +32,8 @@ import { formatHoursMinutes, escapeHtml } from "../utils.js";
 // DOM要素 (遅延初期化)
 let goalModal, goalModalTaskNameInput, goalModalGoalIdInput, goalModalTitleInput,
     goalModalTargetInput, goalModalDeadlineInput, goalModalEffortDeadlineInput,
-    goalModalMemoInput, goalModalSaveBtn, goalModalCancelBtn;
+    goalModalMemoInput, goalModalSaveBtn, goalModalCancelBtn,
+    goalModalBatchInput, goalModalToggleBtn, goalModalTitleLabel; // ★この行を追加
 
 let currentUserRole = "general";
 let areTaskSettingsEventListenersSetup = false;
@@ -48,6 +49,10 @@ function initializeDOMElements() {
     goalModalMemoInput = document.getElementById("goal-modal-memo-input");
     goalModalSaveBtn = document.getElementById("goal-modal-save-btn");
     goalModalCancelBtn = document.getElementById("goal-modal-cancel-btn");
+    // ★追加: 複数登録用の要素を取得
+    goalModalBatchInput = document.getElementById("goal-modal-batch-input");
+    goalModalToggleBtn = document.getElementById("toggle-batch-input-btn");
+    goalModalTitleLabel = document.getElementById("goal-modal-title-label");
 }
 
 /**
@@ -113,6 +118,30 @@ export function setupTaskSettingsEventListeners() {
 
     goalModalSaveBtn?.addEventListener("click", handleSaveGoal);
     goalModalCancelBtn?.addEventListener("click", closeGoalModal);
+
+    // ★追加: 一括登録の切り替えイベント
+    goalModalToggleBtn?.addEventListener("click", () => {
+        const isBatch = !goalModalBatchInput.classList.contains("hidden");
+        const targetLabel = document.querySelector('label[for="goal-modal-target-input"]');
+        
+        if (isBatch) {
+            // 個別に戻す
+            goalModalBatchInput.classList.add("hidden");
+            goalModalTitleInput.classList.remove("hidden");
+            goalModalTitleLabel.innerHTML = '工数タイトル <span class="text-red-500">*</span>';
+            goalModalToggleBtn.textContent = "複数の一括登録";
+            if (targetLabel) targetLabel.innerHTML = '目標値 (件数など) <span class="text-red-500">*</span>';
+            goalModalTitleInput.focus();
+        } else {
+            // 一括にする
+            goalModalTitleInput.classList.add("hidden");
+            goalModalBatchInput.classList.remove("hidden");
+            goalModalTitleLabel.innerHTML = '複数の工数タイトル (改行区切り) <span class="text-red-500">*</span>';
+            goalModalToggleBtn.textContent = "個別登録に戻す";
+            if (targetLabel) targetLabel.innerHTML = '目標値 (全工数共通) <span class="text-red-500">*</span>';
+            goalModalBatchInput.focus();
+        }
+    });
     areTaskSettingsEventListenersSetup = true;
 }
 
@@ -270,12 +299,33 @@ async function updateTasksSafe(updateLogic) {
 async function handleSaveGoal() {
     const taskName = goalModalTaskNameInput.value;
     const goalId = goalModalGoalIdInput.value;
-    const title = goalModalTitleInput.value.trim();
     const target = parseInt(goalModalTargetInput.value, 10);
 
-    if (!title || isNaN(target) || target < 0) {
-        alert("有効なタイトルと目標件数を入力してください。");
+    if (isNaN(target) || target < 0) {
+        alert("有効な目標件数を入力してください。");
         return;
+    }
+
+    // ★変更: 複数登録か個別登録かでタイトルをリスト化して取得
+    const isBatch = !goalModalBatchInput.classList.contains("hidden");
+    let titles = [];
+
+    if (isBatch && !goalId) {
+        titles = goalModalBatchInput.value
+            .split('\n')
+            .map(t => t.trim())
+            .filter(t => t !== "");
+        if (titles.length === 0) {
+            alert("工数タイトルを入力してください。");
+            return;
+        }
+    } else {
+        const title = goalModalTitleInput.value.trim();
+        if (!title) {
+            alert("工数タイトルを入力してください。");
+            return;
+        }
+        titles = [title];
     }
 
     // トランザクション内で更新を実行
@@ -286,6 +336,8 @@ async function handleSaveGoal() {
         const task = taskList[taskIndex];
 
         if (goalId) {
+            // 既存編集の場合（個別のみ）
+            const title = titles[0];
             const goalIndex = task.goals.findIndex((g) => g.id === goalId || g.title === goalId);
             if (goalIndex !== -1) {
                 task.goals[goalIndex] = {
@@ -297,16 +349,19 @@ async function handleSaveGoal() {
                 };
             }
         } else {
-            const newGoal = {
-                id: "goal_" + Date.now(),
-                title, target,
-                deadline: goalModalDeadlineInput.value,
-                effortDeadline: goalModalEffortDeadlineInput.value,
-                memo: goalModalMemoInput.value.trim(),
-                current: 0, isComplete: false,
-            };
-            if (!task.goals) task.goals = [];
-            task.goals.push(newGoal);
+            // 新規追加の場合（個別・複数両対応）
+            titles.forEach((title, index) => {
+                const newGoal = {
+                    id: "goal_" + Date.now() + "_" + index, // ★ループ処理でもIDが被らないように index を付与
+                    title, target,
+                    deadline: goalModalDeadlineInput.value,
+                    effortDeadline: goalModalEffortDeadlineInput.value,
+                    memo: goalModalMemoInput.value.trim(),
+                    current: 0, isComplete: false,
+                };
+                if (!task.goals) task.goals = [];
+                task.goals.push(newGoal);
+            });
         }
         return taskList;
     });
@@ -314,7 +369,7 @@ async function handleSaveGoal() {
     if (success) {
         closeGoalModal();
         restoreSelectionStateWithRetry(taskName);
-        alert("工数を保存しました。");
+        alert(titles.length > 1 ? `${titles.length}件の工数を保存しました。` : "工数を保存しました。");
     }
 }
 

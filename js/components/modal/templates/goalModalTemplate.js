@@ -7,8 +7,12 @@ export const goalModalTemplate = `
         <input type="hidden" id="goal-modal-task-name"/>
         <input type="hidden" id="goal-modal-goal-id"/>
         <div>
-        <label for="goal-modal-title-input" class="block text-sm font-medium text-gray-700">工数タイトル <span class="text-red-500">*</span></label>
+        <div class="flex justify-between items-center mb-1">
+            <label for="goal-modal-title-input" id="goal-modal-title-label" class="block text-sm font-medium text-gray-700">工数タイトル <span class="text-red-500">*</span></label>
+            <button type="button" id="toggle-batch-input-btn" class="text-xs text-blue-600 hover:text-blue-800 underline focus:outline-none">複数の一括登録</button>
+        </div>
         <input type="text" id="goal-modal-title-input" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"/>
+        <textarea id="goal-modal-batch-input" rows="4" class="hidden mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" placeholder="改行区切りで複数の工数名を入力してください"></textarea>
         </div>
         <div>
         <label for="goal-modal-target-input" class="block text-sm font-medium text-gray-700">目標値 (件数など) <span class="text-red-500">*</span></label>

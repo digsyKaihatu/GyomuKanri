@@ -304,7 +304,7 @@ function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge,
             <div class="flex items-center truncate mr-2 flex-1" title="${escapeHtml(taskName)}">
                 <span class="w-3 h-3 rounded-full mr-2 flex-shrink-0" style="background-color: ${color};"></span>
                 <span class="truncate font-medium">${escapeHtml(taskName)}</span>
-                ${allUserStats ? '<span class="text-xs text-gray-400 ml-2 toggle-icon">▼</span>' : ''}
+                ${taskStatsMap ? '<span class="text-xs text-gray-400 ml-2 toggle-icon">▼</span>' : ''}
             </div>
             <div class="flex items-center gap-2 whitespace-nowrap">
                 <span class="font-mono text-gray-800">${formatHoursMinutes(duration)}</span>

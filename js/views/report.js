@@ -1,7 +1,7 @@
 // js/views/report.js
 import { db } from "../firebase.js"; 
 import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { handleGoBack } from "../main.js"; 
+import { handleGoBack, getAllTaskObjects } from "../main.js"; // ★ getAllTaskObjects を追加
 import { renderUnifiedCalendar } from "../components/calendar.js";
 import { renderChart, destroyCharts } from "../components/chart.js";
 import { formatHoursMinutes, getMonthDateRange, escapeHtml } from "../utils.js";
@@ -157,6 +157,7 @@ function renderReportCharts(logs) {
 
         const userName = log.userName;
         const goalTitle = log.goalTitle || "未分類";
+        const goalId = log.goalId || null; // ★ 追加: goalIdを取得
         const goalDeadline = log.goalDeadline || log.effortDeadline || log.deadline || "";
 
         if (!userStats.has(userId)) {
@@ -177,11 +178,15 @@ function renderReportCharts(logs) {
         tStat.users.set(userName, (tStat.users.get(userName) || 0) + (log.duration || 0));
 
         if (!tStat.goals.has(goalTitle)) {
-            tStat.goals.set(goalTitle, { duration: 0, users: new Map(), deadline: goalDeadline });
+            // ★ goalId もセットで保存する
+            tStat.goals.set(goalTitle, { duration: 0, users: new Map(), deadline: goalDeadline, goalId: goalId });
         }
         const gStat = tStat.goals.get(goalTitle);
         if (!gStat.deadline && goalDeadline) {
             gStat.deadline = goalDeadline;
+        }
+        if (!gStat.goalId && goalId) {
+            gStat.goalId = goalId;
         }
         gStat.duration += (log.duration || 0);
         gStat.users.set(userName, (gStat.users.get(userName) || 0) + (log.duration || 0));
@@ -244,6 +249,8 @@ function renderReportCharts(logs) {
  * @param {Map} taskStatsMap 内訳表示用の全ユーザーデータ (省略可)
  */
 function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge, taskStatsMap = null) {
+    const allTasks = getAllTaskObjects(); // ★ 追加: 業務マスターを取得
+
     // 1. ヘッダー
     const header = document.createElement("div");
     header.className = "flex justify-between items-center mb-4 border-b pb-2";
@@ -342,10 +349,24 @@ function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge,
                             const goalsSorted = Array.from(tStat.goals.entries()).sort((a, b) => b[1].duration - a[1].duration);
                             goalsSorted.forEach(([gTitle, gStat]) => {
                                 
-                                // 納期を mm/dd 形式にフォーマット
+                                // ★ 納期を業務マスターから確実に見つけ出すロジック
                                 let deadlineHtml = "";
-                                if (gStat.deadline) {
-                                    const d = new Date(gStat.deadline);
+                                let deadlineStr = gStat.deadline;
+
+                                // ログに納期データがない場合、マスターから検索
+                                if (!deadlineStr) {
+                                    const taskObj = allTasks.find(t => t.name === taskName);
+                                    // goalIdで探すか、タイトルに含まれているかで探す
+                                    const goalObj = taskObj?.goals?.find(g => g.id === gStat.goalId) 
+                                                 || taskObj?.goals?.find(g => gTitle.includes(g.title));
+                                    
+                                    if (goalObj) {
+                                        deadlineStr = goalObj.deadline || goalObj.effortDeadline;
+                                    }
+                                }
+
+                                if (deadlineStr) {
+                                    const d = new Date(deadlineStr);
                                     if (!isNaN(d.getTime())) {
                                         const mm = String(d.getMonth() + 1).padStart(2, '0');
                                         const dd = String(d.getDate()).padStart(2, '0');

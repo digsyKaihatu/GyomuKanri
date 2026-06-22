@@ -100,8 +100,14 @@ export async function stopCurrentTask(isLeaving) {
     if (isLeaving) {
         localStorage.removeItem(State.LOCAL_STATUS_KEY);
         if (userId) {
-             await updateDoc(doc(db, "work_status", userId), { isWorking: false, currentTask: null });
+            try {
+                await updateDoc(doc(db, "work_status", userId), { isWorking: false, currentTask: null });
+            } catch (error) {
+                console.error("帰宅時のFirestoreステータス更新に失敗しました（オフライン等の可能性）:", error);
+                // エラーはログに出すだけで、処理は止めない
+            }
         }
+        // 何があっても必ずローカルの状態をクリアする
         resetClientState();
     }
 }

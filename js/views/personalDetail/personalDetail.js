@@ -9,7 +9,7 @@ import { showDailyLogs, showMonthlyLogs, clearDetails } from "./logDisplay.js";
 import { handleTimelineClick, handleSaveLogDuration, handleSaveMemo, handleSaveContribution } from "./logEditor.js";
 import { handleDeleteUserClick } from "./adminActions.js";
 // ★追加: 申請モーダルロジック
-import { openAddRequestModal } from "./requestModal.js";
+import { openUnifiedRequestModal } from "./requestModal.js";
 
 // --- Module State ---
 let selectedUserLogs = [];
@@ -39,7 +39,6 @@ function initializeDOMElements() {
     editContributionCancelBtn = document.getElementById("edit-contribution-cancel-btn");
 }
 
-// ★追加: タイムライン追加申請ボタン
 function injectAddRequestButton() {
     // 既存ボタンがあれば削除（重複防止）
     const existingBtn = document.getElementById("add-request-btn");
@@ -50,17 +49,19 @@ function injectAddRequestButton() {
     if (header) {
         const btn = document.createElement("button");
         btn.id = "add-request-btn";
+        // ボタンのデザインクラスはそのまま流用、文字を「変更追加申請」に統一
         btn.className = "bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded shadow ml-4 tooltip";
-btn.innerHTML = `
-            ＋ 業務タイムライン追加申請
+        btn.innerHTML = `
+            業務タイムライン変更追加申請
             <span class="tooltip-text">
-                業務を入れ忘れてしまった場合はこちら
+                各種修正・追加申請はこちらから行えます
             </span>
         `;
         btn.onclick = () => {
-            // 選択中の日付があればその日、なければ今日
+            // 選択中の日付があればその日、なければ今日の日付を取得
             const targetDate = selectedDateStr || new Date().toISOString().split("T")[0];
-            openAddRequestModal(targetDate);
+            // ★ 新しく作った統合版のモーダルを開く
+            openUnifiedRequestModal(targetDate);
         };
         header.appendChild(btn);
     }

@@ -9,55 +9,109 @@ function createUnifiedRequestModalHTML() {
     if (document.getElementById("unified-request-modal")) return;
 
     const modalHtml = `
-    <div id="unified-request-modal" class="modal hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 p-4">
-        <div class="relative top-10 mx-auto p-5 border w-full max-w-md shadow-lg rounded-xl bg-white animate-fade-in">
-            <div class="mt-2">
-                <h3 class="text-xl leading-6 font-bold text-gray-800 border-b pb-3">業務タイムライン変更追加申請</h3>
-                
-                <div class="mt-4 space-y-4">
-                    <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide">対象日</label>
-                        <input type="date" id="unified-req-date" class="mt-1 block w-full border border-gray-300 rounded-lg bg-gray-50 p-2.5 text-sm font-semibold text-gray-700 focus:outline-none" readonly>
-                    </div>
-
-                    <div>
-                        <label class="block text-xs font-bold text-indigo-600 uppercase tracking-wide">申請内容を選択してください</label>
-                        <select id="unified-req-type-select" class="mt-1 block w-full border border-indigo-200 rounded-lg bg-white p-2.5 text-sm font-bold text-indigo-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm">
-                            <option value="">-- 選択してください --</option>
-                            <option value="add">記録の追加（あとから稼働を足す）</option>
-                            <option value="time_correct">時間の訂正（現在のタイムラインの修正）</option>
-                            <option value="task_change">入った業務を変更する（現在のタイムラインの修正）</option>
-                            <option value="count_correct">工数件数の修正</option>
-                            <option value="forget_checkout">退勤忘れの修正（現在のタイムラインの修正）</option>
-                        </select>
-                    </div>
-
-                    <div id="unified-req-form-body" class="border-t border-dashed pt-4 mt-4">
-                        <p class="text-sm text-gray-400 text-center py-4">申請内容を選択すると、ここに入力フォーマットが表示されます。</p>
+    <div id="unified-request-modal" class="modal hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
+        <div class="relative mx-auto border w-full max-w-4xl shadow-2xl rounded-xl bg-white overflow-hidden animate-fade-in flex flex-col">
+            
+            <div class="flex items-center justify-between px-6 py-4 border-b">
+                <div class="flex items-center gap-2">
+                    <span class="text-blue-600 font-bold text-xl">
+                        <svg class="w-6 h-6 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                        </svg>
+                    </span>
+                    <h3 class="text-lg font-bold text-gray-800">業務タイムライン変更追加申請</h3>
+                </div>
+                <button id="unified-req-close-x" class="text-gray-400 hover:text-gray-600 text-2xl font-semibold focus:outline-none">&times;</button>
+            </div>
+            
+            <div class="p-6 overflow-y-auto flex-grow">
+                <div id="unified-grid-container" class="grid grid-cols-3 gap-x-6 gap-y-4">
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700">対象日</label>
+                            <input type="date" id="unified-req-date" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-gray-50 focus:outline-none" readonly>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700">申請内容を選択してください</label>
+                            <select id="unified-req-type-select" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white font-semibold focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                                <option value="">-- 選択してください --</option>
+                                <option value="add">記録の追加（あとから稼働を足す）</option>
+                                <option value="time_correct">時間の訂正（現在のタイムラインの修正）</option>
+                                <option value="task_change">入った業務を変更する（現在のタイムラインの修正）</option>
+                                <option value="count_correct">工数件数の修正</option>
+                                <option value="forget_checkout">退勤忘れの修正（現在のタイムラインの修正）</option>
+                            </select>
+                        </div>
+                        <div id="req-add-date-container">
+                            <label class="block text-sm font-bold text-gray-700">追加する日付</label>
+                            <input type="date" id="req-add-date" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                        </div>
                     </div>
                     
-                    <p id="unified-req-error" class="text-red-500 text-xs font-bold mt-2 h-4 text-center"></p>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700">業務プルダウン</label>
+                            <select id="req-add-task-select" class="mt-1 block w-full border border-emerald-500 ring-2 ring-emerald-100 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                                <option value="">業務を選択...</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700">工数プルダウン</label>
+                            <select id="req-add-goal-select" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-gray-100 text-gray-500 focus:outline-none" disabled>
+                                <option value="">業務を選択してください</option>
+                            </select>
+                        </div>
+                        <div id="req-add-count-container">
+                            <label class="block text-sm font-bold text-gray-700">成果件数</label>
+                            <input type="number" id="req-add-count" min="0" value="0" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-4 flex flex-col">
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700">開始時間</label>
+                            <input type="time" id="req-add-start-time" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700">終了時間</label>
+                            <input type="time" id="req-add-end-time" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                        </div>
+                        <div id="req-add-memo-container" class="flex flex-col flex-grow">
+                            <label class="block text-sm font-bold text-gray-700">メモ (任意)</label>
+                            <textarea id="req-add-memo" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white resize-none flex-grow min-h-[80px] focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" placeholder="補足事項など"></textarea>
+                        </div>
+                    </div>
+                    
                 </div>
-
-                <div class="items-center px-4 py-3 mt-4 flex gap-3 border-t pt-4">
-                    <button id="unified-req-cancel-btn" class="px-4 py-2.5 bg-gray-200 text-gray-700 text-sm font-bold rounded-lg w-full shadow-sm hover:bg-gray-300 transition focus:outline-none">
-                        キャンセル
-                    </button>
-                    <button id="unified-req-send-btn" class="px-4 py-2.5 bg-blue-600 text-white text-sm font-bold rounded-lg w-full shadow-sm hover:bg-blue-700 transition focus:outline-none">
-                        申請を送る
-                    </button>
+                
+                <div id="unified-alternative-body" class="hidden py-12 text-center text-gray-400 text-sm font-bold">
+                    選択された申請タイプのフォーマットは現在開発中です。
                 </div>
             </div>
+            
+            <div class="px-6 py-4 border-t flex justify-end gap-3 bg-white">
+                <button id="unified-req-cancel-btn" class="px-6 py-2 border border-gray-300 bg-white text-gray-700 text-sm font-medium rounded-lg shadow-sm hover:bg-gray-50 transition focus:outline-none">
+                    キャンセル
+                </button>
+                <button id="unified-req-send-btn" class="px-6 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg shadow-sm hover:bg-emerald-700 transition focus:outline-none">
+                    申請を送る
+                </button>
+            </div>
+            
+            <div id="unified-req-error-bar" class="bg-red-50 border-t border-red-200 px-6 py-3 text-sm text-red-700 font-bold hidden animate-fade-in">
+                <span id="unified-req-error"></span>
+            </div>
+            
         </div>
     </div>`;
-    
+
     document.body.insertAdjacentHTML("beforeend", modalHtml);
 
     // イベントリスナーの登録
     document.getElementById("unified-req-cancel-btn").addEventListener("click", closeUnifiedRequestModal);
+    document.getElementById("unified-req-close-x").addEventListener("click", closeUnifiedRequestModal);
     document.getElementById("unified-req-type-select").addEventListener("change", handleUnifiedTypeChange);
-    
-    // 送信ボタンの処理
     document.getElementById("unified-req-send-btn").addEventListener("click", handleRequestSubmit);
 }
 
@@ -66,12 +120,27 @@ export function openUnifiedRequestModal(dateStr) {
     createUnifiedRequestModalHTML();
     const modal = document.getElementById("unified-request-modal");
     
+    // 日付の初期値を適用
     document.getElementById("unified-req-date").value = dateStr;
-    document.getElementById("unified-req-type-select").value = "";
-    document.getElementById("unified-req-form-body").innerHTML = `
-        <p class="text-sm text-gray-400 text-center py-4">申請内容を選択すると、ここに入力フォーマットが表示されます。</p>
-    `;
-    document.getElementById("unified-req-error").textContent = "";
+    document.getElementById("req-add-date").value = dateStr;
+    
+    // 画像の状態を再現するため、デフォルトで「記録の追加」を選択状態にする
+    const typeSelect = document.getElementById("unified-req-type-select");
+    typeSelect.value = "add";
+    
+    // 表示状態の初期化
+    document.getElementById("unified-grid-container").classList.remove("hidden");
+    document.getElementById("unified-alternative-body").classList.add("hidden");
+    document.getElementById("unified-req-error-bar").classList.add("hidden");
+
+    // フォームの入力値をリセット (時間などは画像に合わせた仮置き値、適宜空文字 "" に変更してください)
+    document.getElementById("req-add-start-time").value = "12:00";
+    document.getElementById("req-add-end-time").value = "12:45";
+    document.getElementById("req-add-count").value = "0";
+    document.getElementById("req-add-memo").value = "";
+
+    // 業務プルダウンにマスターデータを注入
+    populateTaskDropdown();
 
     modal.classList.remove("hidden");
 }
@@ -82,91 +151,33 @@ function closeUnifiedRequestModal() {
     if (modal) modal.classList.add("hidden");
 }
 
-// プルダウン変更時に対応するフォーマットを切り替える関数
+// 申請内容プルダウン変更時の表示切り替え切り替え
 function handleUnifiedTypeChange(event) {
     const selectedType = event.target.value;
-    const formBody = document.getElementById("unified-req-form-body");
-    document.getElementById("unified-req-error").textContent = "";
+    const gridContainer = document.getElementById("unified-grid-container");
+    const alternativeBody = document.getElementById("unified-alternative-body");
+    const errorBar = document.getElementById("unified-req-error-bar");
     
-    if (!selectedType) {
-        formBody.innerHTML = '<p class="text-sm text-gray-400 text-center py-4">申請内容を選択すると、ここに入力フォーマットが表示されます。</p>';
-        return;
-    }
+    if (errorBar) errorBar.classList.add("hidden");
 
-    switch (selectedType) {
-        case "add":
-            // カレンダーで選ばれている日付を取得
-            const defaultDate = document.getElementById("unified-req-date").value;
-
-            formBody.innerHTML = `
-                <div class="space-y-4 bg-green-50/50 p-4 rounded-xl border border-green-200">
-                    <div class="text-xs font-bold text-green-800 bg-green-100 px-2.5 py-1 rounded-md w-fit mb-2">
-                        🟢 記録の追加
-                    </div>
-                    
-                    <div class="grid grid-cols-2 gap-3">
-                        <div>
-                            <label class="block text-xs font-bold text-gray-600">追加する日付</label>
-                            <input type="date" id="req-add-date" value="${defaultDate}" class="mt-1 block w-full p-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-1 focus:ring-green-500">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold text-gray-600">成果件数</label>
-                            <input type="number" id="req-add-count" min="0" value="0" class="mt-1 block w-full p-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-1 focus:ring-green-500">
-                        </div>
-                    </div>
-
-                    <div class="grid grid-cols-2 gap-3">
-                        <div>
-                            <label class="block text-xs font-bold text-gray-600">開始時間</label>
-                            <input type="time" id="req-add-start-time" class="mt-1 block w-full p-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-1 focus:ring-green-500">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold text-gray-600">終了時間</label>
-                            <input type="time" id="req-add-end-time" class="mt-1 block w-full p-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-1 focus:ring-green-500">
-                        </div>
-                    </div>
-
-                    <div>
-                        <label class="block text-xs font-bold text-gray-600">業務プルダウン <span class="text-red-500">*</span></label>
-                        <select id="req-add-task-select" class="mt-1 block w-full p-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-1 focus:ring-green-500">
-                            <option value="">業務を選択...</option>
-                        </select>
-                    </div>
-
-                    <div id="req-add-goal-container" class="hidden">
-                        <label class="block text-xs font-bold text-gray-600">工数プルダウン</label>
-                        <select id="req-add-goal-select" class="mt-1 block w-full p-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-1 focus:ring-green-500">
-                            <option value="">工数を選択 (任意)</option>
-                        </select>
-                    </div>
-
-                    <div>
-                        <label class="block text-xs font-bold text-gray-600">メモ (任意)</label>
-                        <textarea id="req-add-memo" rows="2" class="mt-1 block w-full p-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-1 focus:ring-green-500" placeholder="申請理由や補足事項"></textarea>
-                    </div>
-                </div>
-            `;
-
-            // 業務プルダウンにマスターデータを動的注入
-            populateTaskDropdown();
-            break;
-
-        default:
-            formBody.innerHTML = `
-                <div class="p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-500 text-center">
-                    選択されたタイプ [${selectedType}] のフォーマットは現在開発中です。
-                </div>
-            `;
-            break;
+    if (selectedType === "add" || !selectedType) {
+        gridContainer.classList.remove("hidden");
+        alternativeBody.classList.add("hidden");
+    } else {
+        gridContainer.classList.add("hidden");
+        alternativeBody.classList.remove("hidden");
+        alternativeBody.textContent = `選択された申請タイプ [${selectedType}] のフォーマットは現在開発中です。`;
     }
 }
 
-// 業務プルダウンをセットアップする関数
+// 業務プルダウンのセットアップおよび工数連動ロジック
 function populateTaskDropdown() {
     const taskSelect = document.getElementById("req-add-task-select");
     if (!taskSelect) return;
 
-    // アルファベット・五十音順にソートして追加
+    taskSelect.innerHTML = '<option value="">業務を選択...</option>';
+
+    // 全業務オブジェクトをソートして追加
     const sortedTasks = [...allTaskObjects].sort((a, b) => a.name.localeCompare(b.name, "ja"));
     
     sortedTasks.forEach(task => {
@@ -176,115 +187,140 @@ function populateTaskDropdown() {
         taskSelect.appendChild(opt);
     });
 
-    // 業務名が変更されたら、対応する工数（小項目）を動的に切り替える
+    // 画像再現ロジック：業務プルダウンの変更イベント
     taskSelect.addEventListener("change", (e) => {
         const selectedTaskName = e.target.value;
-        const goalContainer = document.getElementById("req-add-goal-container");
         const goalSelect = document.getElementById("req-add-goal-select");
+        if (!goalSelect) return;
 
-        if (!goalSelect || !goalContainer) return;
-
-        // 一旦初期化
-        goalSelect.innerHTML = '<option value="">工数を選択 (任意)</option>';
-
-        if (!selectedTaskName || selectedTaskName === "休憩") {
-            goalContainer.classList.add("hidden");
+        // 【画像再現の目玉】休憩が選ばれたときはグレーアウトしてメッセージを変更
+        if (selectedTaskName === "休憩") {
+            goalSelect.innerHTML = '<option value="">休憩は工数項目なし</option>';
+            goalSelect.disabled = true;
+            goalSelect.className = "mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-gray-100 text-gray-400 focus:outline-none";
             return;
         }
 
+        if (!selectedTaskName) {
+            goalSelect.innerHTML = '<option value="">業務を選択してください</option>';
+            goalSelect.disabled = true;
+            goalSelect.className = "mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-gray-100 text-gray-500 focus:outline-none";
+            return;
+        }
+
+        // 選択された業務に紐づく未完了工数を取得
         const foundTask = allTaskObjects.find(t => t.name === selectedTaskName);
         const activeGoals = (foundTask?.goals || []).filter(g => !g.isComplete);
 
         if (activeGoals.length > 0) {
+            goalSelect.innerHTML = '<option value="">工数を選択 (任意)</option>';
             activeGoals.forEach(goal => {
                 const opt = document.createElement("option");
                 opt.value = goal.id || goal.title;
                 opt.textContent = `${goal.title} (目標: ${goal.target})`;
                 goalSelect.appendChild(opt);
             });
-            goalContainer.classList.remove("hidden");
+            goalSelect.disabled = false;
+            goalSelect.className = "mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500";
         } else {
-            goalContainer.classList.add("hidden");
+            goalSelect.innerHTML = '<option value="">対応する工数項目なし</option>';
+            goalSelect.disabled = true;
+            goalSelect.className = "mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-gray-100 text-gray-400 focus:outline-none";
         }
     });
+
+    // 画像初期状態を再現するため、明示的に「休憩」を初期選択にしてイベントを発火
+    if (Array.from(taskSelect.options).some(o => o.value === "休憩")) {
+        taskSelect.value = "休憩";
+        taskSelect.dispatchEvent(new Event("change"));
+    }
 }
 
-// 申請情報の送信処理
+// 申請情報のバリデーション & Firestore送信
 async function handleRequestSubmit() {
     const type = document.getElementById("unified-req-type-select").value;
+    const errorBar = document.getElementById("unified-req-error-bar");
     const errorEl = document.getElementById("unified-req-error");
-    if (!errorEl) return;
     
+    if (!errorBar || !errorEl) return;
+    
+    errorBar.classList.add("hidden");
     errorEl.textContent = "";
 
     if (!type) {
         errorEl.textContent = "申請内容を選択してください。";
+        errorBar.classList.remove("hidden");
         return;
     }
 
-    if (type === "add") {
-        const dateVal = document.getElementById("req-add-date").value;
-        const startTime = document.getElementById("req-add-start-time").value;
-        const endTime = document.getElementById("req-add-end-time").value;
-        const taskName = document.getElementById("req-add-task-select").value;
-        const goalSelect = document.getElementById("req-add-goal-select");
-        const countVal = parseInt(document.getElementById("req-add-count").value, 10) || 0;
-        const memoVal = document.getElementById("req-add-memo").value.trim();
+    if (type !== "add") {
+        errorEl.textContent = "現在、この申請タイプの送信ロジックは未実装です。";
+        errorBar.classList.remove("hidden");
+        return;
+    }
 
-        // バリデーションチェック
-        if (!dateVal || !startTime || !endTime || !taskName) {
-            errorEl.textContent = "日付、時間、業務内容は必須入力です。";
-            return;
-        }
+    const dateVal = document.getElementById("req-add-date").value;
+    const startTime = document.getElementById("req-add-start-time").value;
+    const endTime = document.getElementById("req-add-end-time").value;
+    const taskName = document.getElementById("req-add-task-select").value;
+    const goalSelect = document.getElementById("req-add-goal-select");
+    const countVal = parseInt(document.getElementById("req-add-count").value, 10) || 0;
+    const memoVal = document.getElementById("req-add-memo").value.trim();
 
-        if (startTime >= endTime) {
-            errorEl.textContent = "終了時間は開始時間より後の時刻にしてください。";
-            return;
-        }
+    // 必須入力チェック
+    if (!dateVal || !startTime || !endTime || !taskName) {
+        errorEl.textContent = "エラー：日付、時間、業務内容は必須入力です。";
+        errorBar.classList.remove("hidden");
+        return;
+    }
 
-        const goalId = goalSelect && goalSelect.value ? goalSelect.value : null;
-        let goalTitle = null;
-        if (goalSelect && goalSelect.selectedIndex > 0) {
-            // 末尾の「 (目標: 10)」などの表記を除去してタイトルだけを抽出
-            goalTitle = goalSelect.options[goalSelect.selectedIndex].text.split(" (目標:")[0];
-        }
+    // 時間の逆転チェック
+    if (startTime >= endTime) {
+        errorEl.textContent = "エラー：終了時間は開始時間より後の時刻にしてください。";
+        errorBar.classList.remove("hidden");
+        return;
+    }
 
-        const sendBtn = document.getElementById("unified-req-send-btn");
+    const goalId = goalSelect && !goalSelect.disabled && goalSelect.value ? goalSelect.value : null;
+    let goalTitle = null;
+    if (goalSelect && !goalSelect.disabled && goalSelect.selectedIndex > 0) {
+        goalTitle = goalSelect.options[goalSelect.selectedIndex].text.split(" (目標:")[0];
+    }
+
+    const sendBtn = document.getElementById("unified-req-send-btn");
+    
+    try {
+        sendBtn.disabled = true;
+        sendBtn.textContent = "送信中...";
+
+        // Firestoreの work_log_requests にデータを追加
+        await addDoc(collection(db, "work_log_requests"), {
+            userId: userId,
+            userName: userName,
+            type: "add",
+            status: "pending",
+            requestDate: dateVal,
+            createdAt: new Date().toISOString(),
+            data: {
+                task: taskName,
+                goalId: goalId,
+                goalTitle: goalTitle,
+                startTime: startTime,
+                endTime: endTime,
+                count: countVal,
+                memo: memoVal
+            }
+        });
+
+        alert("記録の追加申請を送信しました。管理者の承認をお待ちください。");
+        closeUnifiedRequestModal();
         
-        try {
-            sendBtn.disabled = true;
-            sendBtn.textContent = "送信中...";
-
-            // Firestoreのスキーマ構造(work_log_requests)に合わせてデータを整形
-            await addDoc(collection(db, "work_log_requests"), {
-                userId: userId,
-                userName: userName,
-                type: "add",
-                status: "pending",
-                requestDate: dateVal,
-                createdAt: new Date().toISOString(),
-                data: {
-                    task: taskName,
-                    goalId: goalId,
-                    goalTitle: goalTitle,
-                    startTime: startTime,
-                    endTime: endTime,
-                    count: countVal,
-                    memo: memoVal
-                }
-            });
-
-            alert("記録の追加申請を送信しました。管理者の承認をお待ちください。");
-            closeUnifiedRequestModal();
-            
-        } catch (error) {
-            console.error("Error submitting request:", error);
-            errorEl.textContent = "申請の送信中にエラーが発生しました。";
-        } finally {
-            sendBtn.disabled = false;
-            sendBtn.textContent = "申請を送る";
-        }
-    } else {
-        alert(`選択されたタイプ [${type}] の送信ロジックは現在未実装です。`);
+    } catch (error) {
+        console.error("Error submitting request:", error);
+        errorEl.textContent = "申請の送信中にシステムエラーが発生しました。";
+        errorBar.classList.remove("hidden");
+    } finally {
+        sendBtn.disabled = false;
+        sendBtn.textContent = "申請を送る";
     }
 }

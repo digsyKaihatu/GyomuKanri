@@ -1,7 +1,6 @@
 // js/views/personalDetail/logDisplay.js (UI描画 担当)
 
 import { formatDuration, formatTime, escapeHtml } from "../../utils.js";
-import { openUpdateRequestModal } from "./requestModal.js";
 
 export function clearDetails(detailsTitleEl, detailsContentEl) {
     if (detailsTitleEl) detailsTitleEl.textContent = "詳細";
@@ -25,12 +24,6 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
         const goalContributions = {}; 
 
         logsForDay.sort((a, b) => (a.startTime?.getTime() || 0) - (b.startTime?.getTime() || 0));
-
-        // 変更申請ボタン用ハンドラ
-        window.handleRequestUpdateClick = (logId) => {
-            const log = logsForDay.find(l => l.id === logId);
-            if (log) openUpdateRequestModal(log);
-        };
 
         logsForDay.forEach((log) => {
             const startTimeStr = formatTime(log.startTime);
@@ -56,6 +49,8 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
             }
 
             // タイムライン表示
+            /************ 変更箇所 ************/
+            // 旧仕様の個別申請ボタン（時間修正・変更申請）を削除し、メモ修正のみを残しました
             const taskDisplay = log.goalTitle
                 ? `${escapeHtml(log.task)} <span class="text-xs text-gray-500">(${escapeHtml(log.goalTitle)})</span>`
                 : escapeHtml(log.task);
@@ -66,40 +61,22 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
             
             let editButtons = "";
             if (isAdmin || isSelf) {
-                // ★追加: 工数のみのログ(type === "goal")には「時間」がないため、時間修正ボタンは非表示にする
-                if (log.type !== "goal") {
-                    editButtons += `
-                        <button class="edit-log-btn text-xs bg-blue-500 text-white font-bold py-1 px-2 rounded hover:bg-blue-600 tooltip" data-log-id="${log.id}" data-duration="${log.duration || 0}" data-task-name="${escapeHtml(log.task)}">
-                        時間修正
-                        <span class="tooltip-text" style="z-index: 10;">業務名は合っているけど<br>時間だけ修正したい場合はこちら</span>
-                        </button>
-                    `;
-                }
                 editButtons += `
                     <button class="edit-memo-btn text-xs bg-gray-500 text-white font-bold py-1 px-2 rounded hover:bg-gray-600" data-log-id="${log.id}" data-memo="${escapeHtml(log.memo || "")}">メモ修正</button>
                 `;
             }
-
-            let requestButton = "";
-            if (isSelf) {
-                requestButton = `
-                    <button onclick="handleRequestUpdateClick('${log.id}')" class="text-xs bg-yellow-500 text-white font-bold py-1 px-2 rounded hover:bg-yellow-600 ml-2 tooltip">
-                        変更申請
-                        <span class="tooltip-text" style="z-index: 10;">時間は合っているけど<br>業務名や件数工数を<br>忘れた場合はこちら</span>
-                    </button>
-                `;
-            }
+            /**********************************/
             
-            // ★追加: 工数ログか休憩ログかで背景色や文字色を出し分ける
+            // 工数ログか休憩ログかで背景色や文字色を出し分ける
             const bgClass = log.task === "休憩" ? "bg-yellow-50" : (log.type === "goal" ? "bg-green-50" : "bg-gray-50");
             const textClass = log.task === "休憩" ? "text-yellow-800" : (log.type === "goal" ? "text-green-800" : "text-gray-800");
 
-            // ★追加: 工数ログの場合は終了時間を表示しない（「10:00 - 」のようにならないため）
+            // 工数ログの場合は終了時間を表示しない（「10:00 - 」のようにならないため）
             const timeDisplayHtml = log.type === "goal"
                 ? `<span class="font-mono text-sm bg-green-200 text-green-900 px-2 py-1 rounded">${startTimeStr} (進捗のみ)</span>`
                 : `<span class="font-mono text-sm bg-gray-200 px-2 py-1 rounded">${startTimeStr} - ${endTimeStr}</span>`;
 
-            // ★追加: 時間と件数のテキスト表記
+            // 時間と件数のテキスト表記
             let detailText = "";
             if (log.type !== "goal") {
                 detailText += `合計: ${formatDuration(log.duration || 0)}`;
@@ -118,7 +95,6 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
                      <div class="text-gray-500 text-sm">${detailText}</div>
                      <div class="flex gap-1">
                         ${editButtons}
-                        ${requestButton}
                      </div>
                 </div>
             </li>`;
@@ -150,11 +126,11 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
                      const firstLog = goalData.logs[0];
                      const editButtonHtml = isAdmin && firstLog ? `
                          <button class="edit-contribution-btn text-xs bg-blue-500 text-white font-bold py-1 px-2 rounded hover:bg-blue-600"
-                                 data-user-name="${escapeHtml(currentUserForDetailView)}"
-                                 data-goal-id="${firstLog.goalId}"
-                                 data-task-name="${escapeHtml(firstLog.task)}"
-                                 data-goal-title="${escapeHtml(firstLog.goalTitle)}"
-                                 data-date="${date}">修正</button>
+                                  data-user-name="${escapeHtml(currentUserForDetailView)}"
+                                  data-goal-id="${firstLog.goalId}"
+                                  data-task-name="${escapeHtml(firstLog.task)}"
+                                  data-goal-title="${escapeHtml(firstLog.goalTitle)}"
+                                  data-date="${date}">修正</button>
                      ` : "";
 
                      goalHtml += `<li class="p-2 bg-yellow-50 rounded-md flex justify-between items-center">
@@ -167,7 +143,7 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
 
          timelineHtml = timelineHtml ? `<h4 class="text-lg font-semibold mt-4 mb-2 border-t pt-4">タイムライン</h4><ul class="space-y-3">${timelineHtml}</ul>` : '';
 
-        detailsContentEl.innerHTML = summaryHtml + goalHtml + timelineHtml;
+         detailsContentEl.innerHTML = summaryHtml + goalHtml + timelineHtml;
 
     } else {
         detailsContentEl.innerHTML = '<p class="text-gray-500">この日の業務ログはありません。</p>';

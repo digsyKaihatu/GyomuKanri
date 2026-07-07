@@ -6,6 +6,7 @@ import { collection, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/fi
 import { renderAddFormHTML, initAddForm, getAddFormData } from "./addForm.js";
 import { renderTimeCorrectFormHTML, initTimeCorrectForm, getTimeCorrectFormData } from "./timeCorrectForm.js";
 import { renderCountCorrectFormHTML, initCountCorrectForm, getCountCorrectFormData } from "./countCorrectForm.js";
+import { renderForgetCheckoutFormHTML, initForgetCheckoutForm, getForgetCheckoutFormData } from "./forgetCheckoutForm.js"; // 追加
 
 // --- 業務タイムライン変更追加申請モーダルの外枠（骨組み）を生成 ---
 function createUnifiedRequestModalHTML() {

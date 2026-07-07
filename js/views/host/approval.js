@@ -69,7 +69,6 @@ function renderApprovalList(docs) {
             `;
         } 
         else if (req.type === "time_correct" || req.type === "update") {
-            const goalText = d.goalTitle ? ` <span class="bg-gray-100 px-1 rounded border text-gray-500">[${escapeHtml(d.goalTitle)}]</span>` : "";
             const beforeStart = d.beforeStartTime || "変更なし";
             const beforeEnd = d.beforeEndTime || "変更なし";
             const afterStart = d.afterStartTime || "変更なし";
@@ -79,25 +78,44 @@ function renderApprovalList(docs) {
             const beforeTimeStr = (beforeStart === "変更なし" && beforeEnd === "変更なし") ? "変更なし" : `${beforeStart} - ${beforeEnd}`;
             const afterTimeStr = (afterStart === "変更なし" && afterEnd === "変更なし") ? "変更なし" : `${afterStart} - ${afterEnd}`;
 
-            // ★【拡張】業務名に変更があった場合に、元の業務名 ➡️ 申請業務名 を並べるロジック
             const beforeTaskStr = d.beforeTask || "不明";
             const afterTaskStr = d.task || d.taskName || "未定";
+            const beforeGoalStr = d.beforeGoalTitle || "";
+            const afterGoalStr = d.goalTitle || "";
             
+            const isTaskChanged = (beforeTaskStr !== "不明" && beforeTaskStr !== afterTaskStr);
+            // 送信データに beforeGoalTitle が存在し、かつ前後で値が異なる場合に変更と判定
+            const isGoalChanged = (d.beforeGoalTitle !== undefined && beforeGoalStr !== afterGoalStr);
+
+            // ① 業務名変更の表示制御
             let taskDisplayHtml = "";
-            if (beforeTaskStr !== "不明" && beforeTaskStr !== afterTaskStr) {
-                // 業務変更が伴う場合
+            if (isTaskChanged) {
                 taskDisplayHtml = `
                     <div class="text-sm font-bold text-gray-800 flex items-center flex-wrap gap-1">
                         業務変更: <span class="text-gray-400 line-through font-normal">${escapeHtml(beforeTaskStr)}</span> 
-                        <span class="text-blue-600 font-black">➡️ ${escapeHtml(afterTaskStr)}</span> ${goalText}
+                        <span class="text-blue-600 font-black">➡️ ${escapeHtml(afterTaskStr)}</span>
                     </div>`;
             } else {
-                // 時間のみの訂正、あるいは業務に変更がない場合
-                taskDisplayHtml = `<div class="text-sm font-bold text-gray-800">訂正後業務: ${escapeHtml(afterTaskStr)} ${goalText}</div>`;
+                taskDisplayHtml = `<div class="text-sm font-bold text-gray-800">対象業務: ${escapeHtml(afterTaskStr)}</div>`;
+            }
+
+            // ② 【機能拡張】工数（目標）変更の表示制御
+            let goalDisplayHtml = "";
+            if (isGoalChanged) {
+                const beforeGoalLabel = beforeGoalStr ? `[${beforeGoalStr}]` : "[工数なし]";
+                const afterGoalLabel = afterGoalStr ? `[${afterGoalStr}]` : "[工数なし]";
+                goalDisplayHtml = `
+                    <div class="text-xs font-bold text-gray-700 flex items-center flex-wrap gap-1 mt-0.5">
+                        工数変更: <span class="text-gray-400 line-through font-normal">${escapeHtml(beforeGoalLabel)}</span> 
+                        <span class="text-indigo-600 font-black">➡️ ${escapeHtml(afterGoalLabel)}</span>
+                    </div>`;
+            } else if (afterGoalStr) {
+                goalDisplayHtml = `<div class="text-xs text-gray-500 mt-0.5">工数: <span class="bg-gray-100 px-1 rounded border text-gray-600">[${escapeHtml(afterGoalStr)}]</span></div>`;
             }
 
             infoHtml = `
                 ${taskDisplayHtml}
+                ${goalDisplayHtml}
                 <div class="text-xs text-gray-500 mt-1">修正前の時間: <span class="font-mono">${beforeTimeStr}</span></div>
                 <div class="text-xs text-gray-600 mt-0.5">訂正後の時間: <span class="font-mono bg-blue-50 px-1.5 py-0.5 rounded text-blue-700 font-bold">${afterTimeStr}</span></div>
                 <div class="text-xs text-gray-700 font-semibold mt-1">労働時間差異: <span class="text-orange-600 font-bold">${timeDiff}</span></div>

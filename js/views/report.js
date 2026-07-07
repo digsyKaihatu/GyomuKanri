@@ -65,19 +65,24 @@ async function fetchAndRenderForCurrentMonth() {
     if(reportTitleEl) reportTitleEl.textContent = "データを読み込み中...";
 
     try {
+        // 【修正】work_logs ではなく、daily_summaries から取得
         const q = query(
-            collection(db, "work_logs"),
+            collection(db, "daily_summaries"),
             where("date", ">=", start),
             where("date", "<=", end)
         );
         const snapshot = await getDocs(q);
-        currentMonthLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        // 【修正】各ドキュメントに凝縮されている JSON 文字列をパースして平坦な1つの配列に展開
+        currentMonthLogs = snapshot.docs.flatMap(doc => {
+            const data = doc.data();
+            return data.logsJson ? JSON.parse(data.logsJson) : [];
+        });
         
         renderReportCalendar();        
         renderReportChartsForMonth(); 
 
     } catch (error) {
-        // eslint-disable-next-line no-console
         console.error("Error fetching report logs:", error);
         if(reportChartsContainer) reportChartsContainer.innerHTML = `<p class="text-red-500 text-center">データの取得中にエラーが発生しました。</p>`;
     }

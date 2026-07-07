@@ -1,4 +1,4 @@
-// js/views/personalDetail/personalDetail.js (リファクタリング版 - 司令塔)
+// js/views/personalDetail/personalDetail.js
 
 import { db, userName as currentUserName, authLevel, viewHistory, showView, VIEWS, allTaskObjects, updateGlobalTaskObjects, handleGoBack } from "../../main.js";
 import { renderUnifiedCalendar } from "../../components/calendar.js"; 
@@ -8,7 +8,8 @@ import { startListeningForUserLogs, stopListeningForUserLogs } from "./logData.j
 import { showDailyLogs, showMonthlyLogs, clearDetails } from "./logDisplay.js";
 import { handleTimelineClick, handleSaveLogDuration, handleSaveMemo, handleSaveContribution } from "./logEditor.js";
 import { handleDeleteUserClick } from "./adminActions.js";
-// 修正：openRequestCheckModal も一緒にインポートします
+
+// 申請モーダルと申請確認モーダルのインポート
 import { openUnifiedRequestModal, openRequestCheckModal } from "./requestModal.js";
 
 // --- Module State ---
@@ -49,10 +50,28 @@ function injectAddRequestButton() {
     // タイトルの横のヘッダー領域を取得
     const header = document.querySelector("#personal-detail-view .flex.justify-between");
     if (header) {
-        // --- ① 業務タイムライン変更追加申請ボタン ---
+        // --- ① 【位置変更】申請確認ボタンを先に生成（戻るボタンのすぐ右隣へ） ---
+        const checkBtn = document.createElement("button");
+        checkBtn.id = "request-check-btn";
+        // 「戻る」ボタンとの隙間を適切に空けるために ml-4 を設定
+        checkBtn.className = "bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded shadow ml-4 tooltip text-sm transition";
+        checkBtn.innerHTML = `
+            申請確認
+            <span class="tooltip-text">
+                過去の申請状況や履歴を確認できます
+            </span>
+        `;
+        checkBtn.onclick = () => {
+            const targetDate = selectedDateStr || new Date().toISOString().split("T")[0];
+            openRequestCheckModal(targetDate);
+        };
+        header.appendChild(checkBtn);
+
+        // --- ② 【位置変更】業務タイムライン変更追加申請ボタンを後に生成（右側へ） ---
         const btn = document.createElement("button");
         btn.id = "add-request-btn";
-        btn.className = "bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded shadow ml-4 tooltip text-sm transition";
+        // 申請確認ボタンとの隙間を綺麗に保つために ml-2 に調整
+        btn.className = "bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded shadow ml-2 tooltip text-sm transition";
         btn.innerHTML = `
             業務タイムライン変更追加申請
             <span class="tooltip-text">
@@ -64,24 +83,6 @@ function injectAddRequestButton() {
             openUnifiedRequestModal(targetDate);
         };
         header.appendChild(btn);
-
-        // --- ② 【新規追加】申請確認ボタン ---
-        const checkBtn = document.createElement("button");
-        checkBtn.id = "request-check-btn";
-        // Tailwindのスタイルを統一し、ml-2 で少し隙間を空けて配置
-        checkBtn.className = "bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded shadow ml-2 tooltip text-sm transition";
-        checkBtn.innerHTML = `
-            申請確認
-            <span class="tooltip-text">
-                過去の申請状況や履歴を確認できます
-            </span>
-        `;
-        checkBtn.onclick = () => {
-            // カレンダーで選択中の日付、選んでいなければ今日の日付を取得してモーダルに渡す
-            const targetDate = selectedDateStr || new Date().toISOString().split("T")[0];
-            openRequestCheckModal(targetDate);
-        };
-        header.appendChild(checkBtn);
     }
 }
 
@@ -101,7 +102,7 @@ export function initializePersonalDetailView(data) {
     currentCalendarDate = new Date();
     selectedDateStr = null;
 
-    // ★追加: 申請ボタン配置
+    // 申請ボタン・確認ボタンの配置
     injectAddRequestButton();
 
     const previousView = viewHistory[viewHistory.length - 2];
@@ -143,7 +144,6 @@ export function cleanupPersonalDetailView() {
     const btn = document.getElementById("add-request-btn");
     if(btn) btn.remove();
     
-    // 【新規追加】申請確認ボタンの掃除
     const checkBtn = document.getElementById("request-check-btn");
     if(checkBtn) checkBtn.remove();
 }
@@ -161,7 +161,7 @@ export function setupPersonalDetailEventListeners() {
     editMemoSaveBtn?.addEventListener("click", handleSaveMemo);
     editContributionSaveBtn?.addEventListener("click", handleSaveContribution);
 
-// ★追加: キャンセルボタンのイベント (ここを追加してください)
+    // キャンセルボタンのイベント
     editLogCancelBtn?.addEventListener("click", () => {
         if (editLogModal) editLogModal.classList.add("hidden");
     });
@@ -174,14 +174,13 @@ export function setupPersonalDetailEventListeners() {
         if (editContributionModal) editContributionModal.classList.add("hidden");
     });
     
-     detailsContentEl?.addEventListener('click', (event) => {
+    detailsContentEl?.addEventListener('click', (event) => {
         handleTimelineClick(event.target, selectedUserLogs, currentUserForDetailView, {
-             editLogModal,
-             editMemoModal,
-             editContributionModal
-         });
-     });
-
+            editLogModal,
+            editMemoModal,
+            editContributionModal
+        });
+    });
 }
 
 function renderCalendar() {
@@ -198,12 +197,12 @@ function renderCalendar() {
         onMonthClick: handleMonthClick, 
     });
 
-     if (selectedDateStr) {
-         const dayElement = calendarEl.querySelector(`.calendar-day[data-date="${selectedDateStr}"]`);
-         if (dayElement) {
-             dayElement.classList.add("selected");
-         }
-     }
+    if (selectedDateStr) {
+        const dayElement = calendarEl.querySelector(`.calendar-day[data-date="${selectedDateStr}"]`);
+        if (dayElement) {
+            dayElement.classList.add("selected");
+        }
+    }
 }
 
 function moveMonth(direction) {
@@ -217,7 +216,7 @@ function moveMonth(direction) {
             handleMonthClick(); 
         });
     } else {
-         console.error("Cannot move month, currentUserForDetailView is not set.");
+        console.error("Cannot move month, currentUserForDetailView is not set.");
     }
 }
 
@@ -258,9 +257,9 @@ function handleMonthClick() {
 function escapeHtml(unsafe) {
     if (typeof unsafe !== 'string') return '';
     return unsafe
-         .replace(/&/g, "&amp;")
-         .replace(/</g, "&lt;")
-         .replace(/>/g, "&gt;")
-         .replace(/"/g, "&quot;")
-         .replace(/'/g, "&#039;");
- }
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}

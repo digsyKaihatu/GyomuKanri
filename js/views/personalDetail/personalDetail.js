@@ -8,8 +8,6 @@ import { startListeningForUserLogs, stopListeningForUserLogs } from "./logData.j
 import { showDailyLogs, showMonthlyLogs, clearDetails } from "./logDisplay.js";
 import { handleTimelineClick, handleSaveLogDuration, handleSaveMemo, handleSaveContribution } from "./logEditor.js";
 import { handleDeleteUserClick } from "./adminActions.js";
-// ★追加: 申請モーダルロジック
-import { openUnifiedRequestModal } from "./requestModal.js";
 // 修正：openRequestCheckModal も一緒にインポートします
 import { openUnifiedRequestModal, openRequestCheckModal } from "./requestModal.js";
 

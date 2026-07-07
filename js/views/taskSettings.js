@@ -198,14 +198,14 @@ export function renderTaskEditor() {
         `;
 
         div.innerHTML = `
-            <div class="flex justify-between items-center">
-                <span class="font-semibold text-lg text-gray-800">${escapeHtml(task.name)}</span>
-                ${deleteButtonHtml}
-            </div>
-            <div class="mt-2">
-                <label class="block text-sm font-medium text-gray-600 mb-1">業務メモ:</label>
-                <input type="text" value="${escapeHtml(task.memo || "")}" class="task-memo-editor w-full p-1 border border-gray-300 rounded-md text-sm focus:ring-indigo-500" ${task.name === "休憩" ? 'disabled' : ''}>
-            </div>
+    <div class="flex justify-between items-center">
+        <span class="font-semibold text-lg text-gray-800">${escapeHtml(task.name)}</span>
+        ${deleteButtonHtml}
+    </div>
+    <div class="mt-2">
+        <label class="block text-sm font-medium text-gray-600 mb-1">業務メモ:</label>
+        <textarea class="task-memo-editor w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-indigo-500" rows="2" ${task.name === "休憩" ? 'disabled' : ''}>${escapeHtml(task.memo || "")}</textarea>
+    </div>
             <div class="text-right mt-2">
                 ${task.name !== "休憩" ? `<button class="save-task-btn bg-blue-500 text-white text-xs font-bold py-1 px-2 rounded hover:bg-blue-600" data-task-name="${escapeHtml(task.name)}">メモを保存</button>` : ''}
             </div>

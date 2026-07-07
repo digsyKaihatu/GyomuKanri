@@ -143,10 +143,21 @@ export function escapeHtml(unsafe) {
  * テキスト内のURLを検知してハイパーリンク（aタグ）に変換する
  * ※セキュリティのため、必ず先に escapeHtml を通した文字列を渡してください。
  */
-export function linkify(escapedText) {
+xport function linkify(escapedText) {
     if (!escapedText) return "";
+    
+    // 1. まずURLを検知して <a> タグに変換
     const urlRegex = /(https?:\/\/[^\s\n<>"]+)/g;
-    return escapedText.replace(urlRegex, (url) => {
+    let processedText = escapedText.replace(urlRegex, (url) => {
         return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline break-all">${url}</a>`;
     });
+
+    // 2. 次に #（文字）# を検知して Tailwind CSS で赤文字＆少し大きく＆太字に変換
+    // 業務メモの基本サイズが text-sm (14px) なので、少し大きい text-base (16px) を指定しています
+    const decorRegex = /#([^#\n]+)#/g;
+    processedText = processedText.replace(decorRegex, (match, p1) => {
+        return `<span class="text-red-600 text-base font-bold">${p1}</span>`;
+    });
+
+    return processedText;
 }

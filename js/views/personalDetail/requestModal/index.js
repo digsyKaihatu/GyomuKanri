@@ -36,8 +36,7 @@ function createUnifiedRequestModalHTML() {
                         <select id="unified-req-type-select" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white font-semibold focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
                             <option value="">-- 選択してください --</option>
                             <option value="add">記録の追加（あとから稼働を足す）</option>
-                            <option value="time_correct">時間の訂正（現在のタイムラインの修正）</option>
-                            <option value="task_change">入った業務を変更する（現在のタイムラインの修正）</option>
+                            <option value="time_correct">時間・業務の訂正（現在のタイムラインの修正）</option>
                             <option value="count_correct">工数件数の修正</option>
                             <option value="forget_checkout">退勤忘れの修正（現在のタイムラインの修正）</option>
                         </select>
@@ -87,7 +86,7 @@ function closeUnifiedRequestModal() {
     if (modal) modal.classList.add("hidden");
 }
 
-// 選択タイプによって各フォームを切り替える(index.jsのコアロジック)
+// 選択タイプによって各フォームを切り替える
 function handleUnifiedTypeChange(event) {
     const selectedType = event.target.value;
     const formBody = document.getElementById("unified-req-form-body");
@@ -134,7 +133,6 @@ async function handleRequestSubmit() {
 
     let payload = null;
     try {
-        // 各モジュールからバリデーション済みデータを取得
         if (type === "add") {
             payload = getAddFormData();
         } else if (type === "time_correct") {
@@ -151,7 +149,7 @@ async function handleRequestSubmit() {
         await addDoc(collection(db, "work_log_requests"), {
             userId: userId,
             userName: userName,
-            type: type,
+            type: type, // 「time_correct」のまま保存（識別キーとして維持）
             status: "pending",
             requestDate: payload.requestDate,
             targetLogId: payload.targetLogId || null,

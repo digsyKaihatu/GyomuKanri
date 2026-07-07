@@ -61,21 +61,7 @@ const viewLifecycle = {
 async function initialize() {
     setupVisibilityReload();
 
-    injectAllTemplates();
-    initModals();
-    initializeExcelExportDOMElements();
-
-    // Setup listeners that are not view-specific
-    setupModalEventListeners();
-    setupExcelExportEventListeners();
-    const adminPasswordSubmitBtn = document.getElementById("admin-password-submit-btn");
-    const adminPasswordInput = document.getElementById("admin-password-input");
-    adminPasswordSubmitBtn?.addEventListener("click", handleAdminLogin);
-    adminPasswordInput?.addEventListener('keypress', (event) => {
-         if (event.key === 'Enter') handleAdminLogin();
-     });
-
-    const appContainer = document.getElementById('app-container');
+    // 💡【最適化】ログイン前の時点では、DOMの注入や初期化は一切行わない（初期負荷をゼロにする）
 
     if (!isFirebaseConfigValid()) {
         displayInitializationError("Firebaseの設定が無効です。firebase.jsを確認してください。");
@@ -83,28 +69,12 @@ async function initialize() {
     }
     
     try {
+        // 先にOktaの認証チェックを行い、未ログインなら即座にログイン画面を出す
         await checkOktaAuthentication(async () => {
             await startAppAfterLogin();
-
-            const today = getJSTDateString(new Date());
-            const lastLoginDate = localStorage.getItem("last_login_date");
-
-            if (lastLoginDate !== today) {
-                localStorage.setItem("last_login_date", today);
-                showView(VIEWS.MODE_SELECTION);
-            } else {
-                const savedViewJson = localStorage.getItem(LAST_VIEW_KEY);
-                if (savedViewJson) {
-                    const { name, params } = JSON.parse(savedViewJson);
-                    showView(name, params);
-                } else {
-                    showView(VIEWS.MODE_SELECTION);
-                }
-            }
         });
-    } catch(error) {
-        console.error("Okta Authentication Check Failed:", error);
-        displayInitializationError("認証処理中にエラーが発生しました。");
+    } catch (error) {
+        console.error("Initialization error:", error);
     }
 }
 
@@ -313,10 +283,24 @@ async function handleAdminLogin() {
 }
 
 export async function startAppAfterLogin() {
+    // 💡【最適化】ログインが成功した「この瞬間」に、初めてDOMテンプレートの注入と初期化を行う
+    injectAllTemplates();
+    initModals();
+    initializeExcelExportDOMElements();
+
+    // DOM要素へのイベントリスナー登録もこのタイミングで行う
+    setupModalEventListeners();
+    setupExcelExportEventListeners();
+    const adminPasswordSubmitBtn = document.getElementById("admin-password-submit-btn");
+    const adminPasswordInput = document.getElementById("admin-password-input");
+    adminPasswordSubmitBtn?.addEventListener("click", handleAdminLogin);
+    adminPasswordInput?.addEventListener('keypress', (event) => {
+         if (event.key === 'Enter') handleAdminLogin();
+    });
+
+    // 既存のメッセージング初期化とデータ取得処理
     initMessaging(userId);
     listenForMessages();
-
-    // 【改善】常時監視を止め、初期化時に1回だけ取得する
     await Promise.all([fetchTasks(), fetchDisplayPreferences()]);
 }
 

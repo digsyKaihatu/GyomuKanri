@@ -25,67 +25,73 @@ function createUnifiedRequestModalHTML() {
             </div>
             
             <div class="p-6 overflow-y-auto flex-grow">
-                <div id="unified-grid-container" class="grid grid-cols-3 gap-x-6 gap-y-4">
-                    
-                    <div class="space-y-4">
-                        <div>
-                            <label class="block text-sm font-bold text-gray-700">対象日</label>
-                            <input type="date" id="unified-req-date" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-gray-50 focus:outline-none" readonly>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-bold text-gray-700">申請内容を選択してください</label>
-                            <select id="unified-req-type-select" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white font-semibold focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
-                                <option value="">-- 選択してください --</option>
-                                <option value="add">記録の追加（あとから稼働を足す）</option>
-                                <option value="time_correct">時間の訂正（現在のタイムラインの修正）</option>
-                                <option value="task_change">入った業務を変更する（現在のタイムラインの修正）</option>
-                                <option value="count_correct">工数件数の修正</option>
-                                <option value="forget_checkout">退勤忘れの修正（現在のタイムラインの修正）</option>
-                            </select>
-                        </div>
-                        <div id="req-add-date-container">
-                            <label class="block text-sm font-bold text-gray-700">追加する日付</label>
-                            <input type="date" id="req-add-date" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
-                        </div>
+                
+                <div class="grid grid-cols-3 gap-x-6 gap-y-4 mb-2">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700">申請日</label>
+                        <input type="date" id="unified-req-date" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-gray-50 focus:outline-none" readonly>
                     </div>
-                    
-                    <div class="space-y-4">
-                        <div>
-                            <label class="block text-sm font-bold text-gray-700">業務プルダウン</label>
-                            <select id="req-add-task-select" class="mt-1 block w-full border border-emerald-500 ring-2 ring-emerald-100 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
-                                <option value="">業務を選択...</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-bold text-gray-700">工数プルダウン</label>
-                            <select id="req-add-goal-select" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-gray-100 text-gray-500 focus:outline-none" disabled>
-                                <option value="">業務を選択してください</option>
-                            </select>
-                        </div>
-                        <div id="req-add-count-container">
-                            <label class="block text-sm font-bold text-gray-700">成果件数</label>
-                            <input type="number" id="req-add-count" min="0" value="0" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
-                        </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700">申請内容を選択してください</label>
+                        <select id="unified-req-type-select" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white font-semibold focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                            <option value="">-- 選択してください --</option>
+                            <option value="add">記録の追加（あとから稼働を足す）</option>
+                            <option value="time_correct">時間の訂正（現在のタイムラインの修正）</option>
+                            <option value="task_change">入った業務を変更する（現在のタイムラインの修正）</option>
+                            <option value="count_correct">工数件数の修正</option>
+                            <option value="forget_checkout">退勤忘れの修正（現在のタイムラインの修正）</option>
+                        </select>
                     </div>
-                    
-                    <div class="space-y-4 flex flex-col">
-                        <div>
-                            <label class="block text-sm font-bold text-gray-700">開始時間</label>
-                            <input type="time" id="req-add-start-time" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                    <div></div> </div>
+                
+                <div id="unified-req-form-body" class="hidden border-t border-dashed pt-4 mt-4">
+                    <div class="grid grid-cols-3 gap-x-6 gap-y-4">
+                        
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-bold text-gray-700">追加する日付</label>
+                                <input type="date" id="req-add-date" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                            </div>
                         </div>
-                        <div>
-                            <label class="block text-sm font-bold text-gray-700">終了時間</label>
-                            <input type="time" id="req-add-end-time" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                        
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-bold text-gray-700">業務プルダウン</label>
+                                <select id="req-add-task-select" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                                    <option value="">業務を選択...</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold text-gray-700">工数プルダウン</label>
+                                <select id="req-add-goal-select" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-gray-100 text-gray-500 focus:outline-none" disabled>
+                                    <option value="">業務を選択してください</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold text-gray-700">成果件数</label>
+                                <input type="number" id="req-add-count" min="0" value="0" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                            </div>
                         </div>
-                        <div id="req-add-memo-container" class="flex flex-col flex-grow">
-                            <label class="block text-sm font-bold text-gray-700">メモ (任意)</label>
-                            <textarea id="req-add-memo" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white resize-none flex-grow min-h-[80px] focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" placeholder="補足事項など"></textarea>
+                        
+                        <div class="space-y-4 flex flex-col">
+                            <div>
+                                <label class="block text-sm font-bold text-gray-700">開始時間</label>
+                                <input type="time" id="req-add-start-time" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold text-gray-700">終了時間</label>
+                                <input type="time" id="req-add-end-time" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                            </div>
+                            <div class="flex flex-col flex-grow">
+                                <label class="block text-sm font-bold text-gray-700">メモ (任意)</label>
+                                <textarea id="req-add-memo" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white resize-none flex-grow min-h-[80px] focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" placeholder="補足事項など"></textarea>
+                            </div>
                         </div>
+                        
                     </div>
-                    
                 </div>
                 
-                <div id="unified-alternative-body" class="hidden py-12 text-center text-gray-400 text-sm font-bold">
+                <div id="unified-alternative-body" class="hidden border-t border-dashed pt-4 mt-4 py-12 text-center text-gray-400 text-sm font-bold">
                     選択された申請タイプのフォーマットは現在開発中です。
                 </div>
             </div>
@@ -124,16 +130,16 @@ export function openUnifiedRequestModal(dateStr) {
     document.getElementById("unified-req-date").value = dateStr;
     document.getElementById("req-add-date").value = dateStr;
     
-    // 画像の状態を再現するため、デフォルトで「記録の追加」を選択状態にする
+    // 初期選択を空（-- 選択してください --）にする
     const typeSelect = document.getElementById("unified-req-type-select");
-    typeSelect.value = "add";
+    typeSelect.value = "";
     
-    // 表示状態の初期化
-    document.getElementById("unified-grid-container").classList.remove("hidden");
+    // 【ご要望】初期状態は下部の詳細入力エリアをすべて非表示にする
+    document.getElementById("unified-req-form-body").classList.add("hidden");
     document.getElementById("unified-alternative-body").classList.add("hidden");
     document.getElementById("unified-req-error-bar").classList.add("hidden");
 
-    // フォームの入力値をリセット (時間などは画像に合わせた仮置き値、適宜空文字 "" に変更してください)
+    // フォームの入力値をリセット
     document.getElementById("req-add-start-time").value = "12:00";
     document.getElementById("req-add-end-time").value = "12:45";
     document.getElementById("req-add-count").value = "0";
@@ -151,20 +157,27 @@ function closeUnifiedRequestModal() {
     if (modal) modal.classList.add("hidden");
 }
 
-// 申請内容プルダウン変更時の表示切り替え切り替え
+// 申請内容プルダウン変更時の表示切り替え
 function handleUnifiedTypeChange(event) {
     const selectedType = event.target.value;
-    const gridContainer = document.getElementById("unified-grid-container");
+    const formBody = document.getElementById("unified-req-form-body");
     const alternativeBody = document.getElementById("unified-alternative-body");
     const errorBar = document.getElementById("unified-req-error-bar");
     
     if (errorBar) errorBar.classList.add("hidden");
 
-    if (selectedType === "add" || !selectedType) {
-        gridContainer.classList.remove("hidden");
-        alternativeBody.classList.add("hidden");
+    // 一旦すべて隠す
+    formBody.classList.add("hidden");
+    alternativeBody.classList.add("hidden");
+
+    // 【ご要望】「選択してください(空文字)」の場合は、これ以上の内容を出さずに終了
+    if (!selectedType) {
+        return;
+    }
+
+    if (selectedType === "add") {
+        formBody.classList.remove("hidden");
     } else {
-        gridContainer.classList.add("hidden");
         alternativeBody.classList.remove("hidden");
         alternativeBody.textContent = `選択された申請タイプ [${selectedType}] のフォーマットは現在開発中です。`;
     }
@@ -175,6 +188,7 @@ function populateTaskDropdown() {
     const taskSelect = document.getElementById("req-add-task-select");
     if (!taskSelect) return;
 
+    // 初期値を「業務を選択...」に設定
     taskSelect.innerHTML = '<option value="">業務を選択...</option>';
 
     // 全業務オブジェクトをソートして追加
@@ -187,13 +201,13 @@ function populateTaskDropdown() {
         taskSelect.appendChild(opt);
     });
 
-    // 画像再現ロジック：業務プルダウンの変更イベント
+    // 業務プルダウンの変更イベント
     taskSelect.addEventListener("change", (e) => {
         const selectedTaskName = e.target.value;
         const goalSelect = document.getElementById("req-add-goal-select");
         if (!goalSelect) return;
 
-        // 【画像再現の目玉】休憩が選ばれたときはグレーアウトしてメッセージを変更
+        // 休憩が選ばれたときはグレーアウトしてメッセージを変更
         if (selectedTaskName === "休憩") {
             goalSelect.innerHTML = '<option value="">休憩は工数項目なし</option>';
             goalSelect.disabled = true;
@@ -201,6 +215,7 @@ function populateTaskDropdown() {
             return;
         }
 
+        // 初期選択「業務を選択...」のときの工数の状態
         if (!selectedTaskName) {
             goalSelect.innerHTML = '<option value="">業務を選択してください</option>';
             goalSelect.disabled = true;
@@ -229,11 +244,9 @@ function populateTaskDropdown() {
         }
     });
 
-    // 画像初期状態を再現するため、明示的に「休憩」を初期選択にしてイベントを発火
-    if (Array.from(taskSelect.options).some(o => o.value === "休憩")) {
-        taskSelect.value = "休憩";
-        taskSelect.dispatchEvent(new Event("change"));
-    }
+    // 初期選択を「業務を選択...」にするため値を空にし、変更イベントを発火させて工数側も同期
+    taskSelect.value = "";
+    taskSelect.dispatchEvent(new Event("change"));
 }
 
 // 申請情報のバリデーション & Firestore送信

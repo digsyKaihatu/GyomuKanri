@@ -1,6 +1,6 @@
 // js/views/client/clientUI.js
 
-import { allTaskObjects, userDisplayPreferences, userId, db, escapeHtml } from "../../main.js";
+import { allTaskObjects, userDisplayPreferences, userId, db, escapeHtml, linkify } from "../../main.js";
 import { doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { getCurrentTask, getCurrentGoalId } from "./timer.js";
 
@@ -251,9 +251,13 @@ export function updateTaskDisplaysForSelection() {
 
     // メモ表示
     if (selectedTask.memo && taskDescriptionDisplay) {
-        taskDescriptionDisplay.innerHTML = `<p class="text-sm p-3 bg-gray-100 rounded-lg whitespace-pre-wrap text-gray-600">${escapeHtml(selectedTask.memo)}</p>`;
-        taskDescriptionDisplay.classList.remove("hidden");
-    }
+    // 全体をエスケープして安全にしてから、URL部分だけをaタグ化する
+    const linkedHtml = linkify(escapeHtml(selectedTask.memo));
+    
+    // 元々「whitespace-pre-wrap」クラスがついているため、これで改行も自動で画面に反映されます
+    taskDescriptionDisplay.innerHTML = `<p class="text-sm p-3 bg-gray-100 rounded-lg whitespace-pre-wrap text-gray-600">${linkedHtml}</p>`;
+    taskDescriptionDisplay.classList.remove("hidden");
+}
 
     // 工数（ゴール）表示
     const activeGoals = (selectedTask.goals || []).filter((g) => !g.isComplete);

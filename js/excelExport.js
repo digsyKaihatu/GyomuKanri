@@ -76,18 +76,19 @@ async function handleExportExcel() {
     let logsForMonth = [];
 
     try {
-        // 指定された月のデータのみをFirestoreから取得
+        // 【修正】daily_summaries から取得
         const q = query(
-            collection(db, "work_logs"),
+            collection(db, "daily_summaries"),
             where("date", ">=", start),
             where("date", "<=", end)
         );
         
         const querySnapshot = await getDocs(q);
-        logsForMonth = querySnapshot.docs.map(doc => {
+        
+        // 【修正】JSON文字列を展開してマージ
+        logsForMonth = querySnapshot.docs.flatMap(doc => {
             const data = doc.data();
-            // Excel出力に必要なフィールドがあるか確認
-            return { id: doc.id, ...data };
+            return data.logsJson ? JSON.parse(data.logsJson) : [];
         });
 
     } catch (error) {

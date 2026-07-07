@@ -3,7 +3,6 @@ import { db, userId } from "../../../main.js";
 import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { escapeHtml } from "../../../utils.js";
 
-// ①「工数件数の修正（履歴選択式）」用のHTMLテンプレート
 export function renderCountCorrectFormHTML(defaultDate) {
     return `
     <div class="grid grid-cols-3 gap-x-6 gap-y-4 w-full animate-fade-in">
@@ -31,6 +30,11 @@ export function renderCountCorrectFormHTML(defaultDate) {
         
         <div class="space-y-4 flex flex-col">
             <input type="hidden" id="req-countcorrect-log-id" value="">
+            <input type="hidden" id="req-countcorrect-task-name" value="">
+            <input type="hidden" id="req-countcorrect-goal-id" value="">
+            <input type="hidden" id="req-countcorrect-goal-title" value="">
+            <input type="hidden" id="req-countcorrect-before-count" value="0">
+
             <div>
                 <label class="block text-sm font-bold text-gray-700">選択された業務・工数名</label>
                 <input type="text" id="req-countcorrect-task-display" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-gray-100 text-gray-600 focus:outline-none" readonly placeholder="(タイムライン履歴から選択)">
@@ -40,26 +44,21 @@ export function renderCountCorrectFormHTML(defaultDate) {
                 <input type="number" id="req-countcorrect-value" min="0" class="mt-1 block w-full border border-gray-300 rounded-lg p-3 text-lg font-bold bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" placeholder="0" disabled>
             </div>
             <div class="flex flex-col flex-grow">
-                <label class="block text-sm font-bold text-gray-700">修正の理由・メモ (任意)</label>
-                <textarea id="req-countcorrect-memo" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white resize-none flex-grow min-h-[60px] focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" placeholder="修正理由など" disabled></textarea>
+                <label class="block text-sm font-bold text-gray-700">理由（自由記述）</label>
+                <textarea id="req-countcorrect-memo" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white resize-none flex-grow min-h-[100px] focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" placeholder="修正理由など" disabled></textarea>
             </div>
         </div>
     </div>`;
 }
 
-// ② 初期化リスナー登録
+// (中間の initCountCorrectForm, fetchCountTimeline, resetCountInputs は変更なしのため維持)
 export function initCountCorrectForm() {
     const correctDateInput = document.getElementById("req-countcorrect-date");
     if (!correctDateInput) return;
-
-    correctDateInput.addEventListener("change", (e) => {
-        fetchCountTimeline(e.target.value);
-    });
-
+    correctDateInput.addEventListener("change", (e) => { fetchCountTimeline(e.target.value); });
     fetchCountTimeline(correctDateInput.value);
 }
 
-// 過去ログの一覧を動的取得
 async function fetchCountTimeline(dateStr) {
     const container = document.getElementById("req-countcorrect-timeline-container");
     if (!container) return;
@@ -109,7 +108,6 @@ async function fetchCountTimeline(dateStr) {
                 <span class="bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded scale-95">現件数: ${log.count}</span>
             `;
 
-            // クリック時に右側へデータをバインドして制御
             item.addEventListener("click", () => {
                 document.querySelectorAll("#req-countcorrect-timeline-container .timeline-log-item").forEach(el => el.classList.remove("bg-blue-100", "border-blue-400", "ring-2", "ring-blue-100"));
                 item.classList.add("bg-blue-100", "border-blue-400", "ring-2", "ring-blue-100");
@@ -119,20 +117,21 @@ async function fetchCountTimeline(dateStr) {
                 const memoInput = document.getElementById("req-countcorrect-memo");
 
                 document.getElementById("req-countcorrect-log-id").value = log.id;
+                document.getElementById("req-countcorrect-task-name").value = log.task;
+                document.getElementById("req-countcorrect-goal-id").value = log.goalId || "";
+                document.getElementById("req-countcorrect-goal-title").value = log.goalTitle || "";
+                document.getElementById("req-countcorrect-before-count").value = log.count;
                 
                 const goalText = log.goalTitle ? ` (${log.goalTitle})` : "";
                 if (displayInput) displayInput.value = `${log.task}${goalText}`;
                 
                 if (countInput) {
                     countInput.value = log.count;
-                    
-                    // 【ご要望の実現】工数（goalTitle）が設定されているログのみ件数入力を許可
                     if (log.goalTitle) {
                         countInput.disabled = false;
                         countInput.placeholder = "0";
                         countInput.className = "mt-1 block w-full border border-gray-300 rounded-lg p-3 text-lg font-bold bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500";
                     } else {
-                        // 工数未設定のものは入力を禁止してグレーアウト（見た目も切り替え）
                         countInput.disabled = true;
                         countInput.placeholder = "工数未設定のため入力不可";
                         countInput.className = "mt-1 block w-full border border-gray-300 rounded-lg p-3 text-sm font-semibold bg-gray-100 text-gray-400 focus:outline-none";
@@ -140,7 +139,6 @@ async function fetchCountTimeline(dateStr) {
                 }
                 if (memoInput) memoInput.disabled = false;
             });
-
             container.appendChild(item);
         });
     } catch (error) {
@@ -150,7 +148,7 @@ async function fetchCountTimeline(dateStr) {
 }
 
 function resetCountInputs() {
-    const fields = ["req-countcorrect-log-id", "req-countcorrect-task-display", "req-countcorrect-value", "req-countcorrect-memo"];
+    const fields = ["req-countcorrect-log-id", "req-countcorrect-task-name", "req-countcorrect-goal-id", "req-countcorrect-goal-title", "req-countcorrect-before-count", "req-countcorrect-task-display", "req-countcorrect-value", "req-countcorrect-memo"];
     fields.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
@@ -159,12 +157,12 @@ function resetCountInputs() {
                 el.placeholder = "0";
                 el.className = "mt-1 block w-full border border-gray-300 rounded-lg p-3 text-lg font-bold bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500";
             }
-            if (id !== "req-countcorrect-log-id" && id !== "req-countcorrect-task-display") el.disabled = true;
+            if (id === "req-countcorrect-before-count") el.value = "0";
+            if (id !== "req-countcorrect-log-id" && id !== "req-countcorrect-task-name" && id !== "req-countcorrect-goal-id" && id !== "req-countcorrect-goal-title" && id !== "req-countcorrect-before-count" && id !== "req-countcorrect-task-display") el.disabled = true;
         }
     });
 }
 
-// ③ 送信データの抽出
 export function getCountCorrectFormData() {
     const targetLogId = document.getElementById("req-countcorrect-log-id").value;
     const dateVal = document.getElementById("req-countcorrect-date").value;
@@ -172,21 +170,34 @@ export function getCountCorrectFormData() {
     const countVal = parseInt(countInput.value, 10);
     const memoVal = document.getElementById("req-countcorrect-memo").value.trim();
 
+    const taskName = document.getElementById("req-countcorrect-task-name").value;
+    const goalId = document.getElementById("req-countcorrect-goal-id").value || null;
+    const goalTitle = document.getElementById("req-countcorrect-goal-title").value || null;
+    const beforeCount = parseInt(document.getElementById("req-countcorrect-before-count").value, 10) || 0;
+
     if (!targetLogId) throw new Error("エラー：件数を修正したいログをタイムライン履歴から選択してください。");
-    
-    // セーフティガード：万が一disabledを強引に解除して送信された場合の弾き処理
-    if (countInput && countInput.disabled) {
-        throw new Error("エラー：選択された業務ログは工数が設定されていないため、件数の修正はできません。");
-    }
-    
+    if (countInput && countInput.disabled) throw new Error("エラー：選択された業務ログは工数が設定されていないため修正できません。");
     if (isNaN(countVal) || countVal < 0) throw new Error("エラー：成果件数は0以上の有効な数値を入力してください。");
+
+    // 件数の差分計算
+    const diffCount = countVal - beforeCount;
 
     return {
         requestDate: dateVal,
         targetLogId: targetLogId,
         data: {
+            applicationType: "変更",        // 【要件】申請種別
+            reasonCategory: "工数件数の修正", // 【要件】理由（区分）
+            task: taskName,                  // 【要件】案件名
+            goalId: goalId,
+            goalTitle: goalTitle,
+            beforeStartTime: "",             // 【要件】修正前の時間（件数修正のため対象外）
+            beforeEndTime: "",
+            afterStartTime: "",              // 【要件】修正後の時間（件数修正のため対象外）
+            afterEndTime: "",
+            timeDifference: diffCount >= 0 ? `+${diffCount}件` : `${diffCount}件`, // 【要件】差異
             count: countVal,
-            memo: memoVal
+            memo: memoVal                    // 【要件】理由（自由記述）
         }
     };
 }

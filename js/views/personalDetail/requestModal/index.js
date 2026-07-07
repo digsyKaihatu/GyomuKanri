@@ -2,11 +2,11 @@
 import { db, userId, userName } from "../../../main.js";
 import { collection, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// 専用子ファイルの読み込み（件数追加の countAddForm はオミットしました）
+// 専用子ファイルの読み込み
 import { renderAddFormHTML, initAddForm, getAddFormData } from "./addForm.js";
 import { renderTimeCorrectFormHTML, initTimeCorrectForm, getTimeCorrectFormData } from "./timeCorrectForm.js";
 import { renderCountCorrectFormHTML, initCountCorrectForm, getCountCorrectFormData } from "./countCorrectForm.js";
-import { renderForgetCheckoutFormHTML, initForgetCheckoutForm, getForgetCheckoutFormData } from "./forgetCheckoutForm.js"; // 追加
+import { renderForgetCheckoutFormHTML, initForgetCheckoutForm, getForgetCheckoutFormData } from "./forgetCheckoutForm.js"; // 組み込み
 
 // --- 業務タイムライン変更追加申請モーダルの外枠（骨組み）を生成 ---
 function createUnifiedRequestModalHTML() {
@@ -120,6 +120,10 @@ function handleUnifiedTypeChange(event) {
         formBody.innerHTML = renderCountCorrectFormHTML(defaultDate);
         formBody.classList.remove("hidden");
         initCountCorrectForm();
+    } else if (selectedType === "forget_checkout") { // 【追加】退勤忘れフォームの表示と初期化
+        formBody.innerHTML = renderForgetCheckoutFormHTML(defaultDate);
+        formBody.classList.remove("hidden");
+        initForgetCheckoutForm();
     } else {
         alternativeBody.classList.remove("hidden");
         alternativeBody.textContent = `選択された申請タイプ [${selectedType}] のフォーマットは現在開発中です。`;
@@ -149,6 +153,8 @@ async function handleRequestSubmit() {
             payload = getTimeCorrectFormData();
         } else if (type === "count_correct") {
             payload = getCountCorrectFormData();
+        } else if (type === "forget_checkout") { // 【追加】退勤忘れのデータ抽出
+            payload = getForgetCheckoutFormData();
         } else {
             throw new Error("現在、この申請タイプの送信ロジックは未実装です。");
         }

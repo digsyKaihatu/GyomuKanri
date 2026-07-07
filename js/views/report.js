@@ -13,7 +13,7 @@ let currentMonthLogs = [];
 
 // DOM要素 (遅延初期化)
 let reportCalendarEl, reportMonthYearEl, reportPrevMonthBtn, reportNextMonthBtn, reportTitleEl, reportChartsContainer, backButton;
-// ★追加：動的生成する再取得ボタン用の変数
+// ★追加：動的生成する再取得UI用の変数
 let reaggregateBtn;
 
 function initializeDOMElements() {
@@ -25,7 +25,7 @@ function initializeDOMElements() {
     reportChartsContainer = document.getElementById("report-charts-container");
     backButton = document.getElementById("back-to-host-from-report");
 
-    // ★修正：HTMLを触らず、「戻る」ボタンの左隣に【再取得ボタンのみ】を動的生成して差し込む
+    // ★修正：HTMLファイルを直接触らず、戻るボタンの左隣に「デザイン統一された再取得ボタン」を動的生成して差し込む
     if (backButton && !document.getElementById("report-reaggregate-btn")) {
         // 横並びにするためのレイアウト用ラッパーdivを作成
         const btnWrapper = document.createElement("div");
@@ -46,6 +46,29 @@ function initializeDOMElements() {
     } else {
         // すでに生成済みの場合は要素を再取得
         reaggregateBtn = document.getElementById("report-reaggregate-btn");
+    }
+
+    // ★追加：画像イメージ通りのきれいなカレンダー選択モーダルUIを最下部に自動で1つ埋め込む処理
+    if (!document.getElementById("report-reaggregate-modal")) {
+        const modalHtml = `
+        <div id="report-reaggregate-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50 p-4">
+            <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg max-w-sm w-full animate-fade-in text-center">
+                <h2 class="text-xl font-bold mb-4 text-gray-700 border-b pb-2">データの再取得</h2>
+                <p class="text-xs text-gray-500 mb-4 text-left leading-relaxed">Firestoreから指定日の打刻データを読み直し、夜間バッチ用の集計サマリーを最新に再生成します。</p>
+                <div class="space-y-4 text-left">
+                    <div>
+                        <label for="reaggregate-modal-date-input" class="block text-sm font-medium text-gray-700">対象年月日を選択 <span class="text-red-500">*</span></label>
+                        <input type="date" id="reaggregate-modal-date-input" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm text-gray-700 cursor-pointer"/>
+                    </div>
+                </div>
+                <p id="reaggregate-modal-error" class="text-red-500 text-xs h-4 mt-2 text-center font-bold"></p>
+                <div class="flex justify-end gap-3 mt-6">
+                    <button id="reaggregate-modal-cancel-btn" class="bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-400 transition text-sm">キャンセル</button>
+                    <button id="reaggregate-modal-confirm-btn" class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition text-sm shadow-sm">再取得</button>
+                </div>
+            </div>
+        </div>`;
+        document.body.insertAdjacentHTML("beforeend", modalHtml);
     }
 }
 
@@ -72,6 +95,10 @@ export function cleanupReportView() {
     selectedReportDateStr = null;
     currentMonthLogs = [];
     if (reportChartsContainer) reportChartsContainer.innerHTML = "";
+    
+    // 生成したモーダルポップアップがあれば裏画面遷移時に閉じる
+    const modal = document.getElementById("report-reaggregate-modal");
+    if (modal) modal.classList.add("hidden");
 }
 
 const handlePrevMonthClick = () => moveReportMonth(-1);
@@ -84,9 +111,17 @@ export function setupReportEventListeners() {
     reaggregateBtn?.addEventListener("click", handleReaggregateClick); // ★追加
 }
 
-// ★修正：ボタンを押した後にポップアップを出して年月日を入力させる処理
-async function handleReaggregateClick() {
-    // ポップアップの初期値として「カレンダーで選択中の日付」または「今日の日付」を YYYY-MM-DD 形式で用意
+// ★修正：ボタンを押した後に prompt ではなく、カレンダー付きの特製ポップアップを起動する処理
+function handleReaggregateClick() {
+    const modal = document.getElementById("report-reaggregate-modal");
+    const dateInput = document.getElementById("reaggregate-modal-date-input");
+    const errorEl = document.getElementById("reaggregate-modal-error");
+    const confirmBtn = document.getElementById("reaggregate-modal-confirm-btn");
+    const cancelBtn = document.getElementById("reaggregate-modal-cancel-btn");
+
+    if (!modal || !dateInput) return;
+
+    // ポップアップを開いたときのデフォルト初期日付（現在選択中の日、無ければ今日）
     let defaultDate = selectedReportDateStr;
     if (!defaultDate) {
         const now = new Date();
@@ -95,60 +130,62 @@ async function handleReaggregateClick() {
         const dd = String(now.getDate()).padStart(2, '0');
         defaultDate = `${yyyy}-${mm}-${dd}`;
     }
+    dateInput.value = defaultDate;
+    if (errorEl) errorEl.textContent = "";
 
-    // ① 年月日を入力させるポップアップを表示
-    const dateInput = prompt(
-        "再取得する年月日を入力してください。\n(半角の西暦で YYYY-MM-DD の形式で入力してください)", 
-        defaultDate
-    );
+    // モーダルをふわっと表示させる
+    modal.classList.remove("hidden");
 
-    // キャンセルされた場合は処理を終了
-    if (dateInput === null) return;
+    // キャンセルボタンを押した時
+    cancelBtn.onclick = () => {
+        modal.classList.add("hidden");
+    };
 
-    const trimmedDate = dateInput.trim();
-
-    // ② 入力された日付の形式チェック (YYYY-MM-DD 形式)
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (!dateRegex.test(trimmedDate)) {
-        alert("日付の形式が正しくありません。\nYYYY-MM-DD の形式（例: 2026-07-07）で正しく入力してください。");
-        return;
-    }
-
-    // ③ 最終確認のポップアップを表示
-    if (!confirm(`${trimmedDate} のデータをFirestoreから再集計し、サマリーを最新状態に更新しますか？`)) {
-        return;
-    }
-
-    reaggregateBtn.disabled = true;
-    reaggregateBtn.textContent = "再取得中...";
-
-    try {
-        // timerState.js から Worker の接続先URL (WORKER_URL) を動的にインポート
-        const { WORKER_URL } = await import("./client/timerState.js");
-        
-        const response = await fetch(`${WORKER_URL}/reaggregate-date`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ date: trimmedDate })
-        });
-
-        if (response.ok) {
-            alert(`${trimmedDate} のサマリーを再生成・更新しました！`);
-            // 現在画面に表示している月（カレンダーやグラフ）を即座にリフレッシュロード
-            await fetchAndRenderForCurrentMonth();
-        } else {
-            const errData = await response.json().catch(() => ({}));
-            alert(`エラーが発生しました: ${errData.error || "サーバーエラー"}`);
+    // 再取得（実行）ボタンを押した時
+    confirmBtn.onclick = async () => {
+        const selectedDate = dateInput.value.trim();
+        if (!selectedDate) {
+            if (errorEl) errorEl.textContent = "日付を選択してください。";
+            return;
         }
-    } catch (error) {
-        console.error("Error reaggregating date:", error);
-        alert("通信エラーが発生しました。Workerが起動しているか確認してください。");
-    } finally {
-        if (reaggregateBtn) {
-            reaggregateBtn.disabled = false;
-            reaggregateBtn.textContent = "データを再取得";
+
+        if (!confirm(`${selectedDate} のデータをFirestoreから再集計し、サマリーを最新状態に更新しますか？`)) {
+            return;
         }
-    }
+
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = "再取得中...";
+        if (errorEl) errorEl.textContent = "";
+
+        try {
+            // client/timerState.js から Worker の本番接続先URL (WORKER_URL) を安全に動的インポート
+            const { WORKER_URL } = await import("./client/timerState.js");
+            
+            const response = await fetch(`${WORKER_URL}/reaggregate-date`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ date: selectedDate })
+            });
+
+            if (response.ok) {
+                alert(`${selectedDate} のサマリーを再生成・更新しました！`);
+                modal.classList.add("hidden"); // ポップアップを閉じる
+                // 現在画面に表示している月（カレンダーやグラフ）を即座にリフレッシュリロード
+                await fetchAndRenderForCurrentMonth();
+            } else {
+                const errData = await response.json().catch(() => ({}));
+                if (errorEl) errorEl.textContent = errData.error || "サーバーエラーが発生しました";
+            }
+        } catch (error) {
+            console.error("Error reaggregating date:", error);
+            if (errorEl) errorEl.textContent = "通信に失敗しました。Workerの状態を確認してください。";
+        } finally {
+            if (confirmBtn) {
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = "再取得";
+            }
+        }
+    };
 }
 
 // --- データ取得・描画ロジック ---

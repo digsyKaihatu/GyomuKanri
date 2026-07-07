@@ -388,9 +388,9 @@ async function showTimelineModal(targetUserId, targetUserName, dateStr) {
         const snapshot = await getDocs(q);
         
         if (snapshot.empty) {
-            contentEl.innerHTML = `<p class="text-center text-gray-500 py-4 text-xs">この日の業務記録はありません。</p>';
-            return;
-        }
+    contentEl.innerHTML = `<p class="text-center text-gray-500 py-4 text-xs">この日の業務記録はありません。</p>`; // ← 末尾を ` に修正
+    return;
+}
 
         const logs = snapshot.docs
             .map(d => ({ id: d.id, ...d.data() }))

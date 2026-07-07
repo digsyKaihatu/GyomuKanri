@@ -12,7 +12,7 @@ export function renderCountCorrectFormHTML(defaultDate) {
                 <span class="font-bold block text-sm text-amber-900">🔢 工数件数の修正操作手順</span>
                 <p>① 中央の「工数件数の修正をしたい日付入力」を選択します。</p>
                 <p>② 「タイムライン履歴」から、件数を修正したい過去ログをクリックして選択してください。</p>
-                <p>③ 右側の入力欄に元の登録件数が自動表示されるので、正しい件数に自由に修正し「申請を送る」を実行します。</p>
+                <p>③ 右側の入力欄に元の登録件数が自動表示されます。<strong>※工数が設定されているログのみ件数の修正が可能です。</strong></p>
             </div>
         </div>
         
@@ -89,8 +89,9 @@ async function fetchCountTimeline(dateStr) {
                 task: data.task || "不明",
                 startTimeStr: convertTime(data.startTime),
                 endTimeStr: convertTime(data.endTime),
+                goalId: data.goalId || null,
                 goalTitle: data.goalTitle || "",
-                count: data.count !== undefined ? data.count : 0 // 既存件数
+                count: data.count !== undefined ? data.count : 0
             };
         }).sort((a, b) => a.startTimeStr.localeCompare(b.startTimeStr));
 
@@ -98,7 +99,7 @@ async function fetchCountTimeline(dateStr) {
         logs.forEach(log => {
             const item = document.createElement("div");
             item.className = "timeline-log-item border border-gray-200 rounded-lg p-2.5 bg-white hover:bg-blue-50 cursor-pointer transition flex items-center justify-between text-xs text-gray-700 shadow-sm";
-            const goalBadge = log.goalTitle ? `<span class="bg-gray-100 border text-gray-500 px-1 rounded ml-1 scale-95 inline-block truncate max-w-[120px]">${escapeHtml(log.goalTitle)}</span>` : "";
+            const goalBadge = log.goalTitle ? `<span class="bg-gray-100 border text-gray-500 px-1 rounded ml-1 scale-95 inline-block truncate max-w-[130px]">${escapeHtml(log.goalTitle)}</span>` : "";
             
             item.innerHTML = `
                 <div class="flex items-center">
@@ -108,7 +109,7 @@ async function fetchCountTimeline(dateStr) {
                 <span class="bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded scale-95">現件数: ${log.count}</span>
             `;
 
-            // クリック時に右側へデータをバインドしてアンロック
+            // クリック時に右側へデータをバインドして制御
             item.addEventListener("click", () => {
                 document.querySelectorAll("#req-countcorrect-timeline-container .timeline-log-item").forEach(el => el.classList.remove("bg-blue-100", "border-blue-400", "ring-2", "ring-blue-100"));
                 item.classList.add("bg-blue-100", "border-blue-400", "ring-2", "ring-blue-100");
@@ -122,10 +123,20 @@ async function fetchCountTimeline(dateStr) {
                 const goalText = log.goalTitle ? ` (${log.goalTitle})` : "";
                 if (displayInput) displayInput.value = `${log.task}${goalText}`;
                 
-                // 【要望の完全再現】元の登録件数を表示させ、ロックを解除して自由修正可能に
                 if (countInput) {
                     countInput.value = log.count;
-                    countInput.disabled = false;
+                    
+                    // 【ご要望の実現】工数（goalTitle）が設定されているログのみ件数入力を許可
+                    if (log.goalTitle) {
+                        countInput.disabled = false;
+                        countInput.placeholder = "0";
+                        countInput.className = "mt-1 block w-full border border-gray-300 rounded-lg p-3 text-lg font-bold bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500";
+                    } else {
+                        // 工数未設定のものは入力を禁止してグレーアウト（見た目も切り替え）
+                        countInput.disabled = true;
+                        countInput.placeholder = "工数未設定のため入力不可";
+                        countInput.className = "mt-1 block w-full border border-gray-300 rounded-lg p-3 text-sm font-semibold bg-gray-100 text-gray-400 focus:outline-none";
+                    }
                 }
                 if (memoInput) memoInput.disabled = false;
             });
@@ -144,6 +155,10 @@ function resetCountInputs() {
         const el = document.getElementById(id);
         if (el) {
             el.value = "";
+            if (id === "req-countcorrect-value") {
+                el.placeholder = "0";
+                el.className = "mt-1 block w-full border border-gray-300 rounded-lg p-3 text-lg font-bold bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500";
+            }
             if (id !== "req-countcorrect-log-id" && id !== "req-countcorrect-task-display") el.disabled = true;
         }
     });
@@ -153,17 +168,24 @@ function resetCountInputs() {
 export function getCountCorrectFormData() {
     const targetLogId = document.getElementById("req-countcorrect-log-id").value;
     const dateVal = document.getElementById("req-countcorrect-date").value;
-    const countVal = parseInt(document.getElementById("req-countcorrect-value").value, 10);
+    const countInput = document.getElementById("req-countcorrect-value");
+    const countVal = parseInt(countInput.value, 10);
     const memoVal = document.getElementById("req-countcorrect-memo").value.trim();
 
     if (!targetLogId) throw new Error("エラー：件数を修正したいログをタイムライン履歴から選択してください。");
+    
+    // セーフティガード：万が一disabledを強引に解除して送信された場合の弾き処理
+    if (countInput && countInput.disabled) {
+        throw new Error("エラー：選択された業務ログは工数が設定されていないため、件数の修正はできません。");
+    }
+    
     if (isNaN(countVal) || countVal < 0) throw new Error("エラー：成果件数は0以上の有効な数値を入力してください。");
 
     return {
         requestDate: dateVal,
         targetLogId: targetLogId,
         data: {
-            count: countVal, // 上書き用の新規件数
+            count: countVal,
             memo: memoVal
         }
     };

@@ -13,6 +13,8 @@ let currentMonthLogs = [];
 
 // DOM要素 (遅延初期化)
 let reportCalendarEl, reportMonthYearEl, reportPrevMonthBtn, reportNextMonthBtn, reportTitleEl, reportChartsContainer, backButton;
+// ★追加：動的生成する再取得UI用の変数
+let reaggregateDateInput, reaggregateBtn;
 
 function initializeDOMElements() {
     reportCalendarEl = document.getElementById("report-calendar");
@@ -22,6 +24,37 @@ function initializeDOMElements() {
     reportTitleEl = document.getElementById("report-title");
     reportChartsContainer = document.getElementById("report-charts-container");
     backButton = document.getElementById("back-to-host-from-report");
+
+    // ★追加：HTMLを触らず、JavaScript側で「戻る」ボタンの左隣に再取得UIを動的生成して差し込む
+    if (backButton && !document.getElementById("report-reaggregate-btn")) {
+        // 横並びにするためのレイアウト用ラッパーdivを作成
+        const btnWrapper = document.createElement("div");
+        btnWrapper.className = "flex items-center gap-2";
+
+        // 日付入力用のinput要素を生成
+        reaggregateDateInput = document.createElement("input");
+        reaggregateDateInput.id = "report-reaggregate-date-input";
+        reaggregateDateInput.type = "date";
+        reaggregateDateInput.className = "border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-700";
+
+        // 再取得ボタン要素を生成
+        reaggregateBtn = document.createElement("button");
+        reaggregateBtn.id = "report-reaggregate-btn";
+        reaggregateBtn.className = "bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition text-sm whitespace-nowrap";
+        reaggregateBtn.textContent = "データを再取得";
+
+        // 戻るボタンの直前にラッパーを挿入
+        backButton.parentNode.insertBefore(btnWrapper, backButton);
+
+        // ラッパーの中に [日付選択] -> [再取得ボタン] -> [戻るボタン(移動)] の順で配置
+        btnWrapper.appendChild(reaggregateDateInput);
+        btnWrapper.appendChild(reaggregateBtn);
+        btnWrapper.appendChild(backButton); // appendChildすることで元の親要素からラッパー内へ綺麗に移動します
+    } else {
+        // すでに生成済みの場合は要素を再取得
+        reaggregateDateInput = document.getElementById("report-reaggregate-date-input");
+        reaggregateBtn = document.getElementById("report-reaggregate-btn");
+    }
 }
 
 // --- 初期化・クリーンアップ関数 ---
@@ -40,6 +73,7 @@ export function cleanupReportView() {
     reportPrevMonthBtn?.removeEventListener("click", handlePrevMonthClick);
     reportNextMonthBtn?.removeEventListener("click", handleNextMonthClick);
     backButton?.removeEventListener("click", handleGoBack);
+    reaggregateBtn?.removeEventListener("click", handleReaggregateClick); // ★追加
 
     destroyCharts(activeReportCharts);
     activeReportCharts = [];
@@ -55,6 +89,51 @@ export function setupReportEventListeners() {
     reportPrevMonthBtn?.addEventListener("click", handlePrevMonthClick);
     reportNextMonthBtn?.addEventListener("click", handleNextMonthClick);
     backButton?.addEventListener("click", handleGoBack);
+    reaggregateBtn?.addEventListener("click", handleReaggregateClick); // ★追加
+}
+
+// ★追加：指定した日付のデータをWorker経由で再集計・マージを要求する処理
+async function handleReaggregateClick() {
+    const dateVal = reaggregateDateInput?.value;
+    if (!dateVal) {
+        alert("再取得する日付を選択してください。");
+        return;
+    }
+
+    if (!confirm(`${dateVal} のデータをFirestoreから再集計し、サマリーを最新状態に更新しますか？`)) {
+        return;
+    }
+
+    reaggregateBtn.disabled = true;
+    reaggregateBtn.textContent = "再取得中...";
+
+    try {
+        // timerState.js から Worker の接続先URL (WORKER_URL) を動的にインポート
+        const { WORKER_URL } = await import("./client/timerState.js");
+        
+        const response = await fetch(`${WORKER_URL}/reaggregate-date`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ date: dateVal })
+        });
+
+        if (response.ok) {
+            alert(`${dateVal} のサマリーを再生成・更新しました！`);
+            // 現在画面に表示している月（カレンダーやグラフ）を即座にリフレッシュロード
+            await fetchAndRenderForCurrentMonth();
+        } else {
+            const errData = await response.json().catch(() => ({}));
+            alert(`エラーが発生しました: ${errData.error || "サーバーエラー"}`);
+        }
+    } catch (error) {
+        console.error("Error reaggregating date:", error);
+        alert("通信エラーが発生しました。Workerが起動しているか確認してください。");
+    } finally {
+        if (reaggregateBtn) {
+            reaggregateBtn.disabled = false;
+            reaggregateBtn.textContent = "データを再取得";
+        }
+    }
 }
 
 // --- データ取得・描画ロジック ---
@@ -65,7 +144,7 @@ async function fetchAndRenderForCurrentMonth() {
     if(reportTitleEl) reportTitleEl.textContent = "データを読み込み中...";
 
     try {
-        // 【修正】work_logs ではなく、daily_summaries から取得
+        // 【修正】重い work_logs ではなく、夜間マージ済みの daily_summaries から軽量取得
         const q = query(
             collection(db, "daily_summaries"),
             where("date", ">=", start),
@@ -83,6 +162,7 @@ async function fetchAndRenderForCurrentMonth() {
         renderReportChartsForMonth(); 
 
     } catch (error) {
+        // eslint-disable-next-line no-console
         console.error("Error fetching report logs:", error);
         if(reportChartsContainer) reportChartsContainer.innerHTML = `<p class="text-red-500 text-center">データの取得中にエラーが発生しました。</p>`;
     }

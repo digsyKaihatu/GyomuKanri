@@ -1,7 +1,6 @@
 // js/views/host/approval.js
 
 import { db, showView, VIEWS, allTaskObjects, updateGlobalTaskObjects, userId as currentAdminId, userName as currentAdminName } from "../../main.js";
-// 修正：updateDoc を正式にインポートに追加しました
 import { collection, query, where, orderBy, onSnapshot, doc, writeBatch, getDoc, deleteDoc, getDocs, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { escapeHtml, formatTime, formatDuration } from "../../utils.js";
 
@@ -16,7 +15,6 @@ export function initializeApprovalView() {
     const backBtn = document.getElementById("back-from-approval");
     backBtn?.addEventListener("click", handleBackClick);
     
-    // 未承認 (pending) の申請を古い順にリアルタイム監視
     const q = query(
         collection(db, "work_log_requests"),
         where("status", "==", "pending"),
@@ -34,7 +32,6 @@ export function cleanupApprovalView() {
     backBtn?.removeEventListener("click", handleBackClick);
 }
 
-// ーーー 承認リストのUIレンダリング ーーー
 function renderApprovalList(docs) {
     const listEl = document.getElementById("approval-list-content");
     if (!listEl) return;
@@ -82,8 +79,25 @@ function renderApprovalList(docs) {
             const beforeTimeStr = (beforeStart === "変更なし" && beforeEnd === "変更なし") ? "変更なし" : `${beforeStart} - ${beforeEnd}`;
             const afterTimeStr = (afterStart === "変更なし" && afterEnd === "変更なし") ? "変更なし" : `${afterStart} - ${afterEnd}`;
 
+            // ★【拡張】業務名に変更があった場合に、元の業務名 ➡️ 申請業務名 を並べるロジック
+            const beforeTaskStr = d.beforeTask || "不明";
+            const afterTaskStr = d.task || d.taskName || "未定";
+            
+            let taskDisplayHtml = "";
+            if (beforeTaskStr !== "不明" && beforeTaskStr !== afterTaskStr) {
+                // 業務変更が伴う場合
+                taskDisplayHtml = `
+                    <div class="text-sm font-bold text-gray-800 flex items-center flex-wrap gap-1">
+                        業務変更: <span class="text-gray-400 line-through font-normal">${escapeHtml(beforeTaskStr)}</span> 
+                        <span class="text-blue-600 font-black">➡️ ${escapeHtml(afterTaskStr)}</span> ${goalText}
+                    </div>`;
+            } else {
+                // 時間のみの訂正、あるいは業務に変更がない場合
+                taskDisplayHtml = `<div class="text-sm font-bold text-gray-800">訂正後業務: ${escapeHtml(afterTaskStr)} ${goalText}</div>`;
+            }
+
             infoHtml = `
-                <div class="text-sm font-bold text-gray-800">訂正後業務: ${escapeHtml(d.task || d.taskName || "未定")} ${goalText}</div>
+                ${taskDisplayHtml}
                 <div class="text-xs text-gray-500 mt-1">修正前の時間: <span class="font-mono">${beforeTimeStr}</span></div>
                 <div class="text-xs text-gray-600 mt-0.5">訂正後の時間: <span class="font-mono bg-blue-50 px-1.5 py-0.5 rounded text-blue-700 font-bold">${afterTimeStr}</span></div>
                 <div class="text-xs text-gray-700 font-semibold mt-1">労働時間差異: <span class="text-orange-600 font-bold">${timeDiff}</span></div>
@@ -148,7 +162,6 @@ function renderApprovalList(docs) {
     });
 }
 
-// ーーー 承認処理 ーーー
 async function handleApprove(reqDoc) {
     if (!confirm("この申請を承認して、実際の勤務ログへ反映させますか？")) return;
 
@@ -293,7 +306,6 @@ async function handleApprove(reqDoc) {
             batch.update(statusRef, { needsCheckoutCorrection: false });
         }
 
-        // 承認完了ログをメタデータに上書き追記
         batch.update(reqRef, {
             status: "approved",
             approverId: currentAdminId,
@@ -310,14 +322,11 @@ async function handleApprove(reqDoc) {
     }
 }
 
-// ーーー 【機能改修】申請の却下処理 ーーー
-// データをdeleteDocするのではなく、「却下(rejected)」に更新して誰が・いつ対応したかのログを残します
 async function handleRejectRequest(reqDoc) {
     if (!confirm("この申請を却下しますか？")) return;
 
     const reqRef = doc(db, "work_log_requests", reqDoc.id);
     try {
-        // 要件通りにログを残すため、statusを「rejected」に更新し、承認者メタデータを追記
         await updateDoc(reqRef, {
             status: "rejected",
             approverId: currentAdminId,
@@ -331,7 +340,6 @@ async function handleRejectRequest(reqDoc) {
     }
 }
 
-// ーーー 進捗小項目の数値を安全に更新するヘルパー ーーー
 async function updateGoalProgress(taskName, goalId, diff) {
     if (!allTaskObjects) return;
     
@@ -352,7 +360,6 @@ async function updateGoalProgress(taskName, goalId, diff) {
     }
 }
 
-// ーーー タイムライン確認モーダルの展開表示 ーーー
 async function showTimelineModal(targetUserId, targetUserName, dateStr) {
     const existing = document.getElementById("approval-timeline-modal");
     if (existing) existing.remove();
@@ -367,7 +374,7 @@ async function showTimelineModal(targetUserId, targetUserName, dateStr) {
                 <button id="close-timeline-modal" class="text-gray-500 hover:text-gray-800 text-2xl font-bold leading-none">&times;</button>
             </div>
             <div id="timeline-content" class="p-4 overflow-y-auto custom-scrollbar flex-grow bg-white">
-                <p class="text-center text-gray-500 py-4">データを読み込み中...</p>
+                <p class="text-center text-gray-400 py-4">データを読み込み中...</p>
             </div>
             <div class="p-3 border-t bg-gray-50 rounded-b-xl text-right">
                 <button id="close-timeline-btn-btm" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-1 px-4 rounded">閉じる</button>
@@ -388,9 +395,9 @@ async function showTimelineModal(targetUserId, targetUserName, dateStr) {
         const snapshot = await getDocs(q);
         
         if (snapshot.empty) {
-    contentEl.innerHTML = `<p class="text-center text-gray-500 py-4 text-xs">この日の業務記録はありません。</p>`; // ← 末尾を ` に修正
-    return;
-}
+            contentEl.innerHTML = `<p class="text-center text-gray-500 py-4 text-xs">この日の業務記録はありません。</p>`;
+            return;
+        }
 
         const logs = snapshot.docs
             .map(d => ({ id: d.id, ...d.data() }))

@@ -13,7 +13,7 @@ export function initializeApprovalView() {
     const container = document.getElementById(VIEWS.APPROVAL);
     if (!container) return; 
 
-    // ★【新機能】テンプレートファイルを変更する代わりに、ここで戻るボタンの左側に動的にボタンを配置します
+    // テンプレートファイルを変更する代わりに、ここで戻るボタンの左側に動的にボタンを配置します
     injectLogViewButton();
 
     const backBtn = document.getElementById("back-from-approval");
@@ -37,31 +37,26 @@ export function cleanupApprovalView() {
     backBtn?.removeEventListener("click", handleBackClick);
 }
 
-// ★【新機能】戻るボタンの左側にログ閲覧ボタンを自動で綺麗に並べる関数
+// 戻るボタンの左側にログ閲覧ボタンを自動で綺麗に並べる関数
 function injectLogViewButton() {
-    // 重複生成を防ぐガード節
     if (document.getElementById("view-approval-log-btn")) return;
     
     const backBtn = document.getElementById("back-from-approval");
     if (backBtn) {
         const parent = backBtn.parentNode;
         
-        // 2つのボタンを綺麗に横並び（隙間 gap-2）にするための小さなラッパーDivを生成
         const wrapper = document.createElement("div");
         wrapper.className = "flex items-center gap-2";
         
-        // ログ閲覧ボタンを生成
         const btn = document.createElement("button");
         btn.id = "view-approval-log-btn";
         btn.className = "bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded shadow transition text-sm";
         btn.innerHTML = `📋 ログ閲覧`;
         
-        // 元の戻るボタンの位置にラッパーを差し込み、その中に「ログ閲覧」と「戻る」ボタンを綺麗に格納
         parent.insertBefore(wrapper, backBtn);
         wrapper.appendChild(btn);
         wrapper.appendChild(backBtn);
         
-        // クリックイベントの紐付け
         btn.addEventListener("click", openApprovalLogModal);
     }
 }
@@ -498,7 +493,7 @@ async function showTimelineModal(targetUserId, targetUserName, dateStr) {
     }
 }
 
-// ーーー ★【新機能】全従業員の申請履歴過去ログモーダルの制御 ーーー
+// ーーー 全従業員の申請履歴過去ログモーダルの制御 ーーー
 function createApprovalLogModalHTML() {
     if (document.getElementById("approval-log-modal")) return;
 
@@ -593,7 +588,15 @@ async function loadAllUsersRequests(monthStr, forceRefresh = false) {
         const requests = [];
 
         snapshot.forEach(doc => { requests.push({ id: doc.id, ...doc.data() }); });
-        requests.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+        
+        // ★【修正箇所】createdAt の型（Timestampオブジェクト、または文字列形式）に関わらず安全にミリ秒数値化してソートするロジック
+        const getMillis = (t) => {
+            if (!t) return 0;
+            if (typeof t.toMillis === "function") return t.toMillis(); // Firestore Timestamp型の場合
+            return new Date(t).getTime() || 0; // ISOStringなどの文字列型の場合
+        };
+        requests.sort((a, b) => getMillis(b.createdAt) - getMillis(a.createdAt));
+        
         logCache[monthStr] = requests;
         renderApprovalLogList(requests);
     } catch (error) {

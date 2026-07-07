@@ -3,21 +3,23 @@ import { db, userId, allTaskObjects } from "../../../main.js";
 import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { escapeHtml } from "../../../utils.js";
 
-// ①「時間の訂正」用のHTMLテンプレート
+// ①「時間・業務の訂正」用のHTMLテンプレート
 export function renderTimeCorrectFormHTML(defaultDate) {
     return `
     <div class="grid grid-cols-3 gap-x-6 gap-y-4 w-full animate-fade-in">
+        
         <div class="space-y-4">
             <div class="p-4 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-800 space-y-2">
-                <span class="font-bold block text-sm text-blue-900">⏱️ 時間の訂正操作手順</span>
-                <p>① 中央の「時間の訂正をしたい日付入力」を選択します。</p>
-                <p>② 「タイムライン履歴」から、修正したい稼働ログをクリックして選択してください。</p>
+                <span class="font-bold block text-sm text-blue-900">⏱️ 時間・業務の訂正操作手順</span>
+                <p>① 中央の「時間・業務の訂正をしたい日付入力」を選択します。</p>
+                <p>② 「タイムライン履歴」から、修正・訂正したい稼働ログをクリックして選択してください。</p>
                 <p>③ 右側の入力欄にデータが反映されるので、正しい時間や業務内容に上書きし「申請を送る」を実行します。</p>
             </div>
         </div>
+        
         <div class="space-y-3 flex flex-col">
             <div>
-                <label class="block text-sm font-bold text-gray-700">時間の訂正をしたい日付入力</label>
+                <label class="block text-sm font-bold text-gray-700">時間・業務の訂正をしたい日付入力</label>
                 <input type="date" id="req-correct-date" value="${defaultDate}" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
             </div>
             <div class="flex flex-col flex-grow">
@@ -27,6 +29,7 @@ export function renderTimeCorrectFormHTML(defaultDate) {
                 </div>
             </div>
         </div>
+        
         <div class="space-y-4 flex flex-col">
             <input type="hidden" id="req-correct-log-id" value="">
             <div>
@@ -48,6 +51,7 @@ export function renderTimeCorrectFormHTML(defaultDate) {
                 <textarea id="req-correct-memo" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white resize-none flex-grow min-h-[60px] focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" placeholder="申請理由など" disabled></textarea>
             </div>
         </div>
+        
     </div>`;
 }
 

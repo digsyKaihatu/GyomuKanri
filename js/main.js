@@ -302,6 +302,9 @@ export async function startAppAfterLogin() {
     initMessaging(userId);
     listenForMessages();
     await Promise.all([fetchTasks(), fetchDisplayPreferences()]);
+
+    // ✨【追加】すべての初期化とデータ取得が完了したら、満を持して最初のモード選択画面を表示する
+    showView(VIEWS.MODE_SELECTION);
 }
 
 function setupVisibilityReload() {

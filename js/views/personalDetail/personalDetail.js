@@ -10,6 +10,8 @@ import { handleTimelineClick, handleSaveLogDuration, handleSaveMemo, handleSaveC
 import { handleDeleteUserClick } from "./adminActions.js";
 // ★追加: 申請モーダルロジック
 import { openUnifiedRequestModal } from "./requestModal.js";
+// 修正：openRequestCheckModal も一緒にインポートします
+import { openUnifiedRequestModal, openRequestCheckModal } from "./requestModal.js";
 
 // --- Module State ---
 let selectedUserLogs = [];
@@ -40,17 +42,19 @@ function initializeDOMElements() {
 }
 
 function injectAddRequestButton() {
-    // 既存ボタンがあれば削除（重複防止）
+    // 既存ボタンがあれば削除（重複防止のためのクリーンアップ）
     const existingBtn = document.getElementById("add-request-btn");
     if(existingBtn) existingBtn.remove();
+    const existingCheckBtn = document.getElementById("request-check-btn");
+    if(existingCheckBtn) existingCheckBtn.remove();
 
-    // タイトルの横あたりに追加
+    // タイトルの横のヘッダー領域を取得
     const header = document.querySelector("#personal-detail-view .flex.justify-between");
     if (header) {
+        // --- ① 業務タイムライン変更追加申請ボタン ---
         const btn = document.createElement("button");
         btn.id = "add-request-btn";
-        // ボタンのデザインクラスはそのまま流用、文字を「変更追加申請」に統一
-        btn.className = "bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded shadow ml-4 tooltip";
+        btn.className = "bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded shadow ml-4 tooltip text-sm transition";
         btn.innerHTML = `
             業務タイムライン変更追加申請
             <span class="tooltip-text">
@@ -58,12 +62,28 @@ function injectAddRequestButton() {
             </span>
         `;
         btn.onclick = () => {
-            // 選択中の日付があればその日、なければ今日の日付を取得
             const targetDate = selectedDateStr || new Date().toISOString().split("T")[0];
-            // ★ 新しく作った統合版のモーダルを開く
             openUnifiedRequestModal(targetDate);
         };
         header.appendChild(btn);
+
+        // --- ② 【新規追加】申請確認ボタン ---
+        const checkBtn = document.createElement("button");
+        checkBtn.id = "request-check-btn";
+        // Tailwindのスタイルを統一し、ml-2 で少し隙間を空けて配置
+        checkBtn.className = "bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded shadow ml-2 tooltip text-sm transition";
+        checkBtn.innerHTML = `
+            申請確認
+            <span class="tooltip-text">
+                過去の申請状況や履歴を確認できます
+            </span>
+        `;
+        checkBtn.onclick = () => {
+            // カレンダーで選択中の日付、選んでいなければ今日の日付を取得してモーダルに渡す
+            const targetDate = selectedDateStr || new Date().toISOString().split("T")[0];
+            openRequestCheckModal(targetDate);
+        };
+        header.appendChild(checkBtn);
     }
 }
 
@@ -121,11 +141,13 @@ export function cleanupPersonalDetailView() {
     currentUserForDetailView = null;
     selectedDateStr = null;
     
-    // ★追加: ボタン掃除
+    // ボタンの掃除
     const btn = document.getElementById("add-request-btn");
     if(btn) btn.remove();
-    // It's good practice to also remove event listeners, but since they are added to elements
-    // that are part of the view and will be hidden/inactive, it's not strictly necessary.
+    
+    // 【新規追加】申請確認ボタンの掃除
+    const checkBtn = document.getElementById("request-check-btn");
+    if(checkBtn) checkBtn.remove();
 }
 
 export function setupPersonalDetailEventListeners() {

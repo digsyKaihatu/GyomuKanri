@@ -13,8 +13,8 @@ let currentMonthLogs = [];
 
 // DOM要素 (遅延初期化)
 let reportCalendarEl, reportMonthYearEl, reportPrevMonthBtn, reportNextMonthBtn, reportTitleEl, reportChartsContainer, backButton;
-// ★追加：動的生成する再取得UI用の変数
-let reaggregateDateInput, reaggregateBtn;
+// ★追加：動的生成する再取得ボタン用の変数
+let reaggregateBtn;
 
 function initializeDOMElements() {
     reportCalendarEl = document.getElementById("report-calendar");
@@ -25,17 +25,11 @@ function initializeDOMElements() {
     reportChartsContainer = document.getElementById("report-charts-container");
     backButton = document.getElementById("back-to-host-from-report");
 
-    // ★追加：HTMLを触らず、JavaScript側で「戻る」ボタンの左隣に再取得UIを動的生成して差し込む
+    // ★修正：HTMLを触らず、「戻る」ボタンの左隣に【再取得ボタンのみ】を動的生成して差し込む
     if (backButton && !document.getElementById("report-reaggregate-btn")) {
         // 横並びにするためのレイアウト用ラッパーdivを作成
         const btnWrapper = document.createElement("div");
         btnWrapper.className = "flex items-center gap-2";
-
-        // 日付入力用のinput要素を生成
-        reaggregateDateInput = document.createElement("input");
-        reaggregateDateInput.id = "report-reaggregate-date-input";
-        reaggregateDateInput.type = "date";
-        reaggregateDateInput.className = "border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-700";
 
         // 再取得ボタン要素を生成
         reaggregateBtn = document.createElement("button");
@@ -46,13 +40,11 @@ function initializeDOMElements() {
         // 戻るボタンの直前にラッパーを挿入
         backButton.parentNode.insertBefore(btnWrapper, backButton);
 
-        // ラッパーの中に [日付選択] -> [再取得ボタン] -> [戻るボタン(移動)] の順で配置
-        btnWrapper.appendChild(reaggregateDateInput);
+        // ラッパーの中に [再取得ボタン] -> [戻るボタン(移動)] の順で配置
         btnWrapper.appendChild(reaggregateBtn);
         btnWrapper.appendChild(backButton); // appendChildすることで元の親要素からラッパー内へ綺麗に移動します
     } else {
         // すでに生成済みの場合は要素を再取得
-        reaggregateDateInput = document.getElementById("report-reaggregate-date-input");
         reaggregateBtn = document.getElementById("report-reaggregate-btn");
     }
 }
@@ -92,15 +84,38 @@ export function setupReportEventListeners() {
     reaggregateBtn?.addEventListener("click", handleReaggregateClick); // ★追加
 }
 
-// ★追加：指定した日付のデータをWorker経由で再集計・マージを要求する処理
+// ★修正：ボタンを押した後にポップアップを出して年月日を入力させる処理
 async function handleReaggregateClick() {
-    const dateVal = reaggregateDateInput?.value;
-    if (!dateVal) {
-        alert("再取得する日付を選択してください。");
+    // ポップアップの初期値として「カレンダーで選択中の日付」または「今日の日付」を YYYY-MM-DD 形式で用意
+    let defaultDate = selectedReportDateStr;
+    if (!defaultDate) {
+        const now = new Date();
+        const yyyy = now.getFullYear();
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        defaultDate = `${yyyy}-${mm}-${dd}`;
+    }
+
+    // ① 年月日を入力させるポップアップを表示
+    const dateInput = prompt(
+        "再取得する年月日を入力してください。\n(半角の西暦で YYYY-MM-DD の形式で入力してください)", 
+        defaultDate
+    );
+
+    // キャンセルされた場合は処理を終了
+    if (dateInput === null) return;
+
+    const trimmedDate = dateInput.trim();
+
+    // ② 入力された日付の形式チェック (YYYY-MM-DD 形式)
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(trimmedDate)) {
+        alert("日付の形式が正しくありません。\nYYYY-MM-DD の形式（例: 2026-07-07）で正しく入力してください。");
         return;
     }
 
-    if (!confirm(`${dateVal} のデータをFirestoreから再集計し、サマリーを最新状態に更新しますか？`)) {
+    // ③ 最終確認のポップアップを表示
+    if (!confirm(`${trimmedDate} のデータをFirestoreから再集計し、サマリーを最新状態に更新しますか？`)) {
         return;
     }
 
@@ -114,11 +129,11 @@ async function handleReaggregateClick() {
         const response = await fetch(`${WORKER_URL}/reaggregate-date`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ date: dateVal })
+            body: JSON.stringify({ date: trimmedDate })
         });
 
         if (response.ok) {
-            alert(`${dateVal} のサマリーを再生成・更新しました！`);
+            alert(`${trimmedDate} のサマリーを再生成・更新しました！`);
             // 現在画面に表示している月（カレンダーやグラフ）を即座にリフレッシュロード
             await fetchAndRenderForCurrentMonth();
         } else {

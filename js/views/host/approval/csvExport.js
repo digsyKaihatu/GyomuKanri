@@ -4,21 +4,88 @@ import { db } from "../../../main.js";
 import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { escapeHtml } from "../../../utils.js";
 
-export function handleCSVExportClick() {
-    const todayStr = new Date().toISOString().split("T")[0];
-    const currentMonth = todayStr.substring(0, 7); 
-    
-    const monthStr = prompt("出力したい対象の年月を入力してください (例: 2026-07):", currentMonth);
-    if (!monthStr) return; 
-    
-    if (!/^\d{4}-\d{2}$/.test(monthStr)) {
-        alert("入力形式が正しくありません。YYYY-MM 形式（例: 2026-07）で指定してください。");
-        return;
-    }
-    
-    exportRequestsToCSV(monthStr);
+// ① CSV出力専用のモーダルHTMLを動的に生成
+function createCSVExportModalHTML() {
+    if (document.getElementById("export-csv-modal")) return;
+
+    const modalHtml = `
+    <div id="export-csv-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50 p-4">
+        <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg max-w-sm w-full animate-fade-in">
+            <h2 class="text-xl font-bold mb-6 text-center text-gray-700">CSV出力</h2>
+            <div class="space-y-4">
+                <div>
+                    <label for="csv-year-select" class="block text-sm font-medium text-gray-700">年</label>
+                    <select id="csv-year-select" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm font-semibold"></select>
+                </div>
+                <div>
+                    <label for="csv-month-select" class="block text-sm font-medium text-gray-700">月</label>
+                    <select id="csv-month-select" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm font-semibold"></select>
+                </div>
+            </div>
+            <div class="flex justify-end gap-4 mt-6">
+                <button id="cancel-export-csv-btn" class="bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-400 transition text-sm">キャンセル</button>
+                <button id="confirm-export-csv-btn" class="bg-emerald-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-emerald-700 transition text-sm">出力</button>
+            </div>
+        </div>
+    </div>`;
+
+    document.body.insertAdjacentHTML("beforeend", modalHtml);
+
+    // イベントの紐付け
+    document.getElementById("cancel-export-csv-btn").onclick = closeCSVExportModal;
+    document.getElementById("confirm-export-csv-btn").onclick = executeCSVExportWorkflow;
 }
 
+// ② CSV出力ボタンが押された時の挙動（プルダウンの初期化と表示）
+export function handleCSVExportClick() {
+    createCSVExportModalHTML();
+
+    const yearSelect = document.getElementById("csv-year-select");
+    const monthSelect = document.getElementById("csv-month-select");
+    if (!yearSelect || !monthSelect) return;
+
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1;
+
+    // 年プルダウンの生成 (過去5年分)
+    yearSelect.innerHTML = "";
+    for (let i = 0; i < 5; i++) {
+        const year = currentYear - i;
+        const option = document.createElement("option");
+        option.value = year;
+        option.textContent = year;
+        yearSelect.appendChild(option);
+    }
+
+    // 月プルダウンの生成
+    monthSelect.innerHTML = "";
+    for (let i = 1; i <= 12; i++) {
+        const option = document.createElement("option");
+        option.value = String(i).padStart(2, '0'); // Firestoreのフォーマット(07)に合わせる
+        option.textContent = `${i}月`;
+        if (i === currentMonth) option.selected = true;
+        monthSelect.appendChild(option);
+    }
+
+    document.getElementById("export-csv-modal").classList.remove("hidden");
+}
+
+function closeCSVExportModal() {
+    const modal = document.getElementById("export-csv-modal");
+    if (modal) modal.classList.add("hidden");
+}
+
+// ③ 「出力」が確定した段階で実際のデータ抽出を呼び出す
+async function executeCSVExportWorkflow() {
+    const year = document.getElementById("csv-year-select").value;
+    const month = document.getElementById("csv-month-select").value;
+    const monthStr = `${year}-${month}`;
+
+    closeCSVExportModal();
+    await exportRequestsToCSV(monthStr);
+}
+
+// ④ 実際のダウンロード処理
 async function exportRequestsToCSV(monthStr) {
     try {
         const startRange = `${monthStr}-01`;

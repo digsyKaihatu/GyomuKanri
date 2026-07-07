@@ -2,10 +2,9 @@
 import { db, userId, userName } from "../../../main.js";
 import { collection, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// 子ファイルの読み込み
+// 専用子ファイルの読み込み（countAddForm はオミットしました）
 import { renderAddFormHTML, initAddForm, getAddFormData } from "./addForm.js";
 import { renderTimeCorrectFormHTML, initTimeCorrectForm, getTimeCorrectFormData } from "./timeCorrectForm.js";
-import { renderCountAddFormHTML, initCountAddForm, getCountAddFormData } from "./countAddForm.js"; // 追加
 import { renderCountCorrectFormHTML, initCountCorrectForm, getCountCorrectFormData } from "./countCorrectForm.js";
 
 // --- 業務タイムライン変更追加申請モーダルの外枠（骨組み）を生成 ---
@@ -40,7 +39,6 @@ function createUnifiedRequestModalHTML() {
                             <option value="">-- 選択してください --</option>
                             <option value="add">記録の追加（あとから稼働を足す）</option>
                             <option value="time_correct">時間・業務の訂正（現在のタイムラインの修正）</option>
-                            <option value="count_add">工数件数の追加（稼働とは別に件数を足す）</option>
                             <option value="count_correct">工数件数の修正（履歴から件数を書き換える）</option>
                             <option value="forget_checkout">退勤忘れの修正（現在のタイムラインの修正）</option>
                         </select>
@@ -114,10 +112,6 @@ function handleUnifiedTypeChange(event) {
         formBody.innerHTML = renderTimeCorrectFormHTML(defaultDate);
         formBody.classList.remove("hidden");
         initTimeCorrectForm();
-    } else if (selectedType === "count_add") {
-        formBody.innerHTML = renderCountAddFormHTML(defaultDate);
-        formBody.classList.remove("hidden");
-        initCountAddForm();
     } else if (selectedType === "count_correct") {
         formBody.innerHTML = renderCountCorrectFormHTML(defaultDate);
         formBody.classList.remove("hidden");
@@ -149,8 +143,6 @@ async function handleRequestSubmit() {
             payload = getAddFormData();
         } else if (type === "time_correct") {
             payload = getTimeCorrectFormData();
-        } else if (type === "count_add") {
-            payload = getCountAddFormData();
         } else if (type === "count_correct") {
             payload = getCountCorrectFormData();
         } else {
@@ -173,7 +165,7 @@ async function handleRequestSubmit() {
             data: payload.data
         });
 
-        alert("申請を送信しました。管理者の承認をお待ちください。");
+        alert("変更申請を送信しました。管理者の承認をお待ちください。");
         closeUnifiedRequestModal();
     } catch (error) {
         errorEl.textContent = error.message || "申請の送信中にシステムエラーが発生しました。";

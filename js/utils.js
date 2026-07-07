@@ -86,8 +86,6 @@ export async function checkForCheckoutCorrection(uid) {
          return;
     }
 
-    // 【★追加】ガード節: 現在「従業員画面」が開いていないなら処理しない
-    // VIEWS 定数は main.js にあるため、単純に ID 文字列で判定します
     const clientView = document.getElementById("client-view");
     if (!clientView || !clientView.classList.contains("active-view")) {
         return;
@@ -101,25 +99,21 @@ export async function checkForCheckoutCorrection(uid) {
             if (fixCheckoutModal) {
                 const dateInput = fixCheckoutModal.querySelector("#fix-checkout-date-input");
                 const cancelBtn = fixCheckoutModal.querySelector("#fix-checkout-cancel-btn");
-                const descP = fixCheckoutModal.querySelector("p"); // 説明文の要素を取得
+                const descP = fixCheckoutModal.querySelector("p");
                 
-                // 昨日をデフォルト設定
                 if (dateInput) {
                     const yesterday = new Date();
                     yesterday.setDate(yesterday.getDate() - 1);
                     dateInput.value = getJSTDateString(yesterday);
                 }
 
-                // ★修正: 後回し不可にするため、キャンセルボタンを非表示にする
                 if (cancelBtn) cancelBtn.style.display = "none";
 
-                // ★追加: 説明文を警告メッセージに書き換え、赤字で強調する
                 if (descP) {
                     descP.textContent = "【重要】前回の退勤処理が完了していません。正しい退勤時刻を入力して修正してください。この操作は完了するまでスキップできません。";
                     descP.classList.add("text-red-600", "font-bold");
                 }
 
-                // モーダルを表示
                 fixCheckoutModal.classList.remove("hidden");
             }
         }
@@ -136,14 +130,13 @@ export function escapeHtml(unsafe) {
          .replace(/>/g, "&gt;")
          .replace(/"/g, "&quot;")
          .replace(/'/g, "&#039;");
- }
+}
 
 /**
- * ★ここを追記します
- * テキスト内のURLを検知してハイパーリンク（aタグ）に変換する
+ * テキスト内のURLをリンクに変換し、さらに #文字# を赤色で少し大きく装飾する関数
  * ※セキュリティのため、必ず先に escapeHtml を通した文字列を渡してください。
  */
-xport function linkify(escapedText) {
+export function linkify(escapedText) {
     if (!escapedText) return "";
     
     // 1. まずURLを検知して <a> タグに変換
@@ -153,7 +146,6 @@ xport function linkify(escapedText) {
     });
 
     // 2. 次に #（文字）# を検知して Tailwind CSS で赤文字＆少し大きく＆太字に変換
-    // 業務メモの基本サイズが text-sm (14px) なので、少し大きい text-base (16px) を指定しています
     const decorRegex = /#([^#\n]+)#/g;
     processedText = processedText.replace(decorRegex, (match, p1) => {
         return `<span class="text-red-600 text-base font-bold">${p1}</span>`;

@@ -9,7 +9,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "build:css": "tailwindcss -i ./css/style.css -o ./css/output.css --minify",
     "watch:css": "tailwindcss -i ./css/style.css -o ./css/output.css --watch",
-    "build": "tailwindcss -i ./css/style.css -o ./css/output.css --minify"
+    "build": "node generate-config.js && tailwindcss -i ./css/style.css -o ./css/output.css --minify"
   },
   "keywords": [],
   "author": "",

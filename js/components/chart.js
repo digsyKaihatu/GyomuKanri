@@ -2,11 +2,26 @@
 
 import { formatHoursMinutes } from "../utils.js"; 
 
-export function createPieChart(ctx, data, colorMap, showLegend = true) {
+// ★追加: Chart.js とプラグインを動的にロードする関数
+async function ensureChartLibrariesLoaded() {
+    if (typeof Chart === "undefined") {
+        // Chart.js本体の読み込み
+        await import("https://cdn.jsdelivr.net/npm/chart.js");
+    }
+    if (typeof ChartDataLabels === "undefined") {
+        // プラグインの読み込み
+        await import("https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js");
+    }
+}
+
+export async function createPieChart(ctx, data, colorMap, showLegend = true) {
     if (!ctx || !data || typeof data !== 'object') {
         console.error("Invalid arguments provided to createPieChart.");
         return null;
     }
+
+    // ★追加: 呼び出されたタイミングでライブラリの存在を保証する
+    await ensureChartLibrariesLoaded();
 
     const sortedData = Object.entries(data)
         .filter(([, value]) => value > 0)

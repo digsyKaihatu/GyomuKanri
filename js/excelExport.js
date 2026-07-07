@@ -63,6 +63,21 @@ async function handleExportExcel() {
         return;
     }
 
+    // ★追加: もしXLSXがまだ読み込まれていなければ、ここで動的に読み込む
+    if (typeof XLSX === "undefined") {
+        confirmButton.disabled = true;
+        confirmButton.textContent = "ライブラリ読込中...";
+        try {
+            await import("https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js");
+        } catch (e) {
+            console.error("Failed to load SheetJS", e);
+            alert("Excelライブラリの読み込みに失敗しました。時間をおいて再度お試しください。");
+            confirmButton.disabled = false;
+            confirmButton.textContent = "出力";
+            return;
+        }
+    }
+
     const year = parseInt(yearSelect.value, 10);
     const month = parseInt(monthSelect.value, 10);
     

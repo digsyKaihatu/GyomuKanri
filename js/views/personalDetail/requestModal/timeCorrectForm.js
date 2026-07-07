@@ -132,13 +132,20 @@ async function fetchAndRenderTimeline(dateStr) {
                 document.querySelectorAll(".timeline-log-item").forEach(el => el.classList.remove("bg-blue-100", "border-blue-400", "ring-2", "ring-blue-100"));
                 item.classList.add("bg-blue-100", "border-blue-400", "ring-2", "ring-blue-100");
 
-                document.getElementById("req-correct-log-id").value = log.id;
-                taskSelect.value = log.task;
-                document.getElementById("req-correct-start-time").value = log.startTimeStr;
-                document.getElementById("req-correct-end-time").value = log.endTimeStr;
-                document.getElementById("req-correct-memo").value = log.memo;
+                // 【修正箇所】クリックイベントのスコープ内で正しくDOM要素を取得するように修正
+                const taskSelect = document.getElementById("req-correct-task-select");
+                const startTimeInput = document.getElementById("req-correct-start-time");
+                const endTimeInput = document.getElementById("req-correct-end-time");
+                const memoInput = document.getElementById("req-correct-memo");
 
-                [taskSelect, document.getElementById("req-correct-start-time"), document.getElementById("req-correct-end-time"), document.getElementById("req-correct-memo")].forEach(el => { if (el) el.disabled = false; });
+                document.getElementById("req-correct-log-id").value = log.id;
+                if (taskSelect) taskSelect.value = log.task;
+                if (startTimeInput) startTimeInput.value = log.startTimeStr;
+                if (endTimeInput) endTimeInput.value = log.endTimeStr;
+                if (memoInput) memoInput.value = log.memo;
+
+                // 各入力欄の disabled ロックを解除
+                [taskSelect, startTimeInput, endTimeInput, memoInput].forEach(el => { if (el) el.disabled = false; });
             });
 
             container.appendChild(item);

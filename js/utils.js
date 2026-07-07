@@ -137,3 +137,16 @@ export function escapeHtml(unsafe) {
          .replace(/"/g, "&quot;")
          .replace(/'/g, "&#039;");
  }
+
+/**
+ * ★ここを追記します
+ * テキスト内のURLを検知してハイパーリンク（aタグ）に変換する
+ * ※セキュリティのため、必ず先に escapeHtml を通した文字列を渡してください。
+ */
+export function linkify(escapedText) {
+    if (!escapedText) return "";
+    const urlRegex = /(https?:\/\/[^\s\n<>"]+)/g;
+    return escapedText.replace(urlRegex, (url) => {
+        return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline break-all">${url}</a>`;
+    });
+}

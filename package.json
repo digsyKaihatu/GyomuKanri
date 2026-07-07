@@ -8,14 +8,16 @@
     "lint": "eslint js/**/*.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "build:css": "tailwindcss -i ./css/style.css -o ./css/output.css --minify",
-    "watch:css": "tailwindcss -i ./css/style.css -o ./css/output.css --watch"
+    "watch:css": "tailwindcss -i ./css/style.css -o ./css/output.css --watch",
+    "build": "tailwindcss -i ./css/style.css -o ./css/output.css --minify"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
     "@eslint/js": "^9.0.0",
-    "eslint": "^9.0.0",
-    "globals": "^15.0.0"
+    "eslint": "^9.16.0",
+    "globals": "^15.13.0",
+    "tailwindcss": "^3.4.1"
   }
 }

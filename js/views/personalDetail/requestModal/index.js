@@ -99,5 +99,106 @@ async function handleRequestSubmit() {
         }
     }
 }
+export function openUnifiedRequestModal(dateStr) {
+    createUnifiedRequestModalHTML();
+    const modal = document.getElementById("unified-request-modal");
+    
+    document.getElementById("unified-req-date").value = dateStr;
+    document.getElementById("unified-req-type-select").value = "";
+    
+    document.getElementById("unified-req-form-body").classList.add("hidden");
+    document.getElementById("unified-alternative-body").classList.add("hidden");
+    document.getElementById("unified-req-error-bar").classList.add("hidden");
 
-// (以下、openUnifiedRequestModal等の関数は前回までと同じ)
+    modal.classList.remove("hidden");
+}
+
+function closeUnifiedRequestModal() {
+    const modal = document.getElementById("unified-request-modal");
+    if (modal) modal.classList.add("hidden");
+}
+
+// 選択タイプによって各フォームを切り替える
+function handleUnifiedTypeChange(event) {
+    const selectedType = event.target.value;
+    const formBody = document.getElementById("unified-req-form-body");
+    const alternativeBody = document.getElementById("unified-alternative-body");
+    const errorBar = document.getElementById("unified-req-error-bar");
+    
+    if (errorBar) errorBar.classList.add("hidden");
+    formBody.innerHTML = "";
+    formBody.classList.add("hidden");
+    alternativeBody.classList.add("hidden");
+
+    if (!selectedType) return;
+
+    const defaultDate = document.getElementById("unified-req-date").value;
+
+    if (selectedType === "add") {
+        formBody.innerHTML = renderAddFormHTML(defaultDate);
+        formBody.classList.remove("hidden");
+        initAddForm();
+    } else if (selectedType === "time_correct") {
+        formBody.innerHTML = renderTimeCorrectFormHTML(defaultDate);
+        formBody.classList.remove("hidden");
+        initTimeCorrectForm();
+    } else {
+        alternativeBody.classList.remove("hidden");
+        alternativeBody.textContent = `選択された申請タイプ [${selectedType}] のフォーマットは現在開発中です。`;
+    }
+}
+
+// 送信の共通処理
+async function handleRequestSubmit() {
+    const type = document.getElementById("unified-req-type-select").value;
+    const errorBar = document.getElementById("unified-req-error-bar");
+    const errorEl = document.getElementById("unified-req-error");
+    
+    if (!errorBar || !errorEl) return;
+    errorBar.classList.add("hidden");
+
+    if (!type) {
+        errorEl.textContent = "申請内容を選択してください。";
+        errorBar.classList.remove("hidden");
+        return;
+    }
+
+    let payload = null;
+    try {
+        if (type === "add") {
+            payload = getAddFormData();
+        } else if (type === "time_correct") {
+            payload = getTimeCorrectFormData();
+        } else {
+            throw new Error("現在、この申請タイプの送信ロジックは未実装です。");
+        }
+
+        const sendBtn = document.getElementById("unified-req-send-btn");
+        sendBtn.disabled = true;
+        sendBtn.textContent = "送信中...";
+
+        // Firestoreへの共通保存ロジック
+        await addDoc(collection(db, "work_log_requests"), {
+            userId: userId,
+            userName: userName,
+            type: type, // 「time_correct」のまま保存（識別キーとして維持）
+            status: "pending",
+            requestDate: payload.requestDate,
+            targetLogId: payload.targetLogId || null,
+            createdAt: new Date().toISOString(),
+            data: payload.data
+        });
+
+        alert("変更申請を送信しました。管理者の承認をお待ちください。");
+        closeUnifiedRequestModal();
+    } catch (error) {
+        errorEl.textContent = error.message || "申請の送信中にシステムエラーが発生しました。";
+        errorBar.classList.remove("hidden");
+    } finally {
+        const sendBtn = document.getElementById("unified-req-send-btn");
+        if (sendBtn) {
+            sendBtn.disabled = false;
+            sendBtn.textContent = "申請を送る";
+        }
+    }
+}

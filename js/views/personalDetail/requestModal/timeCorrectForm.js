@@ -34,8 +34,7 @@ export function renderTimeCorrectFormHTML(defaultDate) {
             <input type="hidden" id="req-correct-log-id" value="">
             <input type="hidden" id="req-correct-before-start" value="">
             <input type="hidden" id="req-correct-before-end" value="">
-            
-            <div>
+            <input type="hidden" id="req-correct-before-task" value=""> <div>
                 <label class="block text-sm font-bold text-gray-700">変更したい業務のプルダウン</label>
                 <select id="req-correct-task-select" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" disabled>
                     <option value="">業務を選択...</option>
@@ -72,7 +71,6 @@ export function initTimeCorrectForm() {
     const correctDateInput = document.getElementById("req-correct-date");
     if (!taskSelect || !correctDateInput) return;
 
-    // 業務一覧を注入
     taskSelect.innerHTML = '<option value="">業務を選択...</option>';
     const sortedTasks = [...allTaskObjects].sort((a, b) => a.name.localeCompare(b.name, "ja"));
     sortedTasks.forEach(task => {
@@ -198,9 +196,10 @@ async function fetchAndRenderTimeline(dateStr) {
 
                 document.getElementById("req-correct-log-id").value = log.id;
                 
-                // 【追加】クリックされた元の稼働時間を隠しインプットへ一時保存
+                // 【追加】クリックされた元の稼働時間と業務名を隠しインプットへ一時保存
                 document.getElementById("req-correct-before-start").value = log.startTimeStr;
                 document.getElementById("req-correct-before-end").value = log.endTimeStr;
+                document.getElementById("req-correct-before-task").value = log.task; // ★ここを追加
 
                 if (taskSelect) taskSelect.value = log.task;
                 if (startTimeInput) startTimeInput.value = log.startTimeStr;
@@ -221,12 +220,13 @@ async function fetchAndRenderTimeline(dateStr) {
 }
 
 function resetCorrectionInputs() {
-    const fields = ["req-correct-log-id", "req-correct-before-start", "req-correct-before-end", "req-correct-task-select", "req-correct-goal-select", "req-correct-start-time", "req-correct-end-time", "req-correct-memo"];
+    // 【拡張】フィールドリストに before-task を追加
+    const fields = ["req-correct-log-id", "req-correct-before-start", "req-correct-before-end", "req-correct-before-task", "req-correct-task-select", "req-correct-goal-select", "req-correct-start-time", "req-correct-end-time", "req-correct-memo"];
     fields.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
             el.value = "";
-            if (id !== "req-correct-log-id" && id !== "req-correct-before-start" && id !== "req-correct-before-end") el.disabled = true;
+            if (id !== "req-correct-log-id" && id !== "req-correct-before-start" && id !== "req-correct-before-end" && id !== "req-correct-before-task") el.disabled = true; // ★修正
         }
     });
     const container = document.getElementById("req-correct-goal-container");
@@ -238,6 +238,7 @@ export function getTimeCorrectFormData() {
     const targetLogId = document.getElementById("req-correct-log-id").value;
     const beforeStart = document.getElementById("req-correct-before-start").value;
     const beforeEnd = document.getElementById("req-correct-before-end").value;
+    const beforeTask = document.getElementById("req-correct-before-task").value; // ★ここを追加
     const dateVal = document.getElementById("req-correct-date").value;
     const taskName = document.getElementById("req-correct-task-select").value;
     const startTime = document.getElementById("req-correct-start-time").value;
@@ -260,7 +261,6 @@ export function getTimeCorrectFormData() {
         }
     }
 
-    // 【追加】修正前後の時間から「増減差異 (timeDifference)」を自動計算するロジック
     let timeDifference = "変更なし";
     if (beforeStart && beforeEnd && startTime && endTime) {
         const toMinutes = (timeStr) => { const [h, m] = timeStr.split(":").map(Number); return h * 60 + m; };
@@ -283,19 +283,17 @@ export function getTimeCorrectFormData() {
         requestDate: dateVal,
         targetLogId: targetLogId,
         data: {
-            // ⭕ 解決①: メタデータを追加して「不明な申請メニュー」を防止
             applicationType: "変更",
             reasonCategory: "時間・業務の訂正",
+            beforeTask: beforeTask, // ★ここを追加（承認画面に引き渡すデータを拡張）
             task: taskName,
             goalId: goalId,
             goalTitle: goalTitle,
-            
-            // ⭕ 解決②&③: システム（UI側）が期待するプロパティ名に完全に統一・拡張
             beforeStartTime: beforeStart,
             beforeEndTime: beforeEnd,
-            afterStartTime: startTime, // startTime から afterStartTime に統合修正
-            afterEndTime: endTime,     // endTime から afterEndTime に統合修正
-            timeDifference: timeDifference, // 計算した時間差異
+            afterStartTime: startTime,
+            afterEndTime: endTime,
+            timeDifference: timeDifference,
             memo: memoVal
         }
     };

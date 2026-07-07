@@ -2,9 +2,10 @@
 import { db, userId, userName } from "../../../main.js";
 import { collection, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// 各メニュー用の専用子ファイルをインポート
+// 子ファイルの読み込み
 import { renderAddFormHTML, initAddForm, getAddFormData } from "./addForm.js";
 import { renderTimeCorrectFormHTML, initTimeCorrectForm, getTimeCorrectFormData } from "./timeCorrectForm.js";
+import { renderCountAddFormHTML, initCountAddForm, getCountAddFormData } from "./countAddForm.js"; // 追加
 import { renderCountCorrectFormHTML, initCountCorrectForm, getCountCorrectFormData } from "./countCorrectForm.js";
 
 // --- 業務タイムライン変更追加申請モーダルの外枠（骨組み）を生成 ---
@@ -39,11 +40,13 @@ function createUnifiedRequestModalHTML() {
                             <option value="">-- 選択してください --</option>
                             <option value="add">記録の追加（あとから稼働を足す）</option>
                             <option value="time_correct">時間・業務の訂正（現在のタイムラインの修正）</option>
-                            <option value="count_correct">工数件数の修正</option>
+                            <option value="count_add">工数件数の追加（稼働とは別に件数を足す）</option>
+                            <option value="count_correct">工数件数の修正（履歴から件数を書き換える）</option>
                             <option value="forget_checkout">退勤忘れの修正（現在のタイムラインの修正）</option>
                         </select>
                     </div>
-                    <div></div> </div>
+                    <div></div>
+                </div>
                 
                 <div id="unified-req-form-body" class="hidden border-t border-dashed pt-4 mt-4"></div>
                 <div id="unified-alternative-body" class="hidden border-t border-dashed pt-4 mt-4 py-12 text-center text-gray-400 text-sm font-bold"></div>
@@ -62,14 +65,12 @@ function createUnifiedRequestModalHTML() {
 
     document.body.insertAdjacentHTML("beforeend", modalHtml);
 
-    // イベントリスナーの一括登録
     document.getElementById("unified-req-cancel-btn").addEventListener("click", closeUnifiedRequestModal);
     document.getElementById("unified-req-close-x").addEventListener("click", closeUnifiedRequestModal);
     document.getElementById("unified-req-type-select").addEventListener("change", handleUnifiedTypeChange);
     document.getElementById("unified-req-send-btn").addEventListener("click", handleRequestSubmit);
 }
 
-// モーダルを開く（外部の personalDetail.js 等から呼ばれる）メイン関数
 export function openUnifiedRequestModal(dateStr) {
     createUnifiedRequestModalHTML();
     const modal = document.getElementById("unified-request-modal");
@@ -77,7 +78,6 @@ export function openUnifiedRequestModal(dateStr) {
     document.getElementById("unified-req-date").value = dateStr;
     document.getElementById("unified-req-type-select").value = "";
     
-    // 初期状態は下部エリアをすべて非表示にする
     document.getElementById("unified-req-form-body").classList.add("hidden");
     document.getElementById("unified-alternative-body").classList.add("hidden");
     document.getElementById("unified-req-error-bar").classList.add("hidden");
@@ -85,13 +85,12 @@ export function openUnifiedRequestModal(dateStr) {
     modal.classList.remove("hidden");
 }
 
-// モーダルを閉じる関数
 function closeUnifiedRequestModal() {
     const modal = document.getElementById("unified-request-modal");
     if (modal) modal.classList.add("hidden");
 }
 
-// 申請内容プルダウン変更時のメニュー切り替えロジック
+// 申請プルダウン変更時のメニュー表示切り替え
 function handleUnifiedTypeChange(event) {
     const selectedType = event.target.value;
     const formBody = document.getElementById("unified-req-form-body");
@@ -115,6 +114,10 @@ function handleUnifiedTypeChange(event) {
         formBody.innerHTML = renderTimeCorrectFormHTML(defaultDate);
         formBody.classList.remove("hidden");
         initTimeCorrectForm();
+    } else if (selectedType === "count_add") {
+        formBody.innerHTML = renderCountAddFormHTML(defaultDate);
+        formBody.classList.remove("hidden");
+        initCountAddForm();
     } else if (selectedType === "count_correct") {
         formBody.innerHTML = renderCountCorrectFormHTML(defaultDate);
         formBody.classList.remove("hidden");
@@ -125,7 +128,7 @@ function handleUnifiedTypeChange(event) {
     }
 }
 
-// 申請情報の送信処理（共通処理）
+// 送信の処理
 async function handleRequestSubmit() {
     const type = document.getElementById("unified-req-type-select").value;
     const errorBar = document.getElementById("unified-req-error-bar");
@@ -142,11 +145,12 @@ async function handleRequestSubmit() {
 
     let payload = null;
     try {
-        // 各メニューの専用子ファイルからデータを抽出（同時に個別バリデーションが走る）
         if (type === "add") {
             payload = getAddFormData();
         } else if (type === "time_correct") {
             payload = getTimeCorrectFormData();
+        } else if (type === "count_add") {
+            payload = getCountAddFormData();
         } else if (type === "count_correct") {
             payload = getCountCorrectFormData();
         } else {
@@ -157,7 +161,7 @@ async function handleRequestSubmit() {
         sendBtn.disabled = true;
         sendBtn.textContent = "送信中...";
 
-        // Firestoreへの共通保存処理
+        // Firestoreへの保存
         await addDoc(collection(db, "work_log_requests"), {
             userId: userId,
             userName: userName,
@@ -169,10 +173,9 @@ async function handleRequestSubmit() {
             data: payload.data
         });
 
-        alert("変更申請を送信しました。管理者の承認をお待ちください。");
+        alert("申請を送信しました。管理者の承認をお待ちください。");
         closeUnifiedRequestModal();
     } catch (error) {
-        // 各フォームから throw された個別のバリデーションエラーをここで一括キャッチして赤帯に表示
         errorEl.textContent = error.message || "申請の送信中にシステムエラーが発生しました。";
         errorBar.classList.remove("hidden");
     } finally {

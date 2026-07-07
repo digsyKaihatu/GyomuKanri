@@ -213,6 +213,18 @@ export function openBreakReservationModal(id = null) {
     timeIn.focus();
 }
 
+/**
+ * テキスト内のURLを検知してハイパーリンク（aタグ）に変換する
+ * ※セキュリティ（XSS対策）のため、必ず先に escapeHtml を通した文字列を渡してください。
+ */
+export function linkify(escapedText) {
+    if (!escapedText) return "";
+    const urlRegex = /(https?:\/\/[^\s\n<>"]+)/g;
+    return escapedText.replace(urlRegex, (url) => {
+        return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline break-all">${url}</a>`;
+    });
+}
+
 // 閉じる処理のショートカット
 export const closeHelpModal = () => closeModal(helpModal);
 export const closeGoalDetailsModal = () => closeModal(goalDetailsModal);

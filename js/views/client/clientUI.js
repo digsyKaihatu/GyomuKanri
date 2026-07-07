@@ -1,6 +1,6 @@
 // js/views/client/clientUI.js
 
-mport { allTaskObjects, userDisplayPreferences, userId, db, escapeHtml } from "../../main.js";
+import { allTaskObjects, userDisplayPreferences, userId, db, escapeHtml } from "../../main.js";
 import { linkify } from "../../utils.js";
 import { doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { getCurrentTask, getCurrentGoalId } from "./timer.js";

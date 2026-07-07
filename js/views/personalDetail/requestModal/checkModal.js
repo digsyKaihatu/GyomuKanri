@@ -128,13 +128,16 @@ function renderRequestList(requests) {
         const d = req.data || {};
         const statusInfo = statusConfig[req.status] || { label: req.status, classes: "bg-gray-100 text-gray-700" };
         
-        // 【要件の反映】新定義の「申請種別」と「理由（区分）」をログデータから安全に抽出
         const applicationType = d.applicationType || (req.type === "add" ? "追加" : "変更");
         const reasonCategory = d.reasonCategory || "不明な申請メニュー";
 
         let contentDetail = "";
         if (req.type === "add" || req.type === "time_correct") {
-            const timeRange = d.afterStartTime ? `${d.afterStartTime} - ${d.afterEndTime}` : d.checkoutTime;
+            // パターン1：シンプルに「時間変更なし」と切り替える修正
+            const timeRange = (d.afterStartTime && d.afterEndTime) 
+                ? `${d.afterStartTime} - ${d.afterEndTime}` 
+                : "時間変更なし";
+
             contentDetail = `
                 <div>案件名: <span class="font-bold text-gray-800">${escapeHtml(d.task)}</span></div>
                 <div>修正後時間: <span class="font-mono bg-gray-100 px-1.5 py-0.5 rounded text-gray-700">${timeRange}</span></div>
@@ -152,7 +155,6 @@ function renderRequestList(requests) {
             `;
         }
 
-        // 承認時のログ追記表示
         const approverHtml = req.status !== "pending" && req.approverName ? `
             <div class="mt-2 border-t pt-2 text-[10px] text-gray-400 flex justify-between">
                 <span>👤 承認対応者: ${escapeHtml(req.approverName)}</span>

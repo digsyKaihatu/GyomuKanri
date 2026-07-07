@@ -2,15 +2,96 @@
 import { db, userId, userName } from "../../../main.js";
 import { collection, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// 専用子ファイルの読み込み
+// 専用子ファイルの読み込み（件数追加の countAddForm はオミットしました）
 import { renderAddFormHTML, initAddForm, getAddFormData } from "./addForm.js";
 import { renderTimeCorrectFormHTML, initTimeCorrectForm, getTimeCorrectFormData } from "./timeCorrectForm.js";
 import { renderCountCorrectFormHTML, initCountCorrectForm, getCountCorrectFormData } from "./countCorrectForm.js";
-import { renderForgetCheckoutFormHTML, initForgetCheckoutForm, getForgetCheckoutFormData } from "./forgetCheckoutForm.js"; // 追加
 
-// ... (createUnifiedRequestModalHTML 等の中間コードは変更なし)
+// --- 業務タイムライン変更追加申請モーダルの外枠（骨組み）を生成 ---
+function createUnifiedRequestModalHTML() {
+    if (document.getElementById("unified-request-modal")) return;
 
-// 選択タイプによって各フォームを切り替える
+    const modalHtml = `
+    <div id="unified-request-modal" class="modal hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
+        <div class="relative mx-auto border w-full max-w-4xl shadow-2xl rounded-xl bg-white overflow-hidden animate-fade-in flex flex-col">
+            
+            <div class="flex items-center justify-between px-6 py-4 border-b">
+                <div class="flex items-center gap-2">
+                    <span class="text-blue-600 font-bold text-xl">
+                        <svg class="w-6 h-6 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                        </svg>
+                    </span>
+                    <h3 class="text-lg font-bold text-gray-800">業務タイムライン変更追加申請</h3>
+                </div>
+                <button id="unified-req-close-x" class="text-gray-400 hover:text-gray-600 text-2xl font-semibold focus:outline-none">&times;</button>
+            </div>
+            
+            <div class="p-6 overflow-y-auto flex-grow">
+                <div class="grid grid-cols-3 gap-x-6 gap-y-4 mb-2">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700">申請日</label>
+                        <input type="date" id="unified-req-date" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-gray-50 focus:outline-none" readonly>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700">申請内容を選択してください</label>
+                        <select id="unified-req-type-select" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white font-semibold focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                            <option value="">-- 選択してください --</option>
+                            <option value="add">記録の追加（あとから稼働を足す）</option>
+                            <option value="time_correct">時間・業務の訂正（現在のタイムラインの修正）</option>
+                            <option value="count_correct">工数件数の修正（履歴から件数を書き換える）</option>
+                            <option value="forget_checkout">退勤忘れの修正（現在のタイムラインの修正）</option>
+                        </select>
+                    </div>
+                    <div></div>
+                </div>
+                
+                <div id="unified-req-form-body" class="hidden border-t border-dashed pt-4 mt-4"></div>
+                <div id="unified-alternative-body" class="hidden border-t border-dashed pt-4 mt-4 py-12 text-center text-gray-400 text-sm font-bold"></div>
+            </div>
+            
+            <div class="px-6 py-4 border-t flex justify-end gap-3 bg-white">
+                <button id="unified-req-cancel-btn" class="px-6 py-2 border border-gray-300 bg-white text-gray-700 text-sm font-medium rounded-lg shadow-sm hover:bg-gray-50 transition focus:outline-none">キャンセル</button>
+                <button id="unified-req-send-btn" class="px-6 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg shadow-sm hover:bg-emerald-700 transition focus:outline-none">申請を送る</button>
+            </div>
+            
+            <div id="unified-req-error-bar" class="bg-red-50 border-t border-red-200 px-6 py-3 text-sm text-red-700 font-bold hidden animate-fade-in">
+                <span id="unified-req-error"></span>
+            </div>
+        </div>
+    </div>`;
+
+    document.body.insertAdjacentHTML("beforeend", modalHtml);
+
+    // イベントリスナーの登録
+    document.getElementById("unified-req-cancel-btn").addEventListener("click", closeUnifiedRequestModal);
+    document.getElementById("unified-req-close-x").addEventListener("click", closeUnifiedRequestModal);
+    document.getElementById("unified-req-type-select").addEventListener("change", handleUnifiedTypeChange);
+    document.getElementById("unified-req-send-btn").addEventListener("click", handleRequestSubmit);
+}
+
+// モーダルを開く関数（外部ファイルから呼ばれる）
+export function openUnifiedRequestModal(dateStr) {
+    createUnifiedRequestModalHTML();
+    const modal = document.getElementById("unified-request-modal");
+    
+    document.getElementById("unified-req-date").value = dateStr;
+    document.getElementById("unified-req-type-select").value = "";
+    
+    document.getElementById("unified-req-form-body").classList.add("hidden");
+    document.getElementById("unified-alternative-body").classList.add("hidden");
+    document.getElementById("unified-req-error-bar").classList.add("hidden");
+
+    modal.classList.remove("hidden");
+}
+
+// モーダルを閉じる関数
+function closeUnifiedRequestModal() {
+    const modal = document.getElementById("unified-request-modal");
+    if (modal) modal.classList.add("hidden");
+}
+
+// 申請プルダウン変更時のメニュー表示切り替え
 function handleUnifiedTypeChange(event) {
     const selectedType = event.target.value;
     const formBody = document.getElementById("unified-req-form-body");
@@ -38,17 +119,13 @@ function handleUnifiedTypeChange(event) {
         formBody.innerHTML = renderCountCorrectFormHTML(defaultDate);
         formBody.classList.remove("hidden");
         initCountCorrectForm();
-    } else if (selectedType === "forget_checkout") { // 追加
-        formBody.innerHTML = renderForgetCheckoutFormHTML(defaultDate);
-        formBody.classList.remove("hidden");
-        initForgetCheckoutForm();
     } else {
         alternativeBody.classList.remove("hidden");
         alternativeBody.textContent = `選択された申請タイプ [${selectedType}] のフォーマットは現在開発中です。`;
     }
 }
 
-// 送信の共通処理
+// 申請情報の送信処理
 async function handleRequestSubmit() {
     const type = document.getElementById("unified-req-type-select").value;
     const errorBar = document.getElementById("unified-req-error-bar");
@@ -71,8 +148,6 @@ async function handleRequestSubmit() {
             payload = getTimeCorrectFormData();
         } else if (type === "count_correct") {
             payload = getCountCorrectFormData();
-        } else if (type === "forget_checkout") { // 追加
-            payload = getForgetCheckoutFormData();
         } else {
             throw new Error("現在、この申請タイプの送信ロジックは未実装です。");
         }
@@ -93,7 +168,7 @@ async function handleRequestSubmit() {
             data: payload.data
         });
 
-        alert("申請を送信しました。管理者の承認をお待ちください。");
+        alert("変更申請を送信しました。管理者の承認をお待ちください。");
         closeUnifiedRequestModal();
     } catch (error) {
         errorEl.textContent = error.message || "申請の送信中にシステムエラーが発生しました。";

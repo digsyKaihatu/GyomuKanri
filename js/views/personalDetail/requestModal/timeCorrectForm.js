@@ -32,6 +32,9 @@ export function renderTimeCorrectFormHTML(defaultDate) {
         
         <div class="space-y-4 flex flex-col">
             <input type="hidden" id="req-correct-log-id" value="">
+            <input type="hidden" id="req-correct-before-start" value="">
+            <input type="hidden" id="req-correct-before-end" value="">
+            
             <div>
                 <label class="block text-sm font-bold text-gray-700">変更したい業務のプルダウン</label>
                 <select id="req-correct-task-select" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" disabled>
@@ -79,21 +82,17 @@ export function initTimeCorrectForm() {
         taskSelect.appendChild(opt);
     });
 
-    // 【機能追加】業務プルダウンの変更イベントを監視して工数を動的切り替え
     taskSelect.addEventListener("change", (e) => {
         updateCorrectGoalDropdown(e.target.value, null);
     });
 
-    // 日付変更イベント登録
     correctDateInput.addEventListener("change", (e) => {
         fetchAndRenderTimeline(e.target.value);
     });
 
-    // 初回フェッチ実行
     fetchAndRenderTimeline(correctDateInput.value);
 }
 
-// 【機能追加】業務名に応じて工数プルダウンの表示・非表示・内容を切り替える共通関数
 function updateCorrectGoalDropdown(selectedTaskName, selectedGoalValue) {
     const goalContainer = document.getElementById("req-correct-goal-container");
     const goalSelect = document.getElementById("req-correct-goal-select");
@@ -103,7 +102,6 @@ function updateCorrectGoalDropdown(selectedTaskName, selectedGoalValue) {
     goalSelect.innerHTML = '<option value="">工数を選択 (任意)</option>';
     goalSelect.disabled = true;
 
-    // 休憩が選ばれたときはグレーアウトしてメッセージを変更し表示する
     if (selectedTaskName === "休憩") {
         goalSelect.innerHTML = '<option value="">休憩は工数項目なし</option>';
         goalSelect.className = "mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-gray-100 text-gray-400 focus:outline-none";
@@ -111,7 +109,6 @@ function updateCorrectGoalDropdown(selectedTaskName, selectedGoalValue) {
         return;
     }
 
-    // 業務未選択のときは非表示
     if (!selectedTaskName) {
         goalContainer.classList.add("hidden");
         return;
@@ -120,7 +117,6 @@ function updateCorrectGoalDropdown(selectedTaskName, selectedGoalValue) {
     const foundTask = allTaskObjects.find(t => t.name === selectedTaskName);
     const activeGoals = (foundTask?.goals || []).filter(g => !g.isComplete);
 
-    // 工数が設定されている場合のみコンテナを表示化
     if (activeGoals.length > 0) {
         activeGoals.forEach(goal => {
             const opt = document.createElement("option");
@@ -129,7 +125,6 @@ function updateCorrectGoalDropdown(selectedTaskName, selectedGoalValue) {
             goalSelect.appendChild(opt);
         });
 
-        // タイムライン履歴のクリック時など、初期値（既存データ）があればセットする
         if (selectedGoalValue) {
             const foundOpt = Array.from(goalSelect.options).find(o => o.value === selectedGoalValue || o.textContent.split(" (目標:")[0] === selectedGoalValue);
             if (foundOpt) goalSelect.value = foundOpt.value;
@@ -139,7 +134,6 @@ function updateCorrectGoalDropdown(selectedTaskName, selectedGoalValue) {
         goalSelect.className = "mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500";
         goalContainer.classList.remove("hidden");
     } else {
-        // 工数が設定されていない業務の場合は非表示にする
         goalContainer.classList.add("hidden");
     }
 }
@@ -173,8 +167,8 @@ async function fetchAndRenderTimeline(dateStr) {
                 task: data.task || "不明",
                 startTimeStr: convertTime(data.startTime),
                 endTimeStr: convertTime(data.endTime),
-                goalId: data.goalId || null,      // 連動用に追加
-                goalTitle: data.goalTitle || "",  // 連動用に追加
+                goalId: data.goalId || null,
+                goalTitle: data.goalTitle || "",
                 memo: data.memo || ""
             };
         }).sort((a, b) => a.startTimeStr.localeCompare(b.startTimeStr));
@@ -203,15 +197,18 @@ async function fetchAndRenderTimeline(dateStr) {
                 const memoInput = document.getElementById("req-correct-memo");
 
                 document.getElementById("req-correct-log-id").value = log.id;
+                
+                // 【追加】クリックされた元の稼働時間を隠しインプットへ一時保存
+                document.getElementById("req-correct-before-start").value = log.startTimeStr;
+                document.getElementById("req-correct-before-end").value = log.endTimeStr;
+
                 if (taskSelect) taskSelect.value = log.task;
                 if (startTimeInput) startTimeInput.value = log.startTimeStr;
                 if (endTimeInput) endTimeInput.value = log.endTimeStr;
                 if (memoInput) memoInput.value = log.memo;
 
-                // 各入力欄の disabled ロックを解除
                 [taskSelect, startTimeInput, endTimeInput, memoInput].forEach(el => { if (el) el.disabled = false; });
 
-                // 【機能追加】ログクリック時に、そのログに工数が設定されていれば自動展開して選択する
                 updateCorrectGoalDropdown(log.task, log.goalId || log.goalTitle);
             });
 
@@ -224,15 +221,14 @@ async function fetchAndRenderTimeline(dateStr) {
 }
 
 function resetCorrectionInputs() {
-    const fields = ["req-correct-log-id", "req-correct-task-select", "req-correct-goal-select", "req-correct-start-time", "req-correct-end-time", "req-correct-memo"];
+    const fields = ["req-correct-log-id", "req-correct-before-start", "req-correct-before-end", "req-correct-task-select", "req-correct-goal-select", "req-correct-start-time", "req-correct-end-time", "req-correct-memo"];
     fields.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
             el.value = "";
-            if (id !== "req-correct-log-id") el.disabled = true;
+            if (id !== "req-correct-log-id" && id !== "req-correct-before-start" && id !== "req-correct-before-end") el.disabled = true;
         }
     });
-    // コンテナも非表示へリセット
     const container = document.getElementById("req-correct-goal-container");
     if (container) container.classList.add("hidden");
 }
@@ -240,6 +236,8 @@ function resetCorrectionInputs() {
 // ③ バリデーション & データ抽出
 export function getTimeCorrectFormData() {
     const targetLogId = document.getElementById("req-correct-log-id").value;
+    const beforeStart = document.getElementById("req-correct-before-start").value;
+    const beforeEnd = document.getElementById("req-correct-before-end").value;
     const dateVal = document.getElementById("req-correct-date").value;
     const taskName = document.getElementById("req-correct-task-select").value;
     const startTime = document.getElementById("req-correct-start-time").value;
@@ -253,7 +251,6 @@ export function getTimeCorrectFormData() {
     if (!taskName || !startTime || !endTime) throw new Error("エラー：業務、開始時間、終了時間は必須入力です。");
     if (startTime >= endTime) throw new Error("エラー：終了時間は開始時間より後の時刻にしてください。");
 
-    // 【機能追加】工数プルダウンが表示されており、値が選択されていれば申請データに含める
     let goalId = null;
     let goalTitle = null;
     if (goalSelect && goalContainer && !goalContainer.classList.contains("hidden") && !goalSelect.disabled && goalSelect.value) {
@@ -263,15 +260,42 @@ export function getTimeCorrectFormData() {
         }
     }
 
+    // 【追加】修正前後の時間から「増減差異 (timeDifference)」を自動計算するロジック
+    let timeDifference = "変更なし";
+    if (beforeStart && beforeEnd && startTime && endTime) {
+        const toMinutes = (timeStr) => { const [h, m] = timeStr.split(":").map(Number); return h * 60 + m; };
+        const diffBefore = toMinutes(beforeEnd) - toMinutes(beforeStart);
+        const diffAfter = toMinutes(endTime) - toMinutes(startTime);
+        const diffMin = diffAfter - diffBefore;
+        
+        if (diffMin === 0) {
+            timeDifference = "±0分";
+        } else {
+            const sign = diffMin > 0 ? "+" : "-";
+            const absMin = Math.abs(diffMin);
+            const h = Math.floor(absMin / 60);
+            const m = absMin % 60;
+            timeDifference = h > 0 ? `${sign}${h}時間${m}分` : `${sign}${m}分`;
+        }
+    }
+
     return {
         requestDate: dateVal,
         targetLogId: targetLogId,
         data: {
+            // ⭕ 解決①: メタデータを追加して「不明な申請メニュー」を防止
+            applicationType: "変更",
+            reasonCategory: "時間・業務の訂正",
             task: taskName,
-            goalId: goalId,      // 承認画面に引き渡すデータを拡張
-            goalTitle: goalTitle,  // 承認画面に引き渡すデータを拡張
-            startTime: startTime,
-            endTime: endTime,
+            goalId: goalId,
+            goalTitle: goalTitle,
+            
+            // ⭕ 解決②&③: システム（UI側）が期待するプロパティ名に完全に統一・拡張
+            beforeStartTime: beforeStart,
+            beforeEndTime: beforeEnd,
+            afterStartTime: startTime, // startTime から afterStartTime に統合修正
+            afterEndTime: endTime,     // endTime から afterEndTime に統合修正
+            timeDifference: timeDifference, // 計算した時間差異
             memo: memoVal
         }
     };

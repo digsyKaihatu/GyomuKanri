@@ -2,20 +2,17 @@
 import { db, userId, userName } from "../../../main.js";
 import { collection, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// 専用子ファイルの読み込み
 import { renderAddFormHTML, initAddForm, getAddFormData } from "./addForm.js";
 import { renderTimeCorrectFormHTML, initTimeCorrectForm, getTimeCorrectFormData } from "./timeCorrectForm.js";
 import { renderCountCorrectFormHTML, initCountCorrectForm, getCountCorrectFormData } from "./countCorrectForm.js";
-import { renderForgetCheckoutFormHTML, initForgetCheckoutForm, getForgetCheckoutFormData } from "./forgetCheckoutForm.js"; // 組み込み
+import { renderForgetCheckoutFormHTML, initForgetCheckoutForm, getForgetCheckoutFormData } from "./forgetCheckoutForm.js";
 
-// --- 業務タイムライン変更追加申請モーダルの外枠（骨組み）を生成 ---
 function createUnifiedRequestModalHTML() {
     if (document.getElementById("unified-request-modal")) return;
 
     const modalHtml = `
     <div id="unified-request-modal" class="modal hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
         <div class="relative mx-auto border w-full max-w-4xl shadow-2xl rounded-xl bg-white overflow-hidden animate-fade-in flex flex-col">
-            
             <div class="flex items-center justify-between px-6 py-4 border-b">
                 <div class="flex items-center gap-2">
                     <span class="text-blue-600 font-bold text-xl">
@@ -64,14 +61,12 @@ function createUnifiedRequestModalHTML() {
 
     document.body.insertAdjacentHTML("beforeend", modalHtml);
 
-    // イベントリスナーの登録
     document.getElementById("unified-req-cancel-btn").addEventListener("click", closeUnifiedRequestModal);
     document.getElementById("unified-req-close-x").addEventListener("click", closeUnifiedRequestModal);
     document.getElementById("unified-req-type-select").addEventListener("change", handleUnifiedTypeChange);
     document.getElementById("unified-req-send-btn").addEventListener("click", handleRequestSubmit);
 }
 
-// モーダルを開く関数（外部ファイルから呼ばれる）
 export function openUnifiedRequestModal(dateStr) {
     createUnifiedRequestModalHTML();
     const modal = document.getElementById("unified-request-modal");
@@ -86,13 +81,11 @@ export function openUnifiedRequestModal(dateStr) {
     modal.classList.remove("hidden");
 }
 
-// モーダルを閉じる関数
 function closeUnifiedRequestModal() {
     const modal = document.getElementById("unified-request-modal");
     if (modal) modal.classList.add("hidden");
 }
 
-// 申請プルダウン変更時のメニュー表示切り替え
 function handleUnifiedTypeChange(event) {
     const selectedType = event.target.value;
     const formBody = document.getElementById("unified-req-form-body");
@@ -120,7 +113,7 @@ function handleUnifiedTypeChange(event) {
         formBody.innerHTML = renderCountCorrectFormHTML(defaultDate);
         formBody.classList.remove("hidden");
         initCountCorrectForm();
-    } else if (selectedType === "forget_checkout") { // 【追加】退勤忘れフォームの表示と初期化
+    } else if (selectedType === "forget_checkout") {
         formBody.innerHTML = renderForgetCheckoutFormHTML(defaultDate);
         formBody.classList.remove("hidden");
         initForgetCheckoutForm();
@@ -130,7 +123,6 @@ function handleUnifiedTypeChange(event) {
     }
 }
 
-// 申請情報の送信処理
 async function handleRequestSubmit() {
     const type = document.getElementById("unified-req-type-select").value;
     const errorBar = document.getElementById("unified-req-error-bar");
@@ -147,32 +139,32 @@ async function handleRequestSubmit() {
 
     let payload = null;
     try {
-        if (type === "add") {
-            payload = getAddFormData();
-        } else if (type === "time_correct") {
-            payload = getTimeCorrectFormData();
-        } else if (type === "count_correct") {
-            payload = getCountCorrectFormData();
-        } else if (type === "forget_checkout") { // 【追加】退勤忘れのデータ抽出
-            payload = getForgetCheckoutFormData();
-        } else {
-            throw new Error("現在、この申請タイプの送信ロジックは未実装です。");
-        }
+        if (type === "add") { payload = getAddFormData(); } 
+        else if (type === "time_correct") { payload = getTimeCorrectFormData(); } 
+        else if (type === "count_correct") { payload = getCountCorrectFormData(); } 
+        else if (type === "forget_checkout") { payload = getForgetCheckoutFormData(); } 
+        else { throw new Error("現在、この申請タイプの送信ロジックは未実装です。"); }
 
         const sendBtn = document.getElementById("unified-req-send-btn");
         sendBtn.disabled = true;
         sendBtn.textContent = "送信中...";
 
-        // Firestoreへの共通保存ロジック
+        // 【要件の完全実現】指定された13項目（裏側項目含む）がログとして追えるデータ構造でFirestoreにインサート
         await addDoc(collection(db, "work_log_requests"), {
-            userId: userId,
-            userName: userName,
+            userId: userId,                      // 【要件】申請者ID
+            userName: userName,                  // 【要件】申請者名
             type: type,
-            status: "pending",
-            requestDate: payload.requestDate,
+            status: "pending",                   // 【要件】ステータス
+            requestDate: payload.requestDate,     // 【要件】対象年月日
             targetLogId: payload.targetLogId || null,
-            createdAt: new Date().toISOString(),
-            data: payload.data
+            createdAt: new Date().toISOString(), // 【要件】申請日付
+            
+            // 承認者関連ログ（申請時点ではログの器としてnull初期化）
+            approverId: null,                    // 【要件】承認者ID
+            approverName: null,                  // 【要件】承認者名
+            approvedAt: null,                    // 【要件】承認日時
+            
+            data: payload.data                   // 内包データ（案件名、修正前後時間、差異、理由区分、自由記述）
         });
 
         alert("変更申請を送信しました。管理者の承認をお待ちください。");

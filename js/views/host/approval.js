@@ -1,8 +1,9 @@
 // js/views/host/approval.js
 
 import { db, showView, VIEWS, allTaskObjects, updateGlobalTaskObjects, userId as currentAdminId, userName as currentAdminName } from "../../main.js";
-import { collection, query, where, orderBy, onSnapshot, doc, writeBatch, getDoc, deleteDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { escapeHtml, formatTime, formatDuration, getJSTDateString } from "../../utils.js";
+// 修正：updateDoc を正式にインポートに追加しました
+import { collection, query, where, orderBy, onSnapshot, doc, writeBatch, getDoc, deleteDoc, getDocs, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { escapeHtml, formatTime, formatDuration } from "../../utils.js";
 
 let unsubscribe = null;
 
@@ -50,7 +51,6 @@ function renderApprovalList(docs) {
         const d = req.data || {};
         const card = document.createElement("div");
         
-        // 申請タイプごとのカラー・バッジ出し分け設定
         let typeBadgeColor = "bg-gray-100 text-gray-800 border-gray-200";
         if (d.applicationType === "追加") typeBadgeColor = "bg-green-100 text-green-800 border-green-200";
         if (d.applicationType === "変更") typeBadgeColor = "bg-blue-100 text-blue-800 border-blue-200";
@@ -58,34 +58,53 @@ function renderApprovalList(docs) {
         const appTypeLabel = d.applicationType || (req.type === "add" ? "追加" : "変更");
         const reasonCategoryLabel = d.reasonCategory || "各種申請";
 
-        // メニュータイプごとに管理者が一番見やすい詳細HTMLを構築
         let infoHtml = "";
         if (req.type === "add") {
             const goalText = d.goalTitle ? ` <span class="bg-gray-100 px-1 rounded border text-gray-500">[${escapeHtml(d.goalTitle)}]</span>` : "";
+            const startTime = d.afterStartTime || d.startTime || "変更なし";
+            const endTime = d.afterEndTime || d.endTime || "変更なし";
+            const timeDiff = d.timeDifference || "変更なし";
+
             infoHtml = `
-                <div class="text-sm font-bold text-gray-800">業務: ${escapeHtml(d.task)}${goalText}</div>
-                <div class="text-xs text-gray-600 mt-1">追加時間: <span class="font-mono bg-gray-100 px-1.5 py-0.5 rounded text-indigo-700 font-bold">${d.afterStartTime} - ${d.afterEndTime}</span> (${d.timeDifference})</div>
-                <div class="text-xs text-gray-600 mt-0.5">成果件数: <span class="font-bold text-gray-700">${d.count} 件</span></div>
+                <div class="text-sm font-bold text-gray-800">業務: ${escapeHtml(d.task || d.taskName || "未定")} ${goalText}</div>
+                <div class="text-xs text-gray-600 mt-1">追加時間: <span class="font-mono bg-gray-100 px-1.5 py-0.5 rounded text-indigo-700 font-bold">${startTime} - ${endTime}</span> (${timeDiff})</div>
+                <div class="text-xs text-gray-600 mt-0.5">成果件数: <span class="font-bold text-gray-700">${d.count !== undefined ? d.count : 0} 件</span></div>
             `;
-        } else if (req.type === "time_correct") {
+        } 
+        else if (req.type === "time_correct" || req.type === "update") {
             const goalText = d.goalTitle ? ` <span class="bg-gray-100 px-1 rounded border text-gray-500">[${escapeHtml(d.goalTitle)}]</span>` : "";
+            const beforeStart = d.beforeStartTime || "変更なし";
+            const beforeEnd = d.beforeEndTime || "変更なし";
+            const afterStart = d.afterStartTime || "変更なし";
+            const afterEnd = d.afterEndTime || "変更なし";
+            const timeDiff = d.timeDifference || "変更なし";
+
+            const beforeTimeStr = (beforeStart === "変更なし" && beforeEnd === "変更なし") ? "変更なし" : `${beforeStart} - ${beforeEnd}`;
+            const afterTimeStr = (afterStart === "変更なし" && afterEnd === "変更なし") ? "変更なし" : `${afterStart} - ${afterEnd}`;
+
             infoHtml = `
-                <div class="text-sm font-bold text-gray-800">訂正後業務: ${escapeHtml(d.task)}${goalText}</div>
-                <div class="text-xs text-gray-500 mt-1">修正前の時間: <span class="font-mono">${d.beforeStartTime} - ${d.beforeEndTime}</span></div>
-                <div class="text-xs text-gray-600 mt-0.5">訂正後の時間: <span class="font-mono bg-blue-50 px-1.5 py-0.5 rounded text-blue-700 font-bold">${d.afterStartTime} - ${d.afterEndTime}</span></div>
-                <div class="text-xs text-gray-700 font-semibold mt-1">労働時間差異: <span class="text-orange-600 font-bold">${d.timeDifference}</span></div>
+                <div class="text-sm font-bold text-gray-800">訂正後業務: ${escapeHtml(d.task || d.taskName || "未定")} ${goalText}</div>
+                <div class="text-xs text-gray-500 mt-1">修正前の時間: <span class="font-mono">${beforeTimeStr}</span></div>
+                <div class="text-xs text-gray-600 mt-0.5">訂正後の時間: <span class="font-mono bg-blue-50 px-1.5 py-0.5 rounded text-blue-700 font-bold">${afterTimeStr}</span></div>
+                <div class="text-xs text-gray-700 font-semibold mt-1">労働時間差異: <span class="text-orange-600 font-bold">${timeDiff}</span></div>
             `;
-        } else if (req.type === "count_correct") {
+        } 
+        else if (req.type === "count_correct") {
             const goalText = d.goalTitle ? ` <span class="bg-gray-100 px-1 rounded border text-gray-500">[${escapeHtml(d.goalTitle)}]</span>` : "";
+            const timeDiff = d.timeDifference || "変更なし";
+
             infoHtml = `
-                <div class="text-sm font-bold text-gray-800">対象業務: ${escapeHtml(d.task)}${goalText}</div>
-                <div class="text-xs text-gray-600 mt-1">修正後の確定成果件数: <span class="font-bold text-indigo-700 text-sm">${d.count} 件</span></div>
-                <div class="text-xs text-gray-700 font-semibold mt-0.5">件数の増減差異: <span class="text-orange-600 font-bold">${d.timeDifference}</span></div>
+                <div class="text-sm font-bold text-gray-800">対象業務: ${escapeHtml(d.task || d.taskName || "未定")} ${goalText}</div>
+                <div class="text-xs text-gray-600 mt-1">修正後の確定成果件数: <span class="font-bold text-indigo-700 text-sm">${d.count !== undefined ? d.count : 0} 件</span></div>
+                <div class="text-xs text-gray-700 font-semibold mt-0.5">件数の増減差異: <span class="text-orange-600 font-bold">${timeDiff}</span></div>
             `;
-        } else if (req.type === "forget_checkout") {
+        } 
+        else if (req.type === "forget_checkout") {
+            const afterEnd = d.afterEndTime || d.checkoutTime || "変更なし";
+
             infoHtml = `
                 <div class="text-sm font-bold text-red-700">🚨 退勤打刻忘れの時刻補正依頼</div>
-                <div class="text-xs text-gray-600 mt-1">従業員の申告退勤時間: <span class="font-mono bg-red-50 px-1.5 py-0.5 rounded text-red-700 font-bold">${d.afterEndTime}</span></div>
+                <div class="text-xs text-gray-600 mt-1">従業員の申告退勤時間: <span class="font-mono bg-red-50 px-1.5 py-0.5 rounded text-red-700 font-bold">${afterEnd}</span></div>
                 <p class="text-[10px] text-gray-400 mt-1">※承認すると、この時間より後に記録された不要な自動延長ログは自動消去されます。</p>
             `;
         }
@@ -108,7 +127,7 @@ function renderApprovalList(docs) {
                     ${infoHtml}
                 </div>
                 
-                ${d.memo ? `<div class="text-xs text-gray-400 italic bg-gray-50 p-2 rounded-lg border border-dashed">💬 理由（自由記述）: ${escapeHtml(d.memo)}</div>` : ""}
+                ${d.memo ? `<div class="text-xs text-gray-400 italic bg-gray-50 p-2 rounded-lg border border-dashed">💬 理由記述: ${escapeHtml(d.memo)}</div>` : ""}
             </div>
             
             <div class="flex sm:flex-col gap-2 w-full sm:w-auto justify-end sm:justify-start pt-2 sm:pt-0 border-t sm:border-0 border-gray-100">
@@ -121,7 +140,6 @@ function renderApprovalList(docs) {
             </div>
         `;
         
-        // リスナーの紐付け
         card.querySelector(".approve-btn").addEventListener("click", () => handleApprove(docSnap));
         card.querySelector(".reject-req-btn").addEventListener("click", () => handleRejectRequest(docSnap));
         card.querySelector(".view-timeline-btn").addEventListener("click", () => showTimelineModal(req.userId, req.userName, req.requestDate));
@@ -130,7 +148,7 @@ function renderApprovalList(docs) {
     });
 }
 
-// ーーー 各申請タイプに応じたコア承認処理 ーーー
+// ーーー 承認処理 ーーー
 async function handleApprove(reqDoc) {
     if (!confirm("この申請を承認して、実際の勤務ログへ反映させますか？")) return;
 
@@ -140,7 +158,6 @@ async function handleApprove(reqDoc) {
     const reqRef = doc(db, "work_log_requests", reqDoc.id);
 
     try {
-        // ⏰ 時間のDate型オブジェクト変換ヘルパー
         const buildDateTime = (dateStr, timeStr) => {
             const [h, m] = timeStr.split(":");
             const dateObj = new Date(dateStr + "T00:00:00");
@@ -148,11 +165,13 @@ async function handleApprove(reqDoc) {
             return dateObj;
         };
 
-        // 1️⃣ 【記録の追加】の承認ロジック
         if (req.type === "add") {
             const newLogRef = doc(collection(db, "work_logs"));
-            const startD = buildDateTime(req.requestDate, d.afterStartTime);
-            const endD = buildDateTime(req.requestDate, d.afterEndTime);
+            const targetStartTime = d.afterStartTime || d.startTime;
+            const targetEndTime = d.afterEndTime || d.endTime;
+
+            const startD = buildDateTime(req.requestDate, targetStartTime);
+            const endD = buildDateTime(req.requestDate, targetEndTime);
             const duration = Math.max(0, (endD - startD) / 1000);
 
             batch.set(newLogRef, {
@@ -166,21 +185,19 @@ async function handleApprove(reqDoc) {
                 goalId: d.goalId || null,
                 goalTitle: d.goalTitle || null,
                 count: d.count || 0,
-                contribution: d.count || 0, // 進捗同期用
+                contribution: d.count || 0, 
                 memo: d.memo ? `${d.memo} [追加申請承認済]` : "[追加申請承認済]",
                 type: "work"
             });
 
-            // 目標進捗に成果件数を加算
             if (d.goalId && d.count > 0) {
                 await updateGoalProgress(d.task, d.goalId, d.count);
             }
         }
-        
-        // 2️⃣ 【時間・業務の訂正】の承認ロジック
-        else if (req.type === "time_correct") {
-            if (!req.targetLogId) throw new Error("対象の元ログIDが見つかりません。");
-            const logRef = doc(db, "work_logs", req.targetLogId);
+        else if (req.type === "time_correct" || req.type === "update") {
+            const targetId = req.targetLogId;
+            if (!targetId) throw new Error("対象の元ログIDが見つかりません。");
+            const logRef = doc(db, "work_logs", targetId);
             
             const startD = buildDateTime(req.requestDate, d.afterStartTime);
             const endD = buildDateTime(req.requestDate, d.afterEndTime);
@@ -196,8 +213,6 @@ async function handleApprove(reqDoc) {
                 memo: d.memo ? `${d.memo} [時間訂正承認済]` : "[時間訂正承認済]"
             });
         }
-        
-        // 3️⃣ 【工数件数の修正】の承認ロジック
         else if (req.type === "count_correct") {
             if (!req.targetLogId) throw new Error("対象の元ログIDが見つかりません。");
             const logRef = doc(db, "work_logs", req.targetLogId);
@@ -210,7 +225,6 @@ async function handleApprove(reqDoc) {
             
             const oldLog = logSnap.data();
             const oldContribution = oldLog.contribution || oldLog.count || 0;
-            // マスターに反映させる「差分（デルタ値）」を計算
             const diff = (d.count || 0) - oldContribution;
 
             batch.update(logRef, {
@@ -219,13 +233,10 @@ async function handleApprove(reqDoc) {
                 memo: d.memo ? `${d.memo} [件数修正承認済]` : "[件数修正承認済]"
             });
 
-            // 差分を進捗マスターへ安全に反映
             if (oldLog.goalId && diff !== 0) {
                 await updateGoalProgress(oldLog.task, oldLog.goalId, diff);
             }
         }
-        
-        // 4️⃣ 【退勤忘れの修正】の承認ロジック (従業員画面のロジックを完全移植)
         else if (req.type === "forget_checkout") {
             const qLogs = query(
                 collection(db, "work_logs"),
@@ -235,13 +246,13 @@ async function handleApprove(reqDoc) {
             const snapshot = await getDocs(qLogs);
 
             if (snapshot.empty) {
-                alert("エラー：該当日に勤務ログが1件も存在しないため、退勤時刻の補正ができませんでした。");
+                alert("エラー：該当日に勤務ログが存在しないため補正できません。");
                 return;
             }
 
-            const checkoutTimeObj = buildDateTime(req.requestDate, d.afterEndTime);
+            const targetCheckoutTime = d.afterEndTime || d.checkoutTime;
+            const checkoutTimeObj = buildDateTime(req.requestDate, targetCheckoutTime);
 
-            // ログを開始時刻の降順（新しい順）に並び替える
             const logsForDay = snapshot.docs
                 .map(doc => ({ id: doc.id, ...doc.data() }))
                 .sort((a, b) => {
@@ -250,21 +261,19 @@ async function handleApprove(reqDoc) {
                     return tB - tA;
                 });
 
-            // 指定された退勤時刻より「前」に開始された、その日の最後の有効ログを検出
             const lastLogToUpdate = logsForDay.find(log => {
                 const sDate = log.startTime?.toDate ? log.startTime.toDate() : new Date(log.startTime);
                 return sDate < checkoutTimeObj;
             });
 
             if (!lastLogToUpdate) {
-                alert("エラー：申告された退勤時刻よりも前に開始された有効なログがありません。時間を再確認してください。");
+                alert("エラー：申告された退勤時刻よりも前に開始された有効なログがありません。");
                 return;
             }
 
             const lastLogStart = lastLogToUpdate.startTime?.toDate ? lastLogToUpdate.startTime.toDate() : new Date(lastLogToUpdate.startTime);
             const newDuration = Math.max(0, Math.floor((checkoutTimeObj - lastLogStart) / 1000));
             
-            // 最後の有効ログの終了時間を上書き補正
             const targetLogRef = doc(db, "work_logs", lastLogToUpdate.id);
             batch.update(targetLogRef, {
                 endTime: checkoutTimeObj,
@@ -272,7 +281,6 @@ async function handleApprove(reqDoc) {
                 memo: d.memo ? `${d.memo} [退勤忘れ修正承認済]` : "[退勤忘れ修正承認済]"
             });
 
-            // そのログより後に発生してしまった、深夜の自動延長などの不要なゾンビログを一括全消去
             logsForDay.forEach(log => {
                 const sTime = log.startTime?.toMillis ? log.startTime.toMillis() : new Date(log.startTime).getTime();
                 const lastTime = lastLogToUpdate.startTime?.toMillis ? lastLogToUpdate.startTime.toMillis() : new Date(lastLogToUpdate.startTime).getTime();
@@ -281,12 +289,11 @@ async function handleApprove(reqDoc) {
                 }
             });
 
-            // 該当ユーザーのステータスに紐づく「退勤忘れ警告フラグ」を完全解除
             const statusRef = doc(db, "work_status", req.userId);
             batch.update(statusRef, { needsCheckoutCorrection: false });
         }
 
-        // 5️⃣ 【要件の反映】承認完了時に「ステータス」「承認者ログ」をオブジェクトに追記
+        // 承認完了ログをメタデータに上書き追記
         batch.update(reqRef, {
             status: "approved",
             approverId: currentAdminId,
@@ -303,27 +310,28 @@ async function handleApprove(reqDoc) {
     }
 }
 
-// ーーー 申請の却下（削除）処理 ーーー
+// ーーー 【機能改修】申請の却下処理 ーーー
+// データをdeleteDocするのではなく、「却下(rejected)」に更新して誰が・いつ対応したかのログを残します
 async function handleRejectRequest(reqDoc) {
-    if (!confirm("この申請を却下（削除）しますか？\nこの操作を実行するとユーザーの申請一覧からも消去されます。")) return;
+    if (!confirm("この申請を却下しますか？")) return;
 
     const reqRef = doc(db, "work_log_requests", reqDoc.id);
     try {
-        // 要件に合わせて、削除ではなく「status: rejected」にアップデートして承認者ログを残す運用にアジャスト
+        // 要件通りにログを残すため、statusを「rejected」に更新し、承認者メタデータを追記
         await updateDoc(reqRef, {
             status: "rejected",
             approverId: currentAdminId,
             approverName: currentAdminName,
             approvedAt: new Date().toISOString()
         });
-        alert("申請を却下しました。");
+        alert("申請を却下しました。申請履歴にログが保持されます。");
     } catch (error) {
         console.error("Reject error:", error);
         alert("却下処理中にエラーが発生しました。");
     }
 }
 
-// ーーー 進捗小項目の数値を安全に更新するトランザクションヘルパー ーーー
+// ーーー 進捗小項目の数値を安全に更新するヘルパー ーーー
 async function updateGoalProgress(taskName, goalId, diff) {
     if (!allTaskObjects) return;
     
@@ -334,7 +342,6 @@ async function updateGoalProgress(taskName, goalId, diff) {
     const goalIdx = updatedTasks[taskIdx].goals.findIndex(g => g.id === goalId || g.title === goalId);
     if (goalIdx === -1) return;
 
-    // 現在の件数に差分を足し引き（0未満にはならないようガード）
     updatedTasks[taskIdx].goals[goalIdx].current = Math.max(0, (updatedTasks[taskIdx].goals[goalIdx].current || 0) + diff);
 
     try {
@@ -345,7 +352,7 @@ async function updateGoalProgress(taskName, goalId, diff) {
     }
 }
 
-// ーーー タイムライン確認モーダルの展開表示 (変更なし・最適化維持) ーーー
+// ーーー タイムライン確認モーダルの展開表示 ーーー
 async function showTimelineModal(targetUserId, targetUserName, dateStr) {
     const existing = document.getElementById("approval-timeline-modal");
     if (existing) existing.remove();
@@ -381,7 +388,7 @@ async function showTimelineModal(targetUserId, targetUserName, dateStr) {
         const snapshot = await getDocs(q);
         
         if (snapshot.empty) {
-            contentEl.innerHTML = `<p class="text-center text-gray-400 py-4 text-xs">この日の業務記録はありません。</p>`;
+            contentEl.innerHTML = `<p class="text-center text-gray-500 py-4 text-xs">この日の業務記録はありません。</p>';
             return;
         }
 

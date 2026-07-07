@@ -34,7 +34,8 @@ export function renderTimeCorrectFormHTML(defaultDate) {
             <input type="hidden" id="req-correct-log-id" value="">
             <input type="hidden" id="req-correct-before-start" value="">
             <input type="hidden" id="req-correct-before-end" value="">
-            <input type="hidden" id="req-correct-before-task" value=""> <div>
+            <input type="hidden" id="req-correct-before-task" value=""> 
+            <input type="hidden" id="req-correct-before-goal-title" value=""> <div>
                 <label class="block text-sm font-bold text-gray-700">変更したい業務のプルダウン</label>
                 <select id="req-correct-task-select" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" disabled>
                     <option value="">業務を選択...</option>
@@ -196,10 +197,11 @@ async function fetchAndRenderTimeline(dateStr) {
 
                 document.getElementById("req-correct-log-id").value = log.id;
                 
-                // 【追加】クリックされた元の稼働時間と業務名を隠しインプットへ一時保存
+                // 【追加】クリックされた元の稼働時間・業務名・工数名を隠しインプットへ一時保存
                 document.getElementById("req-correct-before-start").value = log.startTimeStr;
                 document.getElementById("req-correct-before-end").value = log.endTimeStr;
-                document.getElementById("req-correct-before-task").value = log.task; // ★ここを追加
+                document.getElementById("req-correct-before-task").value = log.task; 
+                document.getElementById("req-correct-before-goal-title").value = log.goalTitle || ""; // ★工数タイトルを一時保存
 
                 if (taskSelect) taskSelect.value = log.task;
                 if (startTimeInput) startTimeInput.value = log.startTimeStr;
@@ -220,13 +222,13 @@ async function fetchAndRenderTimeline(dateStr) {
 }
 
 function resetCorrectionInputs() {
-    // 【拡張】フィールドリストに before-task を追加
-    const fields = ["req-correct-log-id", "req-correct-before-start", "req-correct-before-end", "req-correct-before-task", "req-correct-task-select", "req-correct-goal-select", "req-correct-start-time", "req-correct-end-time", "req-correct-memo"];
+    // フィールドリストに before-goal-title を追加
+    const fields = ["req-correct-log-id", "req-correct-before-start", "req-correct-before-end", "req-correct-before-task", "req-correct-before-goal-title", "req-correct-task-select", "req-correct-goal-select", "req-correct-start-time", "req-correct-end-time", "req-correct-memo"];
     fields.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
             el.value = "";
-            if (id !== "req-correct-log-id" && id !== "req-correct-before-start" && id !== "req-correct-before-end" && id !== "req-correct-before-task") el.disabled = true; // ★修正
+            if (id !== "req-correct-log-id" && id !== "req-correct-before-start" && id !== "req-correct-before-end" && id !== "req-correct-before-task" && id !== "req-correct-before-goal-title") el.disabled = true; 
         }
     });
     const container = document.getElementById("req-correct-goal-container");
@@ -238,7 +240,8 @@ export function getTimeCorrectFormData() {
     const targetLogId = document.getElementById("req-correct-log-id").value;
     const beforeStart = document.getElementById("req-correct-before-start").value;
     const beforeEnd = document.getElementById("req-correct-before-end").value;
-    const beforeTask = document.getElementById("req-correct-before-task").value; // ★ここを追加
+    const beforeTask = document.getElementById("req-correct-before-task").value; 
+    const beforeGoalTitle = document.getElementById("req-correct-before-goal-title").value; // ★隠しインプットから抽出
     const dateVal = document.getElementById("req-correct-date").value;
     const taskName = document.getElementById("req-correct-task-select").value;
     const startTime = document.getElementById("req-correct-start-time").value;
@@ -248,7 +251,7 @@ export function getTimeCorrectFormData() {
     const goalSelect = document.getElementById("req-correct-goal-select");
     const goalContainer = document.getElementById("req-correct-goal-container");
 
-    if (!targetLogId) throw new Error("エラー：修正したい当日のログをタイムライン履歴から選択してください。");
+    if (!targetLogId) throw new Error("エラー：修正したい当当日ログをタイムライン履歴から選択してください。");
     if (!taskName || !startTime || !endTime) throw new Error("エラー：業務、開始時間、終了時間は必須入力です。");
     if (startTime >= endTime) throw new Error("エラー：終了時間は開始時間より後の時刻にしてください。");
 
@@ -285,7 +288,8 @@ export function getTimeCorrectFormData() {
         data: {
             applicationType: "変更",
             reasonCategory: "時間・業務の訂正",
-            beforeTask: beforeTask, // ★ここを追加（承認画面に引き渡すデータを拡張）
+            beforeTask: beforeTask, 
+            beforeGoalTitle: beforeGoalTitle, // ★送信データに「変更前の工数」を含める
             task: taskName,
             goalId: goalId,
             goalTitle: goalTitle,

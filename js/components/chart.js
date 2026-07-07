@@ -114,11 +114,14 @@ export async function createPieChart(ctx, data, colorMap, showLegend = true) {
     }
 }
 
-export function createLineChart(ctx, labels, datasets, titleText = "グラフ", yAxisTitle = "値") {
+export async function createLineChart(ctx, labels, datasets, titleText = "グラフ", yAxisTitle = "値") {
     if (!ctx || !Array.isArray(labels) || !Array.isArray(datasets)) {
         console.error("Invalid arguments provided to createLineChart.");
         return null;
     }
+
+    // ★追加
+    await ensureChartLibrariesLoaded();
 
     if (datasets.length === 0 || datasets.every(ds => ds.data.length === 0)) {
          ctx.font = "16px sans-serif";
@@ -208,8 +211,11 @@ function generateRandomColor() {
 }
 
 // ★追加部分
-export function renderChart(canvas, labels, dataPoints, title) {
+export async function renderChart(canvas, labels, dataPoints, title) {
     if (!canvas) return;
+    
+    // ★追加
+    await ensureChartLibrariesLoaded();
     const ctx = canvas.getContext('2d');
     
     const backgroundColors = labels.map(() => generateRandomColor());

@@ -114,8 +114,8 @@ export async function createPieChart(ctx, data, colorMap, showLegend = true) {
     }
 }
 
-// ★ targetLegendLabel を第6引数に追加
-export async function createLineChart(ctx, labels, datasets, titleText = "グラフ", yAxisTitle = "値", targetLegendLabel = null) {
+// ★ 第7引数に interactionMode = 'index' を追加
+export async function createLineChart(ctx, labels, datasets, titleText = "グラフ", yAxisTitle = "値", targetLegendLabel = null, interactionMode = 'index') {
     if (!ctx || !Array.isArray(labels) || !Array.isArray(datasets)) {
         console.error("Invalid arguments provided to createLineChart.");
         return null;
@@ -140,9 +140,10 @@ export async function createLineChart(ctx, labels, datasets, titleText = "グラ
             options: {
                 responsive: true,
                 maintainAspectRatio: false, 
+                // ★修正: 引数によってマウスオーバーの判定モードを動的に変更する
                 interaction: { 
-                    mode: 'index', // ★これによりマウスオーバー時にその日の全員分がポップアップ表示されます
-                    intersect: false,
+                    mode: interactionMode, 
+                    intersect: interactionMode === 'index' ? false : true, // nearest等の時は線上でのみ反応させる
                 },
                 plugins: {
                     legend: {
@@ -150,7 +151,6 @@ export async function createLineChart(ctx, labels, datasets, titleText = "グラ
                         labels: {
                              boxWidth: 12,
                              padding: 15,
-                             // ★追加: 自分の名前（targetLegendLabel）に一致する凡例だけを表示させるフィルター
                              filter: function(legendItem, chartData) {
                                  if (!targetLegendLabel) return true;
                                  return legendItem.text === targetLegendLabel;

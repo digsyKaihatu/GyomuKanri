@@ -114,13 +114,13 @@ export async function createPieChart(ctx, data, colorMap, showLegend = true) {
     }
 }
 
-export async function createLineChart(ctx, labels, datasets, titleText = "グラフ", yAxisTitle = "値") {
+// ★ targetLegendLabel を第6引数に追加
+export async function createLineChart(ctx, labels, datasets, titleText = "グラフ", yAxisTitle = "値", targetLegendLabel = null) {
     if (!ctx || !Array.isArray(labels) || !Array.isArray(datasets)) {
         console.error("Invalid arguments provided to createLineChart.");
         return null;
     }
 
-    // ★追加
     await ensureChartLibrariesLoaded();
 
     if (datasets.length === 0 || datasets.every(ds => ds.data.length === 0)) {
@@ -129,7 +129,6 @@ export async function createLineChart(ctx, labels, datasets, titleText = "グラ
          ctx.fillText("データがありません", ctx.canvas.width / 2, ctx.canvas.height / 2);
          return null;
     }
-
 
     try {
         const chart = new Chart(ctx, {
@@ -142,7 +141,7 @@ export async function createLineChart(ctx, labels, datasets, titleText = "グラ
                 responsive: true,
                 maintainAspectRatio: false, 
                 interaction: { 
-                    mode: 'index', // Use 'index' mode for tooltip
+                    mode: 'index', // ★これによりマウスオーバー時にその日の全員分がポップアップ表示されます
                     intersect: false,
                 },
                 plugins: {
@@ -150,7 +149,12 @@ export async function createLineChart(ctx, labels, datasets, titleText = "グラ
                         position: 'top', 
                         labels: {
                              boxWidth: 12,
-                             padding: 15
+                             padding: 15,
+                             // ★追加: 自分の名前（targetLegendLabel）に一致する凡例だけを表示させるフィルター
+                             filter: function(legendItem, chartData) {
+                                 if (!targetLegendLabel) return true;
+                                 return legendItem.text === targetLegendLabel;
+                             }
                         }
                     },
                     title: {

@@ -74,29 +74,33 @@ async function renderClientProgressChart(taskName, finalGoalId) {
             dateList.forEach(d => userMap[userId].counts[d] = 0);
         }
 
-        // ★追加: ユーザーごとに Chart.js 用の dataset を生成する
+        // ユーザーごとに Chart.js 用の dataset を生成する
         const datasets = Object.keys(userMap).map((uId, index) => {
             const userData = userMap[uId];
             const isMe = (uId === userId);
 
-            // 自分の線は鮮やかな青、他の人は識別しやすいように自動計算されたHSLカラーを割り当て
             let color;
             if (isMe) {
-                color = "rgb(59, 130, 246)"; // 自分のメインカラー
+                color = "rgb(59, 130, 246)"; // 自分のメインカラー（青）
             } else {
-                const hue = (index * 137.508) % 360; // 被りにくい綺麗な発色をさせるゴールデンアングル数式
-                color = `hsl(${hue}, 60%, 65%)`; // 他のメンバーのカラー
+                // ★修正: 自分の色（青系: HSLの色相170〜260）と被りそうな場合は、数値をシフトして排除する
+                let hue = (index * 137.508) % 360;
+                if (hue >= 170 && hue <= 260) {
+                    hue = (hue + 100) % 360; // 青・水色・紫系を綺麗に避けて、黄色や緑・オレンジ系に変調
+                }
+                color = `hsl(${hue}, 65%, 55%)`; 
             }
 
             return {
-                label: userData.name, // マウスオーバー時（ツールチップ）にこの名前が出ます
+                label: userData.name, 
                 data: dateList.map(d => userData.counts[d]),
                 borderColor: color,
                 backgroundColor: isMe ? "rgba(59, 130, 246, 0.08)" : "transparent",
                 tension: 0.2,
-                fill: isMe, // 自分だけ線の下側を薄く塗りつぶして目立たせる
-                borderWidth: isMe ? 3 : 1.5, // 自分の線を少し太く
-                pointRadius: isMe ? 4 : 2   // 自分のプロット点を少し大きく
+                fill: isMe, 
+                borderWidth: isMe ? 3 : 1.5, // 自分を太く
+                pointRadius: isMe ? 4 : 2,   // 自分の点を大きく
+                hoverRadius: isMe ? 6 : 4    // マウスが乗った時さらに強調
             };
         });
 
@@ -110,8 +114,8 @@ async function renderClientProgressChart(taskName, finalGoalId) {
         
         const titleText = "チーム全体の週間進捗グラフ";
         
-        // ★修正: 第6引数に「userName (自分の名前)」を渡すことで、凡例フィルターを適用させる
-        clientLineChartInstance = await createLineChart(ctx, labels, datasets, titleText, "件数", userName);
+        // ★修正: 第7引数に 'nearest' を指定することで、「今マウスが乗っている折れ線（その人）の説明だけ」をポップアップさせる
+        clientLineChartInstance = await createLineChart(ctx, labels, datasets, titleText, "件数", userName, 'nearest');
 
     } catch (error) {
         console.error("Error rendering client progress chart:", error);

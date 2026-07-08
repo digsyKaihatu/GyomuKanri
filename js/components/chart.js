@@ -157,6 +157,30 @@ export async function createLineChart(ctx, labels, datasets, titleText = "グラ
                              }
                         }
                     },
+                    // ★追加・修正: ツールチップ（マウスオーバー時の説明窓）のカスタマイズ
+                    tooltip: {
+                        enabled: true,
+                        padding: 6,         // 窓の内側の余白を狭くしてコンパクトに
+                        bodySpacing: 3,     // 行間を詰める
+                        titleFont: { size: 11, weight: 'bold' }, // 日付の文字サイズ
+                        bodyFont: { size: 11 },                  // 名前の文字サイズ
+                        boxWidth: 8,        // カラーボックスのサイズを縮小
+                        boxHeight: 8,
+                        
+                        // ★重要: 表示するデータを絞り込むフィルターロジック
+                        filter: function(tooltipItem) {
+                            const value = tooltipItem.raw; // その日の件数
+                            const datasetLabel = tooltipItem.dataset.label; // メンバー名
+                            
+                            // 1. 自分自身のデータであれば、0件であっても必ず表示する
+                            if (targetLegendLabel && datasetLabel === targetLegendLabel) {
+                                return true;
+                            }
+                            
+                            // 2. 他のメンバーは、1件以上書き込みがある（0より大きい）場合のみ表示する
+                            return value > 0;
+                        }
+                    },
                     title: {
                         display: true, 
                         text: titleText, 

@@ -23,65 +23,95 @@ function getLast7Days() {
     return dates;
 }
 
-// ★追加: ログイン中ユーザーの直近の進捗データを取得してチャートを描画する関数
 async function renderClientProgressChart(taskName, finalGoalId) {
     const wrapper = document.getElementById("client-chart-wrapper");
     const canvas = document.getElementById("client-progress-chart");
     if (!wrapper || !canvas) return;
 
-    // すでに古いチャートが描画されている場合は破棄する（必須処理）
     if (clientLineChartInstance) {
         destroyCharts([clientLineChartInstance]);
         clientLineChartInstance = null;
     }
 
     try {
-        // ログイン中のユーザーかつ、選択中の工数(goalId)のログを取得
+        // ★修正: where("userId", "==", userId) を削除し、この工数に「入った人全員」のログを取得
         const q = query(
             collection(db, "work_logs"),
-            where("userId", "==", userId),
             where("goalId", "==", finalGoalId)
         );
         const snapshot = await getDocs(q);
 
         const dateList = getLast7Days();
-        const dateCounts = {};
-        dateList.forEach(d => dateCounts[d] = 0); // 初期化
+        
+        // ★追加: ユーザーごとの集計用オブジェクトを作成
+        const userMap = {};
 
-        let totalContribution = 0;
         snapshot.forEach(docSnap => {
             const data = docSnap.data();
-            // 直近7日間の範囲内の日付であれば集計に加算
-            if (dateCounts[data.date] !== undefined) {
-                dateCounts[data.date] += (data.contribution || 0);
-                totalContribution += (data.contribution || 0);
+            // 直近7日間の範囲内の日付であれば集計対象にする
+            if (dateList.includes(data.date)) {
+                const uId = data.userId || "unknown";
+                const uName = data.userName || "不明なユーザー";
+
+                if (!userMap[uId]) {
+                    userMap[uId] = {
+                        name: uName,
+                        counts: {}
+                    };
+                    // 7日間分を0件で初期化
+                    dateList.forEach(d => userMap[uId].counts[d] = 0);
+                }
+                userMap[uId].counts[data.date] += (data.contribution || 0);
             }
         });
 
-        // Chart.js 向けのデータ構造へ整形
-        const chartDataPoints = dateList.map(d => dateCounts[d]);
-        const labels = dateList.map(d => {
-            const parts = d.split('-');
-            return `${parseInt(parts[1], 10)}/${parseInt(parts[2], 10)}`; // 例: '07-08' -> '7/8'
+        // ★追加: 自分がまだ1件も書き込んでいなくても、グラフ上に自分の線（0件の線）が必ず出るように保証
+        if (!userMap[userId]) {
+            userMap[userId] = {
+                name: userName,
+                counts: {}
+            };
+            dateList.forEach(d => userMap[userId].counts[d] = 0);
+        }
+
+        // ★追加: ユーザーごとに Chart.js 用の dataset を生成する
+        const datasets = Object.keys(userMap).map((uId, index) => {
+            const userData = userMap[uId];
+            const isMe = (uId === userId);
+
+            // 自分の線は鮮やかな青、他の人は識別しやすいように自動計算されたHSLカラーを割り当て
+            let color;
+            if (isMe) {
+                color = "rgb(59, 130, 246)"; // 自分のメインカラー
+            } else {
+                const hue = (index * 137.508) % 360; // 被りにくい綺麗な発色をさせるゴールデンアングル数式
+                color = `hsl(${hue}, 60%, 65%)`; // 他のメンバーのカラー
+            }
+
+            return {
+                label: userData.name, // マウスオーバー時（ツールチップ）にこの名前が出ます
+                data: dateList.map(d => userData.counts[d]),
+                borderColor: color,
+                backgroundColor: isMe ? "rgba(59, 130, 246, 0.08)" : "transparent",
+                tension: 0.2,
+                fill: isMe, // 自分だけ線の下側を薄く塗りつぶして目立たせる
+                borderWidth: isMe ? 3 : 1.5, // 自分の線を少し太く
+                pointRadius: isMe ? 4 : 2   // 自分のプロット点を少し大きく
+            };
         });
 
-        const datasets = [{
-            label: `${userName}さんの入力件数`, // ★凡例に名前と件数を紐付け
-            data: chartDataPoints,
-            borderColor: "rgb(59, 130, 246)", // Tailwindの blue-500 相当
-            backgroundColor: "rgba(59, 130, 246, 0.1)",
-            tension: 0.2,
-            fill: true
-        }];
+        const labels = dateList.map(d => {
+            const parts = d.split('-');
+            return `${parseInt(parts[1], 10)}/${parseInt(parts[2], 10)}`; 
+        });
 
-        // チャートエリアを表示して描画を実行
         wrapper.classList.remove("hidden");
         const ctx = canvas.getContext("2d");
         
-        // ★チャート上のタイトルに「名前」と「直近何件書き込んだか」の合計数を記載
-        const titleText = `${userName}さん (直近7日間の合計: ${totalContribution}件)`;
+        const titleText = "チーム全体の週間進捗グラフ";
         
-        clientLineChartInstance = await createLineChart(ctx, labels, datasets, titleText, "件数");
+        // ★修正: 第6引数に「userName (自分の名前)」を渡すことで、凡例フィルターを適用させる
+        clientLineChartInstance = await createLineChart(ctx, labels, datasets, titleText, "件数", userName);
 
     } catch (error) {
         console.error("Error rendering client progress chart:", error);

@@ -140,13 +140,21 @@ export function escapeHtml(unsafe) {
 export function linkify(escapedText) {
     if (!escapedText) return "";
     
-    // 1. 先に画像URL（Google Chat添付や通常の画像拡張子）を前後の改行コードごと検知して置換
-    // URLの中に content_type=image または 末尾(クエリ前)に画像拡張子を含むURLを、前後の改行(\n)1つずつ巻き込んでキャッチします
+    // 0. 【自動修復】チャットツール等からのコピペで途中にスペースや改行が挟まって
+    //    分割されてしまった長いURLトークンを、正規表現で自動的に検知して結合します。
+    let healedText = escapedText;
+    const healRegex = /(https?:\/\/[^\s<>#"]+)[\s\n]+([a-zA-Z0-9%=\?&\-\+_\/;]{15,})/gi;
+    
+    let previousText;
+    do {
+        previousText = healedText;
+        healedText = healedText.replace(healRegex, "$1$2");
+    } while (healedText !== previousText); // 複数回分割されているケースを考慮して完全に結合するまでループ
+    
+    // 1. 画像URL（Google Chat添付や通常の画像拡張子）を前後の改行コードごと検知して置換
     const imageUrlRegex = /\n?(https?:\/\/[^\s\n<>"]*(?:content_type=image|\.(?:jpeg|jpg|gif|png|webp|svg))[^\s\n<>"]*)\n?/gi;
     
-    let processedText = escapedText.replace(imageUrlRegex, (match, url) => {
-        // テンプレートリテラル内の改行やインデントを完全に無くし、1行のコンパクトな文字列として返します
-        // これにより whitespace-pre-wrap による予期せぬ余白や、前後の改行による空行の発生を防ぎます
+    let processedText = healedText.replace(imageUrlRegex, (match, url) => {
         return `<div class="my-2 flex justify-center"><img src="${url}" alt="貼り付けられた画像" class="max-w-full sm:max-w-xs md:max-w-md h-auto rounded-lg shadow-md border border-gray-200" onerror="this.style.display='none';"/></div>`;
     });
 

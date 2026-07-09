@@ -150,21 +150,27 @@ export function linkify(escapedText) {
         healedText = healedText.replace(healRegex, "$1$2");
     } while (healedText !== previousText);
     
-    // 1. 【修正】画像URL、およびチャットツールのルーム/スペース由来のURLも画像として検知
-    // chat.google.com/room/... などのパターンや、通常の画像拡張子・content_typeに対応
-    const imageUrlRegex = /\n?(https?:\/\/[^\s\n<>"]*(?:content_type=image|\.(?:jpeg|jpg|gif|png|webp|svg)|chat\.google\.com\/(?:room|space))[^\s\n<>"]*)\n?/gi;
-    
-    let processedText = healedText.replace(imageUrlRegex, (match, url) => {
-        return `<div class="my-2 flex justify-center"><img src="${url}" alt="貼り付けられた画像" class="max-w-full sm:max-w-xs md:max-w-md h-auto rounded-lg shadow-md border border-gray-200" onerror="this.style.display='none';"/></div>`;
+    // 1. 【修正】URLの「直前にある改行（\n*）」も一緒にキャプチャするように変更
+    const urlRegex = /(\n*)(https?:\/\/[^\s\n<>"]+)/g;
+    let processedText = healedText.replace(urlRegex, (match, beforeLines, url) => {
+        
+        // パターン1: 通常の画像拡張子（.png, .jpg など）で終わるURL
+        const hasImageExtension = /\.(jpeg|jpg|gif|png|webp|svg)(\?.*)?$/i.test(url);
+        
+        // パターン2: Google Chat等の添付URL
+        const isImageContentType = /content_type=image/i.test(url);
+        
+        // どちらかの条件を満たしていれば画像として処理
+        if (hasImageExtension || isImageContentType) {
+            // 【ポイント】beforeLines をあえて付加せず、改行をリセットします
+            return `<div class="my-2 flex justify-center"><img src="${url}" alt="貼り付けられた画像" class="max-w-full sm:max-w-xs md:max-w-md h-auto rounded-lg shadow-md border border-gray-200" onerror="this.style.display='none';"/></div>`;
+        }
+        
+        // 通常のURL（画像ではないリンク）は、キャプチャした改行（beforeLines）を頭に戻してテキストリンク化
+        return `${beforeLines}<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline break-all">${url}</a>`;
     });
 
-    // 2. 通常のURL（画像ではないリンク）をそのままテキストリンク化（変更なし）
-    const normalUrlRegex = /(https?:\/\/[^\s\n<>"]+)/g;
-    processedText = processedText.replace(normalUrlRegex, (url) => {
-        return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline break-all">${url}</a>`;
-    });
-
-    // 3. #（文字）# を装飾（変更なし）
+    // 2. 次に #（文字）# を検知して Tailwind CSS で赤文字＆少し大きく＆太字に変換（変更なし）
     const decorRegex = /#([^#\n]+)#/g;
     processedText = processedText.replace(decorRegex, (match, p1) => {
         return `<span class="text-red-600 text-base font-bold">${p1}</span>`;

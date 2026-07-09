@@ -134,7 +134,7 @@ export function escapeHtml(unsafe) {
 
 /**
  * テキスト内のURLをリンクに変換し、さらに #文字# を赤色で少し大きく装飾する関数
- * 画像URLやチャットツールの画像添付URLの場合は <img> タグも一緒に生成して表示します。
+ * 画像URLやチャットツールの画像添付URLの場合は <img> タグのみを生成して表示します（テキストリンクは隠します）。
  * ※セキュリティのため、必ず先に escapeHtml を通した文字列を渡してください。
  */
 export function linkify(escapedText) {
@@ -151,15 +151,14 @@ export function linkify(escapedText) {
         
         // どちらかの条件を満たしていれば画像として処理
         if (hasImageExtension || isImageContentType) {
-            // 画像の場合は、画像要素とクリック用の縮小リンクをセットで返す
+            // 長いテキストリンクを非表示にし、画像（<img>）の要素のみを返すように修正
             return `
-                <div class="my-2 space-y-1">
+                <div class="my-2">
                     <img src="${url}" alt="貼り付けられた画像" class="max-w-full sm:max-w-xs md:max-w-md h-auto rounded-lg shadow-md border border-gray-200" onerror="this.style.display='none';"/>
-                    <a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline break-all text-xs block">${url}</a>
                 </div>`;
         }
         
-        // 通常のURLはそのままリンク化
+        // 通常のURL（画像ではないリンク）はそのままテキストリンク化
         return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline break-all">${url}</a>`;
     });
 

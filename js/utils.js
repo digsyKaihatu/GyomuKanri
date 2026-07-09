@@ -140,8 +140,7 @@ export function escapeHtml(unsafe) {
 export function linkify(escapedText) {
     if (!escapedText) return "";
     
-    // 0. 【自動修復】チャットツール等からのコピペで途中にスペースや改行が挟まって
-    //    分割されてしまった長いURLトークンを、正規表現で自動的に検知して結合します。
+    // 0. 【自動修復】（変更なし）
     let healedText = escapedText;
     const healRegex = /(https?:\/\/[^\s<>#"]+)[\s\n]+([a-zA-Z0-9%=\?&\-\+_\/;]{15,})/gi;
     
@@ -149,22 +148,23 @@ export function linkify(escapedText) {
     do {
         previousText = healedText;
         healedText = healedText.replace(healRegex, "$1$2");
-    } while (healedText !== previousText); // 複数回分割されているケースを考慮して完全に結合するまでループ
+    } while (healedText !== previousText);
     
-    // 1. 画像URL（Google Chat添付や通常の画像拡張子）を前後の改行コードごと検知して置換
-    const imageUrlRegex = /\n?(https?:\/\/[^\s\n<>"]*(?:content_type=image|\.(?:jpeg|jpg|gif|png|webp|svg))[^\s\n<>"]*)\n?/gi;
+    // 1. 【修正】画像URL、およびチャットツールのルーム/スペース由来のURLも画像として検知
+    // chat.google.com/room/... などのパターンや、通常の画像拡張子・content_typeに対応
+    const imageUrlRegex = /\n?(https?:\/\/[^\s\n<>"]*(?:content_type=image|\.(?:jpeg|jpg|gif|png|webp|svg)|chat\.google\.com\/(?:room|space))[^\s\n<>"]*)\n?/gi;
     
     let processedText = healedText.replace(imageUrlRegex, (match, url) => {
         return `<div class="my-2 flex justify-center"><img src="${url}" alt="貼り付けられた画像" class="max-w-full sm:max-w-xs md:max-w-md h-auto rounded-lg shadow-md border border-gray-200" onerror="this.style.display='none';"/></div>`;
     });
 
-    // 2. 次に、残った通常のURL（画像ではないリンク）をそのままテキストリンク化
+    // 2. 通常のURL（画像ではないリンク）をそのままテキストリンク化（変更なし）
     const normalUrlRegex = /(https?:\/\/[^\s\n<>"]+)/g;
     processedText = processedText.replace(normalUrlRegex, (url) => {
         return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline break-all">${url}</a>`;
     });
 
-    // 3. 最後に #（文字）# を検知して Tailwind CSS で赤文字＆少し大きく＆太字に変換
+    // 3. #（文字）# を装飾（変更なし）
     const decorRegex = /#([^#\n]+)#/g;
     processedText = processedText.replace(decorRegex, (match, p1) => {
         return `<span class="text-red-600 text-base font-bold">${p1}</span>`;

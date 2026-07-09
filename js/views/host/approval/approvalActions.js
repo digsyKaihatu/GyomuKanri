@@ -6,7 +6,6 @@ export async function handleApprove(reqDoc) {
     if (!confirm("この申請を承認して、実際の勤務ログへ反映させますか？")) return;
 
     try {
-        // 1. Workerのエンドポイントに対して、申請IDと管理者情報をPOSTする
         const response = await fetch(`${WORKER_URL}/approve-request`, {
             method: "POST",
             headers: {
@@ -22,19 +21,20 @@ export async function handleApprove(reqDoc) {
         const result = await response.json();
 
         if (!response.ok) {
-            throw new Error(result.message || "サーバー側での承認処理に失敗しました。");
+            // ✨ Workersから返ってきた具体的なエラー詳細(result.error)を表示するように改善
+            const errorMsg = result.error || result.message || "サーバー側での承認処理に失敗しました。";
+            throw new Error(`${errorMsg}\n\n[詳細スタック]: ${result.stack || 'なし'}`);
         }
 
         alert("申請を承認し、勤務記録への書き込みを完了しました。");
         
-        // 💡必要に応じて、フロント側の画面（リスト）を再読み込み・更新する関数をここに呼ぶ
         if (typeof window.refreshApprovalList === "function") {
             window.refreshApprovalList();
         }
 
     } catch (error) {
         console.error("Approval error:", error);
-        alert(`承認処理中にエラーが発生しました: ${error.message}`);
+        alert(`承認処理中にエラーが発生しました:\n${error.message}`);
     }
 }
 

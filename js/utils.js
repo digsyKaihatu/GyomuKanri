@@ -134,14 +134,29 @@ export function escapeHtml(unsafe) {
 
 /**
  * テキスト内のURLをリンクに変換し、さらに #文字# を赤色で少し大きく装飾する関数
+ * 画像URLの場合は <img> タグも一緒に生成して表示します。
  * ※セキュリティのため、必ず先に escapeHtml を通した文字列を渡してください。
  */
 export function linkify(escapedText) {
     if (!escapedText) return "";
     
-    // 1. まずURLを検知して <a> タグに変換
+    // 1. まずURLを検知して <a> または <img> タグに変換
     const urlRegex = /(https?:\/\/[^\s\n<>"]+)/g;
     let processedText = escapedText.replace(urlRegex, (url) => {
+        // 画像の拡張子（jpg, jpeg, png, gif, webp, svg）をチェック (後ろのクエリパラメータも考慮)
+        const isImage = /\.(jpeg|jpg|gif|png|webp|svg)(\?.*)?$/i.test(url);
+        
+        if (isImage) {
+            // 画像の場合は、画像要素とクリック用の縮小リンクをセットで返す
+            // onerror を入れておくことで、万が一読み込みに失敗した際も枠が崩れないようにしています
+            return `
+                <div class="my-2 space-y-1">
+                    <img src="${url}" alt="貼り付けられた画像" class="max-w-full sm:max-w-xs md:max-w-md h-auto rounded-lg shadow-md border border-gray-200" onerror="this.style.display='none';"/>
+                    <a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline break-all text-xs block">${url}</a>
+                </div>`;
+        }
+        
+        // 通常のURLはそのままリンク化
         return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline break-all">${url}</a>`;
     });
 

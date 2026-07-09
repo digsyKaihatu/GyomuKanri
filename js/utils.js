@@ -140,29 +140,23 @@ export function escapeHtml(unsafe) {
 export function linkify(escapedText) {
     if (!escapedText) return "";
     
-    // 1. まずURLを検知して <a> または <img> タグに変換
-    const urlRegex = /(https?:\/\/[^\s\n<>"]+)/g;
-    let processedText = escapedText.replace(urlRegex, (url) => {
-        // パターン1: 通常の画像拡張子（.png, .jpg など）で終わるURL
-        const hasImageExtension = /\.(jpeg|jpg|gif|png|webp|svg)(\?.*)?$/i.test(url);
-        
-        // パターン2: Google Chat等の添付URL（URL内に content_type=image が含まれる場合）
-        const isImageContentType = /content_type=image/i.test(url);
-        
-        // どちらかの条件を満たしていれば画像として処理
-        if (hasImageExtension || isImageContentType) {
-            // flex justify-center を追加して、画像を横方向の中央に配置します
-            return `
-                <div class="my-2 flex justify-center">
-                    <img src="${url}" alt="貼り付けられた画像" class="max-w-full sm:max-w-xs md:max-w-md h-auto rounded-lg shadow-md border border-gray-200" onerror="this.style.display='none';"/>
-                </div>`;
-        }
-        
-        // 通常のURL（画像ではないリンク）はそのままテキストリンク化
+    // 1. 先に画像URL（Google Chat添付や通常の画像拡張子）を前後の改行コードごと検知して置換
+    // URLの中に content_type=image または 末尾(クエリ前)に画像拡張子を含むURLを、前後の改行(\n)1つずつ巻き込んでキャッチします
+    const imageUrlRegex = /\n?(https?:\/\/[^\s\n<>"]*(?:content_type=image|\.(?:jpeg|jpg|gif|png|webp|svg))[^\s\n<>"]*)\n?/gi;
+    
+    let processedText = escapedText.replace(imageUrlRegex, (match, url) => {
+        // テンプレートリテラル内の改行やインデントを完全に無くし、1行のコンパクトな文字列として返します
+        // これにより whitespace-pre-wrap による予期せぬ余白や、前後の改行による空行の発生を防ぎます
+        return `<div class="my-2 flex justify-center"><img src="${url}" alt="貼り付けられた画像" class="max-w-full sm:max-w-xs md:max-w-md h-auto rounded-lg shadow-md border border-gray-200" onerror="this.style.display='none';"/></div>`;
+    });
+
+    // 2. 次に、残った通常のURL（画像ではないリンク）をそのままテキストリンク化
+    const normalUrlRegex = /(https?:\/\/[^\s\n<>"]+)/g;
+    processedText = processedText.replace(normalUrlRegex, (url) => {
         return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline break-all">${url}</a>`;
     });
 
-    // 2. 次に #（文字）# を検知して Tailwind CSS で赤文字＆少し大きく＆太字に変換
+    // 3. 最後に #（文字）# を検知して Tailwind CSS で赤文字＆少し大きく＆太字に変換
     const decorRegex = /#([^#\n]+)#/g;
     processedText = processedText.replace(decorRegex, (match, p1) => {
         return `<span class="text-red-600 text-base font-bold">${p1}</span>`;

@@ -134,7 +134,7 @@ export function escapeHtml(unsafe) {
 
 /**
  * テキスト内のURLをリンクに変換し、さらに #文字# を赤色で少し大きく装飾する関数
- * 画像URLやチャットツールの画像添付URLの場合は <img> タグのみを生成して表示します（テキストリンクは隠します）。
+ * 画像URLやチャットツールの画像添付URLの場合は <img> タグのみを生成し、中央揃えで表示します。
  * ※セキュリティのため、必ず先に escapeHtml を通した文字列を渡してください。
  */
 export function linkify(escapedText) {
@@ -151,9 +151,9 @@ export function linkify(escapedText) {
         
         // どちらかの条件を満たしていれば画像として処理
         if (hasImageExtension || isImageContentType) {
-            // 長いテキストリンクを非表示にし、画像（<img>）の要素のみを返すように修正
+            // flex justify-center を追加して、画像を横方向の中央に配置します
             return `
-                <div class="my-2">
+                <div class="my-2 flex justify-center">
                     <img src="${url}" alt="貼り付けられた画像" class="max-w-full sm:max-w-xs md:max-w-md h-auto rounded-lg shadow-md border border-gray-200" onerror="this.style.display='none';"/>
                 </div>`;
         }

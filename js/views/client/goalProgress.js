@@ -3,7 +3,7 @@
 // ★ query, where, getDocs をインポートに追加
 import { db, userId, userName, allTaskObjects, updateGlobalTaskObjects, escapeHtml } from "../../main.js"; 
 import { addDoc, collection, doc, setDoc, Timestamp, runTransaction, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; 
-import { getJSTDateString } from "../../utils.js"; 
+import { getJSTDateString, linkify } from "../../utils.js";
 import { setHasContributed } from "./timer.js";
 import { createLineChart, destroyCharts } from "../../components/chart.js"; // ★追加: チャート共通コンポーネントをインポート
 
@@ -212,7 +212,7 @@ export function renderSingleGoalDisplay(task, goalId) {
     const percentage = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
     
     const memoHtml = goal.memo ? `
-        <div class="w-fit max-w-full bg-gray-50 border-l-4 border-blue-600 p-2 mb-3 rounded text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">${escapeHtml(goal.memo)}</div>
+        <div class="w-fit max-w-full bg-gray-50 border-l-4 border-blue-600 p-2 mb-3 rounded text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">${linkify(escapeHtml(goal.memo))}</div>
     ` : '';
 
     let deadlineHtml = '';

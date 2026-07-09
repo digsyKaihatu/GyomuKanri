@@ -7,7 +7,7 @@ export async function handleApprove(reqDoc) {
 
     try {
         // 1. Workerのエンドポイントに対して、申請IDと管理者情報をPOSTする
-        const response = await fetch(`${WORKER_URL}/api/approve-request`, {
+        const response = await fetch(`${WORKER_URL}/approve-request`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
@@ -43,7 +43,7 @@ export async function handleRejectRequest(reqDoc) {
 
     try {
         // 却下処理も同様にWorkerへ逃がすとより安全・高速になります
-        const response = await fetch(`${WORKER_URL}/api/reject-request`, {
+        const response = await fetch(`${WORKER_URL}/reject-request`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({

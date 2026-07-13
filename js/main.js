@@ -303,7 +303,22 @@ export async function startAppAfterLogin() {
     listenForMessages();
     await Promise.all([fetchTasks(), fetchDisplayPreferences()]);
 
-    // ✨【追加】すべての初期化とデータ取得が完了したら、満を持して最初のモード選択画面を表示する
+    // 🛠️【修正】リロード対策：localStorageから前回のページ情報を復元する
+    try {
+        const lastViewData = localStorage.getItem(LAST_VIEW_KEY);
+        if (lastViewData) {
+            const { name, params } = JSON.parse(lastViewData);
+            // 保存されたビュー名が、定義済みのVIEWSの中に実在するか安全チェック
+            if (name && Object.values(VIEWS).includes(name)) {
+                showView(name, params);
+                return; // 復元できたらここで処理を終了
+            }
+        }
+    } catch (error) {
+        console.error("前回のページの復元に失敗しました:", error);
+    }
+
+    // ✨ 前回のページ情報がない場合のみ、デフォルトのモード選択画面を表示する
     showView(VIEWS.MODE_SELECTION);
 }
 

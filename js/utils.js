@@ -150,33 +150,24 @@ export function linkify(escapedText) {
         healedText = healedText.replace(healRegex, "$1$2");
     } while (healedText !== previousText);
     
-    // 1. URLのキャプチャと変換
+    // 1. URLの検知と置換
     const urlRegex = /(\n*)(https?:\/\/[^\s\n<>"]+)/g;
     let processedText = healedText.replace(urlRegex, (match, beforeLines, url) => {
         
-        // ★【追加】escapeHtml によって後ろに巻き込まれたエスケープ文字（&quot; や &lt; など）を正しく分離する
-        let cleanUrl = url;
-        let trailingHtml = "";
-        const trailingMatch = url.match(/(&quot;|&lt;|&gt;|&#039;).*$/);
-        if (trailingMatch) {
-            cleanUrl = url.substring(0, trailingMatch.index);
-            trailingHtml = trailingMatch[0]; // 削ったエスケープ文字は後でタグの後ろに戻す
-        }
-        
         // パターン1: 通常の画像拡張子（.png, .jpg など）で終わるURL
-        const hasImageExtension = /\.(jpeg|jpg|gif|png|webp|svg)(\?.*)?$/i.test(cleanUrl);
+        const hasImageExtension = /\.(jpeg|jpg|gif|png|webp|svg)(\?.*)?$/i.test(url);
         
         // パターン2: Google Chat等の添付URL
-        const isImageContentType = /content_type=image/i.test(cleanUrl);
+        const isImageContentType = /content_type=image/i.test(url);
         
         // どちらかの条件を満たしていれば画像として処理
         if (hasImageExtension || isImageContentType) {
-            // ★【修正】SPAの描画タイミングで誤発火して画像を消してしまうため、onerror="this.style.display='none';" を削除しました
-            return `<div class="my-2 flex justify-center"><img src="${cleanUrl}" alt="貼り付けられた画像" class="max-w-full sm:max-w-xs md:max-w-md h-auto rounded-lg shadow-md border border-gray-200" /></div>${trailingHtml}`;
+            // 【改善点】画像URLを一切破壊せず、誤発火の原因だった onerror 属性のみを削除
+            return `<div class="my-2 flex justify-center"><img src="${url}" alt="貼り付けられた画像" class="max-w-full sm:max-w-xs md:max-w-md h-auto rounded-lg shadow-md border border-gray-200" /></div>`;
         }
         
-        // 通常のURL（画像ではないリンク）
-        return `${beforeLines}<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline break-all">${cleanUrl}</a>${trailingHtml}`;
+        // 通常のURL（画像ではないリンク）は元の安全な形でテキストリンク化
+        return `${beforeLines}<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline break-all">${url}</a>`;
     });
 
     // 2. 次に #（文字）# を検知して Tailwind CSS で赤文字＆少し大きく＆太字に変換（変更なし）

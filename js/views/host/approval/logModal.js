@@ -198,13 +198,28 @@ function renderApprovalLogList(requests) {
             `;
         }
 
+        // --- 👇今回修正した箇所👇 ---
         let approverHtml = "";
         if (req.status !== "pending") {
             const actionLabel = req.status === "approved" ? "👤 承認対応者" : "👤 却下対応者";
+            
+            // 却下済、かつ却下理由が存在する場合のみHTMLを作成
+            let rejectReasonHtml = "";
+            if (req.status === "rejected" && req.rejectReason) {
+                rejectReasonHtml = `
+                    <div class="mt-1.5 bg-red-50 text-red-700 p-2 rounded-lg border border-red-100 text-[11px] font-medium">
+                        <strong>🚫 却下理由:</strong> ${escapeHtml(req.rejectReason)}
+                    </div>
+                `;
+            }
+
             approverHtml = `
-                <div class="mt-2 border-t pt-2 text-[10px] text-gray-400 flex justify-between">
-                    <span>${actionLabel}: <span class="font-bold text-gray-600">${escapeHtml(req.approverName || "システム")}</span></span>
-                    <span>📅 対応日時: ${req.approvedAt ? req.approvedAt.substring(0,16).replace("T"," ") : "不明"}</span>
+                <div class="mt-2 border-t pt-2 text-[10px] text-gray-400 flex flex-col gap-1">
+                    <div class="flex justify-between items-center w-full">
+                        <span>${actionLabel}: <span class="font-bold text-gray-600">${escapeHtml(req.approverName || "システム")}</span></span>
+                        <span>📅 対応日時: ${req.approvedAt ? req.approvedAt.substring(0,16).replace("T"," ") : "不明"}</span>
+                    </div>
+                    ${rejectReasonHtml} 
                 </div>
             `;
         } else {
@@ -214,6 +229,7 @@ function renderApprovalLogList(requests) {
                 </div>
             `;
         }
+        // --- 👆今回修正した箇所👆 ---
 
         const card = document.createElement("div");
         card.className = "p-4 border border-gray-200 rounded-xl bg-white shadow-sm flex flex-col gap-2 hover:border-gray-300 transition text-xs text-gray-600 animate-fade-in";

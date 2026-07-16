@@ -103,10 +103,11 @@ async function exportRequestsToCSV(monthStr) {
             return;
         }
         
+        // 💡 修正箇所1: ヘッダーに「却下理由」を追加
         const headers = [
             "案件", "工数", "対象年月日", "申請者", "申請日付", 
             "申請種別", "修正前の時間", "修正後の時間", "差異", 
-            "理由（区分）", "理由（自由記述）", "承認者", "承認日時"
+            "理由（区分）", "理由（自由記述）", "承認者", "承認日時", "却下理由"
         ];
         
         const csvRows = [headers.join(",")];
@@ -158,13 +159,20 @@ async function exportRequestsToCSV(monthStr) {
             const memo = d.memo || "";
             
             let approverName = req.approverName || "";
+            // 💡 修正箇所2: 却下理由の取得ロジックを追加
+            let rejectReason = "";
+
             if (req.status === "pending") {
                 approverName = "未承認（対応待ち）";
             } else if (req.status === "rejected") {
                 approverName = `${req.approverName || "管理者"} (却下対応)`;
+                // 画面表示用と同じ安全な取得ロジック
+                rejectReason = req.rejectReason || d.rejectReason || req.reason || d.reason || "";
             }
+            
             const approvedAt = formatDateTime(req.approvedAt);
             
+            // 💡 修正箇所3: CSVの各行の末尾に「却下理由」のデータを追加
             const row = [
                 escapeCSV(task),
                 escapeCSV(goal),
@@ -178,7 +186,8 @@ async function exportRequestsToCSV(monthStr) {
                 escapeCSV(reasonCategory),
                 escapeCSV(memo),
                 escapeCSV(approverName),
-                escapeCSV(approvedAt)
+                escapeCSV(approvedAt),
+                escapeCSV(rejectReason)
             ];
             
             csvRows.push(row.join(","));

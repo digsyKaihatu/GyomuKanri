@@ -21,7 +21,6 @@ export async function handleApprove(reqDoc) {
         const result = await response.json();
 
         if (!response.ok) {
-            // ✨ Workersから返ってきた具体的なエラー詳細(result.error)を表示するように改善
             const errorMsg = result.error || result.message || "サーバー側での承認処理に失敗しました。";
             throw new Error(`${errorMsg}\n\n[詳細スタック]: ${result.stack || 'なし'}`);
         }
@@ -38,27 +37,41 @@ export async function handleApprove(reqDoc) {
     }
 }
 
+// 💡 却下理由の入力を追加した却下処理
 export async function handleRejectRequest(reqDoc) {
-    if (!confirm("この申請を却下しますか？")) return;
+    // 1. confirm の代わりに prompt を使用して、理由入力を促す
+    const reason = prompt("この申請を却下しますか？\n却下理由を入力してください（空欄のままでも却下可能です。キャンセルで中断します）:");
+
+    // prompt で「キャンセル」が押された場合は null が返るので処理を終了する
+    if (reason === null) return; 
 
     try {
-        // 却下処理も同様にWorkerへ逃がすとより安全・高速になります
         const response = await fetch(`${WORKER_URL}/reject-request`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 requestId: reqDoc.id,
                 adminId: currentAdminId,
-                adminName: currentAdminName
+                adminName: currentAdminName,
+                rejectReason: reason.trim() // 💡 却下理由を追加（前後の不要な空白を削除）
             })
         });
 
         const result = await response.json();
-        if (!response.ok) throw new Error(result.message);
+        
+        if (!response.ok) {
+            const errorMsg = result.error || result.message || "サーバー側での却下処理に失敗しました。";
+            throw new Error(`${errorMsg}\n\n[詳細スタック]: ${result.stack || 'なし'}`);
+        }
 
         alert("申請を却下しました。申請履歴にログが保持されます。");
+
+        // 💡 承認時と同様、却下後にリストを最新状態にするために追加
+        if (typeof window.refreshApprovalList === "function") {
+            window.refreshApprovalList();
+        }
     } catch (error) {
         console.error("Reject error:", error);
-        alert(`却下処理中にエラーが発生しました: ${error.message}`);
+        alert(`却下処理中にエラーが発生しました:\n${error.message}`);
     }
 }

@@ -140,37 +140,42 @@ export function escapeHtml(unsafe) {
 export function linkify(escapedText) {
     if (!escapedText) return "";
     
-    // 0. 【自動修復】（変更なし）
     let healedText = escapedText;
     const healRegex = /(https?:\/\/[^\s<>#"]+)[\s\n]+([a-zA-Z0-9%=\?&\-\+_\/;]{15,})/gi;
-    
     let previousText;
     do {
         previousText = healedText;
         healedText = healedText.replace(healRegex, "$1$2");
     } while (healedText !== previousText);
     
-    // 1. URLの検知と置換
     const urlRegex = /(\n*)(https?:\/\/[^\s\n<>"]+)/g;
     let processedText = healedText.replace(urlRegex, (match, beforeLines, url) => {
         
-        // パターン1: 通常の画像拡張子（.png, .jpg など）で終わるURL
-        const hasImageExtension = /\.(jpeg|jpg|gif|png|webp|svg)(\?.*)?$/i.test(url);
+        // --- 🌟 追加：Googleドライブの共有URLを検知する処理 ---
+        const driveRegex = /drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/i;
+        const driveMatch = url.match(driveRegex);
         
-        // パターン2: Google Chat等の添付URL
+        if (driveMatch) {
+            const fileId = driveMatch[1];
+            // ドライブの画像を直接表示するための特別なURLに変換
+            const driveImageUrl = `https://drive.google.com/uc?export=view&id=${fileId}`;
+            return `<div class="my-2 flex justify-center"><img src="${driveImageUrl}" alt="ドライブ画像" class="max-w-full sm:max-w-xs md:max-w-md h-auto rounded-lg shadow-md border border-gray-200" /></div>`;
+        }
+        // ----------------------------------------------------
+
+        const hasImageExtension = /\.(jpeg|jpg|gif|png|webp|svg)(\?.*)?$/i.test(url);
         const isImageContentType = /content_type=image/i.test(url);
         
-        // どちらかの条件を満たしていれば画像として処理
-        if (hasImageExtension || isImageContentType) {
-            // 【改善点】画像URLを一切破壊せず、誤発火の原因だった onerror 属性のみを削除
+        // ⚠️ 前回説明した「Google Chatの画像はテキストリンクにする」除外処理は残します
+        const isChatApi = /get_attachment_url/i.test(url);
+        
+        if ((hasImageExtension || isImageContentType) && !isChatApi) {
             return `<div class="my-2 flex justify-center"><img src="${url}" alt="貼り付けられた画像" class="max-w-full sm:max-w-xs md:max-w-md h-auto rounded-lg shadow-md border border-gray-200" /></div>`;
         }
         
-        // 通常のURL（画像ではないリンク）は元の安全な形でテキストリンク化
         return `${beforeLines}<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline break-all">${url}</a>`;
     });
 
-    // 2. 次に #（文字）# を検知して Tailwind CSS で赤文字＆少し大きく＆太字に変換（変更なし）
     const decorRegex = /#([^#\n]+)#/g;
     processedText = processedText.replace(decorRegex, (match, p1) => {
         return `<span class="text-red-600 text-base font-bold">${p1}</span>`;

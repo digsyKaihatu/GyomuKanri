@@ -416,163 +416,169 @@ function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge,
     const labels = sortedTasks.map(t => t[0]);
     const dataPoints = sortedTasks.map(t => Math.round(t[1] / 3600 * 10) / 10); 
 
-    const chartInstance = renderChart(canvas, labels, dataPoints, title);
-    if (chartInstance) {
-        activeReportCharts.push(chartInstance);
-    }
+    // ★非同期の Promise として受け取る
+    const chartPromise = renderChart(canvas, labels, dataPoints, title);
 
-    const backgroundColors = chartInstance?.data?.datasets[0]?.backgroundColor || [];
-
-    // 3. 詳細リスト
+    // 3. 詳細リスト用のコンテナを先に生成して親要素へ追加しておく
     const listContainer = document.createElement("div");
     listContainer.className = "mt-4 text-sm text-gray-600 max-h-96 overflow-y-auto custom-scrollbar";
-    
-    const ul = document.createElement("ul");
-    ul.className = "space-y-1";
+    parentElement.appendChild(listContainer);
 
-    sortedTasks.forEach(([taskName, duration], index) => {
-        const percentage = totalDuration > 0 ? Math.round((duration / totalDuration) * 100) : 0;
-        const color = backgroundColors[index] || '#cccccc';
-
-        const li = document.createElement("li");
-        const cursorClass = taskStatsMap ? "cursor-pointer" : "";
-        li.className = `flex flex-col px-2 py-1 hover:bg-gray-50 rounded border-b border-gray-100 last:border-0 ${cursorClass}`;
-        
-        // 業務名の行
-        const rowDiv = document.createElement("div");
-        rowDiv.className = "flex justify-between items-center w-full";
-        rowDiv.innerHTML = `
-            <div class="flex items-center truncate mr-2 flex-1" title="${escapeHtml(taskName)}">
-                <span class="w-3 h-3 rounded-full mr-2 flex-shrink-0" style="background-color: ${color};"></span>
-                <span class="truncate font-medium">${escapeHtml(taskName)}</span>
-                ${taskStatsMap ? '<span class="text-xs text-gray-400 ml-2 toggle-icon">▼</span>' : ''}
-            </div>
-            <div class="flex items-center gap-2 whitespace-nowrap">
-                <span class="font-mono text-gray-800">${formatHoursMinutes(duration)}</span>
-                <span class="text-xs text-gray-400 w-8 text-right">(${percentage}%)</span>
-            </div>
-        `;
-        li.appendChild(rowDiv);
-
-        // 内訳表示用のコンテナを追加
-        if (taskStatsMap) {
-            const breakdownDiv = document.createElement("div");
-            breakdownDiv.className = "hidden pl-6 mt-2 pb-2 text-xs text-gray-600 border-l-2 border-gray-200 ml-1.5 space-y-1 bg-gray-50 rounded-r";
-            
-            // クリックイベントの設定
-            li.addEventListener("click", (e) => {
-                e.stopPropagation();
-                
-                if (breakdownDiv.classList.contains("hidden")) {
-                    // 表示: データがまだなければ生成
-                    if (breakdownDiv.innerHTML === "") {
-                        const tStat = taskStatsMap.get(taskName);
-                        if (!tStat) {
-                            breakdownDiv.innerHTML = "<div class='p-2'>データなし</div>";
-                        } else {
-                            let html = "";
-                            
-                            // ① 従業員ごとのタスク合計表示
-                            const usersSorted = Array.from(tStat.users.entries()).sort((a, b) => b[1] - a[1]);
-                            usersSorted.forEach(([uName, dur]) => {
-                                html += `
-                                    <div class="flex justify-between bg-gray-100 p-1 rounded px-2 mb-1">
-                                        <span class="font-semibold text-gray-700">${escapeHtml(uName)}</span>
-                                        <span class="font-mono text-gray-800">${formatHoursMinutes(dur)}</span>
-                                    </div>`;
-                            });
-
-                            // ② 工数ごとの合計（さらにクリックで従業員ごとの時間を展開）
-                            const goalsSorted = Array.from(tStat.goals.entries()).sort((a, b) => b[1].duration - a[1].duration);
-                            goalsSorted.forEach(([gTitle, gStat]) => {
-                                
-                                // ★ 納期を業務マスターから確実に見つけ出すロジック
-                                let deadlineHtml = "";
-                                let deadlineStr = gStat.deadline;
-
-                                // ログに納期データがない場合、マスターから検索
-                                if (!deadlineStr) {
-                                    const taskObj = allTasks.find(t => t.name === taskName);
-                                    // goalIdで探すか、タイトルに含まれているかで探す
-                                    const goalObj = taskObj?.goals?.find(g => g.id === gStat.goalId) 
-                                                 || taskObj?.goals?.find(g => gTitle.includes(g.title));
-                                    
-                                    if (goalObj) {
-                                        deadlineStr = goalObj.deadline || goalObj.effortDeadline;
-                                    }
-                                }
-
-                                if (deadlineStr) {
-                                    const d = new Date(deadlineStr);
-                                    if (!isNaN(d.getTime())) {
-                                        const mm = String(d.getMonth() + 1).padStart(2, '0');
-                                        const dd = String(d.getDate()).padStart(2, '0');
-                                        deadlineHtml = `<span class="text-xs text-gray-500 ml-3 font-normal whitespace-nowrap">納期: ${mm}/${dd}</span>`;
-                                    }
-                                }
-
-                                html += `<div class="mt-2 pl-2 border-l-2 border-blue-200">`;
-                                html += `
-                                    <div class="flex justify-between items-center cursor-pointer hover:bg-gray-200 p-1 rounded goal-toggle">
-                                        <div class="flex items-center truncate mr-2 flex-1" title="${escapeHtml(gTitle)}">
-                                            <span class="text-blue-700 font-medium truncate">↳ ${escapeHtml(gTitle)}</span>
-                                            ${deadlineHtml}
-                                            <span class="text-[10px] text-blue-700 ml-2 goal-toggle-icon flex-shrink-0">▼</span>
-                                        </div>
-                                        <div class="flex items-center whitespace-nowrap">
-                                            <span class="font-mono text-blue-800">${formatHoursMinutes(gStat.duration)}</span>
-                                        </div>
-                                    </div>`;
-                                
-                                html += `<div class="hidden goal-breakdown pl-4 mt-1 space-y-1">`;
-                                const gUsersSorted = Array.from(gStat.users.entries()).sort((a, b) => b[1] - a[1]);
-                                gUsersSorted.forEach(([guName, gdur]) => {
-                                    html += `
-                                        <div class="flex justify-between hover:bg-gray-200 p-1 rounded px-2 text-gray-600">
-                                            <span>${escapeHtml(guName)}</span>
-                                            <span class="font-mono">${formatHoursMinutes(gdur)}</span>
-                                        </div>`;
-                                });
-                                html += `</div></div>`;
-                            });
-
-                            breakdownDiv.innerHTML = html;
-
-                            // 工数の開閉イベントを設定
-                            const goalToggles = breakdownDiv.querySelectorAll('.goal-toggle');
-                            goalToggles.forEach(toggle => {
-                                toggle.addEventListener('click', (e2) => {
-                                    e2.stopPropagation();
-                                    const targetBreakdown = toggle.nextElementSibling;
-                                    const icon = toggle.querySelector('.goal-toggle-icon');
-                                    
-                                    if (targetBreakdown.classList.contains("hidden")) {
-                                        targetBreakdown.classList.remove("hidden");
-                                        if (icon) icon.textContent = '▲';
-                                    } else {
-                                        targetBreakdown.classList.add("hidden");
-                                        if (icon) icon.textContent = '▼';
-                                    }
-                                });
-                            });
-                        }
-                    }
-                    breakdownDiv.classList.remove("hidden");
-                    const icon = rowDiv.querySelector(".toggle-icon");
-                    if(icon) icon.textContent = "▲";
-                } else {
-                    // 非表示
-                    breakdownDiv.classList.add("hidden");
-                    const icon = rowDiv.querySelector(".toggle-icon");
-                    if(icon) icon.textContent = "▼";
-                }
-            });
-            li.appendChild(breakdownDiv);
+    // ★グラフのレンダリングが完了（Resolve）した後にリストの中身を生成する
+    chartPromise.then((chartInstance) => {
+        if (chartInstance) {
+            activeReportCharts.push(chartInstance);
         }
 
-        ul.appendChild(li);
-    });
+        // グラフ描画に使われたランダムカラーの配列を確実に取得
+        const backgroundColors = chartInstance?.data?.datasets[0]?.backgroundColor || [];
 
-    listContainer.appendChild(ul);
-    parentElement.appendChild(listContainer);
+        const ul = document.createElement("ul");
+        ul.className = "space-y-1";
+
+        sortedTasks.forEach(([taskName, duration], index) => {
+            const percentage = totalDuration > 0 ? Math.round((duration / totalDuration) * 100) : 0;
+            const color = backgroundColors[index] || '#cccccc';
+
+            const li = document.createElement("li");
+            const cursorClass = taskStatsMap ? "cursor-pointer" : "";
+            li.className = `flex flex-col px-2 py-1 hover:bg-gray-50 rounded border-b border-gray-100 last:border-0 ${cursorClass}`;
+            
+            // 業務名の行
+            const rowDiv = document.createElement("div");
+            rowDiv.className = "flex justify-between items-center w-full";
+            rowDiv.innerHTML = `
+                <div class="flex items-center truncate mr-2 flex-1" title="${escapeHtml(taskName)}">
+                    <span class="w-3 h-3 rounded-full mr-2 flex-shrink-0" style="background-color: ${color};"></span>
+                    <span class="truncate font-medium">${escapeHtml(taskName)}</span>
+                    ${taskStatsMap ? '<span class="text-xs text-gray-400 ml-2 toggle-icon">▼</span>' : ''}
+                </div>
+                <div class="flex items-center gap-2 whitespace-nowrap">
+                    <span class="font-mono text-gray-800">${formatHoursMinutes(duration)}</span>
+                    <span class="text-xs text-gray-400 w-8 text-right">(${percentage}%)</span>
+                </div>
+            `;
+            li.appendChild(rowDiv);
+
+            // 内訳表示用のコンテナを追加
+            if (taskStatsMap) {
+                const breakdownDiv = document.createElement("div");
+                breakdownDiv.className = "hidden pl-6 mt-2 pb-2 text-xs text-gray-600 border-l-2 border-gray-200 ml-1.5 space-y-1 bg-gray-50 rounded-r";
+                
+                // クリックイベントの設定
+                li.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    
+                    if (breakdownDiv.classList.contains("hidden")) {
+                        // 表示: データがまだなければ生成
+                        if (breakdownDiv.innerHTML === "") {
+                            const tStat = taskStatsMap.get(taskName);
+                            if (!tStat) {
+                                breakdownDiv.innerHTML = "<div class='p-2'>データなし</div>";
+                            } else {
+                                let html = "";
+                                
+                                // ① 従業員ごとのタスク合計表示
+                                const usersSorted = Array.from(tStat.users.entries()).sort((a, b) => b[1] - a[1]);
+                                usersSorted.forEach(([uName, dur]) => {
+                                    html += `
+                                        <div class="flex justify-between bg-gray-100 p-1 rounded px-2 mb-1">
+                                            <span class="font-semibold text-gray-700">${escapeHtml(uName)}</span>
+                                            <span class="font-mono text-gray-800">${formatHoursMinutes(dur)}</span>
+                                        </div>`;
+                                });
+
+                                // ② 工数ごとの合計（さらにクリックで従業員ごとの時間を展開）
+                                const goalsSorted = Array.from(tStat.goals.entries()).sort((a, b) => b[1].duration - a[1].duration);
+                                goalsSorted.forEach(([gTitle, gStat]) => {
+                                    
+                                    // ★ 納期を業務マスターから確実に見つけ出すロジック
+                                    let deadlineHtml = "";
+                                    let deadlineStr = gStat.deadline;
+
+                                    // ログに納期データがない場合、マスターから検索
+                                    if (!deadlineStr) {
+                                        const taskObj = allTasks.find(t => t.name === taskName);
+                                        // goalIdで探すか、タイトルに含まれているかで探す
+                                        const goalObj = taskObj?.goals?.find(g => g.id === gStat.goalId) 
+                                                     || taskObj?.goals?.find(g => gTitle.includes(g.title));
+                                        
+                                        if (goalObj) {
+                                            deadlineStr = goalObj.deadline || goalObj.effortDeadline;
+                                        }
+                                    }
+
+                                    if (deadlineStr) {
+                                        const d = new Date(deadlineStr);
+                                        if (!isNaN(d.getTime())) {
+                                            const mm = String(d.getMonth() + 1).padStart(2, '0');
+                                            const dd = String(d.getDate()).padStart(2, '0');
+                                            deadlineHtml = `<span class="text-xs text-gray-500 ml-3 font-normal whitespace-nowrap">納期: ${mm}/${dd}</span>`;
+                                        }
+                                    }
+
+                                    html += `<div class="mt-2 pl-2 border-l-2 border-blue-200">`;
+                                    html += `
+                                        <div class="flex justify-between items-center cursor-pointer hover:bg-gray-200 p-1 rounded goal-toggle">
+                                            <div class="flex items-center truncate mr-2 flex-1" title="${escapeHtml(gTitle)}">
+                                                <span class="text-blue-700 font-medium truncate">↳ ${escapeHtml(gTitle)}</span>
+                                                ${deadlineHtml}
+                                                <span class="text-[10px] text-blue-700 ml-2 goal-toggle-icon flex-shrink-0">▼</span>
+                                            </div>
+                                            <div class="flex items-center whitespace-nowrap">
+                                                <span class="font-mono text-blue-800">${formatHoursMinutes(gStat.duration)}</span>
+                                            </div>
+                                        </div>`;
+                                    
+                                    html += `<div class="hidden goal-breakdown pl-4 mt-1 space-y-1">`;
+                                    const gUsersSorted = Array.from(gStat.users.entries()).sort((a, b) => b[1] - a[1]);
+                                    gUsersSorted.forEach(([guName, gdur]) => {
+                                        html += `
+                                            <div class="flex justify-between hover:bg-gray-200 p-1 rounded px-2 text-gray-600">
+                                                <span>${escapeHtml(guName)}</span>
+                                                <span class="font-mono">${formatHoursMinutes(gdur)}</span>
+                                            </div>`;
+                                    });
+                                    html += `</div></div>`;
+                                });
+
+                                breakdownDiv.innerHTML = html;
+
+                                // 工数の開閉イベントを設定
+                                const goalToggles = breakdownDiv.querySelectorAll('.goal-toggle');
+                                goalToggles.forEach(toggle => {
+                                    toggle.addEventListener('click', (e2) => {
+                                        e2.stopPropagation();
+                                        const targetBreakdown = toggle.nextElementSibling;
+                                        const icon = toggle.querySelector('.goal-toggle-icon');
+                                        
+                                        if (targetBreakdown.classList.contains("hidden")) {
+                                            targetBreakdown.classList.remove("hidden");
+                                            if (icon) icon.textContent = '▲';
+                                        } else {
+                                            targetBreakdown.classList.add("hidden");
+                                            if (icon) icon.textContent = '▼';
+                                        }
+                                    });
+                                });
+                            }
+                        }
+                        breakdownDiv.classList.remove("hidden");
+                        const icon = rowDiv.querySelector(".toggle-icon");
+                        if(icon) icon.textContent = "▲";
+                    } else {
+                        // 非表示
+                        breakdownDiv.classList.add("hidden");
+                        const icon = rowDiv.querySelector(".toggle-icon");
+                        if(icon) icon.textContent = "▼";
+                    }
+                });
+                li.appendChild(breakdownDiv);
+            }
+
+            ul.appendChild(li);
+        });
+
+        listContainer.appendChild(ul);
+    });
 }

@@ -239,6 +239,7 @@ function generateRandomColor() {
 }
 
 // ★追加部分
+// ★修正・改善された renderChart 関数
 export async function renderChart(canvas, labels, dataPoints, title) {
     if (!canvas) return;
     
@@ -246,7 +247,39 @@ export async function renderChart(canvas, labels, dataPoints, title) {
     await ensureChartLibrariesLoaded();
     const ctx = canvas.getContext('2d');
     
-    const backgroundColors = labels.map(() => generateRandomColor());
+    // 💡 視認性が高く、お互いに明確に区別できる美しい固定カラーパレット
+    // シェアの大きい上位業務から順番にこの色が確定で割り当てられます
+    const presetColors = [
+        '#3b82f6', // 青 (Blue)
+        '#f97316', // オレンジ (Orange)
+        '#10b981', // 緑 (Emerald)
+        '#a855f7', // 紫 (Purple)
+        '#ef4444', // 赤 (Red)
+        '#06b6d4', // 水色 (Cyan)
+        '#eab308', // 黄色 (Yellow)
+        '#ec4899', // ピンク (Pink)
+        '#6366f1', // インディゴ (Indigo)
+        '#14b8a6', // ティール (Teal)
+        '#84cc16', // ライム (Lime)
+        '#f43f5e', // ローズ (Rose)
+        '#64748b'  // スレート/グレー (Slate)
+    ];
+
+    // 業務の数（ラベルの数）だけ背景色を生成
+    const backgroundColors = labels.map((_, index) => {
+        // 1. プリセットパレットの範囲内であれば、定義された明確に違う色を順番に使う
+        if (index < presetColors.length) {
+            return presetColors[index];
+        }
+        
+        // 2. 万が一業務数がパレット（13色）を超えるほど多い場合は、
+        // 黄金比（0.618033...）を用いて、色相環上で隣り合わない（最も離れた）色を自動計算
+        const goldenRatioConjugate = 0.618033988749895;
+        const h = (index * goldenRatioConjugate) % 1;
+        const hue = Math.floor(h * 360);
+        
+        return `hsl(${hue}, 70%, 58%)`; // 鮮やかで見やすいトーンを維持
+    });
 
     return new Chart(ctx, {
         type: 'doughnut', 
@@ -254,7 +287,7 @@ export async function renderChart(canvas, labels, dataPoints, title) {
             labels: labels,
             datasets: [{
                 data: dataPoints,
-                backgroundColor: backgroundColors,
+                backgroundColor: backgroundColors, // 💡 生成した被らないカラー配列を適用
                 borderColor: '#ffffff',
                 borderWidth: 2
             }]
@@ -264,7 +297,7 @@ export async function renderChart(canvas, labels, dataPoints, title) {
             maintainAspectRatio: false,
             plugins: {
                 legend: {
-                    display: false, // ★修正: ここを false にして凡例を消す
+                    display: false,
                 },
                 title: {
                     display: false, 

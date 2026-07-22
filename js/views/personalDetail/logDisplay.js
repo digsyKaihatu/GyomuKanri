@@ -49,8 +49,6 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
             }
 
             // タイムライン表示
-            /************ 変更箇所 ************/
-            // 旧仕様の個別申請ボタン（時間修正・変更申請）を削除し、メモ修正のみを残しました
             const taskDisplay = log.goalTitle
                 ? `${escapeHtml(log.task)} <span class="text-xs text-gray-500">(${escapeHtml(log.goalTitle)})</span>`
                 : escapeHtml(log.task);
@@ -65,7 +63,6 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
                     <button class="edit-memo-btn text-xs bg-gray-500 text-white font-bold py-1 px-2 rounded hover:bg-gray-600" data-log-id="${log.id}" data-memo="${escapeHtml(log.memo || "")}">メモ修正</button>
                 `;
             }
-            /**********************************/
             
             // 工数ログか休憩ログかで背景色や文字色を出し分ける
             const bgClass = log.task === "休憩" ? "bg-yellow-50" : (log.type === "goal" ? "bg-green-50" : "bg-gray-50");
@@ -100,18 +97,28 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
             </li>`;
         });
 
-        // サマリー表示
-        summaryHtml = '<h4 class="text-lg font-semibold mb-2">1日の合計 (休憩除く)</h4>';
+        // 🔥 サマリー表示：1日の総稼働時間を計算して表示
+        const totalDailyDuration = Object.values(dailyWorkSummary).reduce((sum, dur) => sum + dur, 0);
+
+        summaryHtml = `
+            <div class="flex justify-between items-center mb-3 pb-2 border-b">
+                <h4 class="text-lg font-semibold text-gray-800">1日の合計 (休憩除く)</h4>
+                <span class="font-mono font-bold text-base bg-indigo-100 text-indigo-800 px-3 py-1 rounded-lg border border-indigo-200">
+                    ⏱️ ${formatDuration(totalDailyDuration)}
+                </span>
+            </div>
+        `;
+
         if (Object.keys(dailyWorkSummary).length > 0) {
             summaryHtml += '<ul class="space-y-2">';
-             Object.entries(dailyWorkSummary)
-                 .sort(([, a], [, b]) => b - a)
-                 .forEach(([taskKey, duration]) => {
-                     summaryHtml += `<li class="p-2 bg-gray-100 rounded-md flex justify-between"><strong>${escapeHtml(taskKey)}</strong> <span>${formatDuration(duration)}</span></li>`;
-                 });
-             summaryHtml += "</ul>";
+            Object.entries(dailyWorkSummary)
+                .sort(([, a], [, b]) => b - a)
+                .forEach(([taskKey, duration]) => {
+                    summaryHtml += `<li class="p-2 bg-gray-100 rounded-md flex justify-between"><strong>${escapeHtml(taskKey)}</strong> <span>${formatDuration(duration)}</span></li>`;
+                });
+            summaryHtml += "</ul>";
         } else {
-             summaryHtml += '<p class="text-gray-500 text-sm">この日の業務記録はありません。</p>';
+            summaryHtml += '<p class="text-gray-500 text-sm py-2">この日の業務記録はありません。</p>';
         }
 
         // ゴール貢献表示
@@ -141,9 +148,9 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
              goalHtml += "</ul>";
         }
 
-         timelineHtml = timelineHtml ? `<h4 class="text-lg font-semibold mt-4 mb-2 border-t pt-4">タイムライン</h4><ul class="space-y-3">${timelineHtml}</ul>` : '';
+        timelineHtml = timelineHtml ? `<h4 class="text-lg font-semibold mt-4 mb-2 border-t pt-4">タイムライン</h4><ul class="space-y-3">${timelineHtml}</ul>` : '';
 
-         detailsContentEl.innerHTML = summaryHtml + goalHtml + timelineHtml;
+        detailsContentEl.innerHTML = summaryHtml + goalHtml + timelineHtml;
 
     } else {
         detailsContentEl.innerHTML = '<p class="text-gray-500">この日の業務ログはありません。</p>';
@@ -179,7 +186,18 @@ export function showMonthlyLogs(currentCalendarDate, logsForMonth, detailsTitleE
             }
         });
 
-        let contentHtml = '<h4 class="text-lg font-semibold mb-2">業務時間合計 (休憩除く)</h4>';
+        // 月次の合計稼働時間算出
+        const totalMonthlyDuration = Object.values(monthlySummary).reduce((sum, dur) => sum + dur, 0);
+
+        let contentHtml = `
+            <div class="flex justify-between items-center mb-3 pb-2 border-b">
+                <h4 class="text-lg font-semibold text-gray-800">業務時間合計 (休憩除く)</h4>
+                <span class="font-mono font-bold text-base bg-indigo-100 text-indigo-800 px-3 py-1 rounded-lg border border-indigo-200">
+                    ⏱️ ${formatDuration(totalMonthlyDuration)}
+                </span>
+            </div>
+        `;
+
         if (Object.keys(monthlySummary).length > 0) {
             contentHtml += '<ul class="space-y-2">';
             Object.entries(monthlySummary)
@@ -189,10 +207,10 @@ export function showMonthlyLogs(currentCalendarDate, logsForMonth, detailsTitleE
                  });
              contentHtml += "</ul>";
         } else {
-             contentHtml += '<p class="text-gray-500 text-sm">この月の業務時間記録はありません。</p>';
+             contentHtml += '<p class="text-gray-500 text-sm py-2">この月の業務時間記録はありません。</p>';
         }
 
-         if (Object.keys(monthlyGoalContributions).length > 0) {
+        if (Object.keys(monthlyGoalContributions).length > 0) {
             contentHtml += '<h4 class="text-lg font-semibold mt-4 mb-2 border-t pt-4">目標貢献 合計</h4>';
             contentHtml += '<ul class="space-y-2">';
             Object.entries(monthlyGoalContributions)

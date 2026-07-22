@@ -1,7 +1,6 @@
 // js/views/personalDetail/logDisplay.js (UI描画 担当)
 
 import { formatDuration, formatTime, escapeHtml } from "../../utils.js";
-import { openUpdateRequestModal } from "./requestModal.js";
 
 export function clearDetails(detailsTitleEl, detailsContentEl) {
     if (detailsTitleEl) detailsTitleEl.textContent = "詳細";
@@ -26,17 +25,9 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
 
         logsForDay.sort((a, b) => (a.startTime?.getTime() || 0) - (b.startTime?.getTime() || 0));
 
-        // 変更申請ボタン用ハンドラ
-        window.handleRequestUpdateClick = (logId) => {
-            const log = logsForDay.find(l => l.id === logId);
-            if (log) openUpdateRequestModal(log);
-        };
-
         logsForDay.forEach((log) => {
             const startTimeStr = formatTime(log.startTime);
             const endTimeStr = formatTime(log.endTime);
-
-            // 集計処理
 
             // ① 目標貢献（件数）の集計：typeに関わらず、件数(contribution)が入っていれば加算
             if (log.goalTitle && log.task && (log.contribution > 0 || log.type === "goal")) {
@@ -66,40 +57,21 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
             
             let editButtons = "";
             if (isAdmin || isSelf) {
-                // ★追加: 工数のみのログ(type === "goal")には「時間」がないため、時間修正ボタンは非表示にする
-                if (log.type !== "goal") {
-                    editButtons += `
-                        <button class="edit-log-btn text-xs bg-blue-500 text-white font-bold py-1 px-2 rounded hover:bg-blue-600 tooltip" data-log-id="${log.id}" data-duration="${log.duration || 0}" data-task-name="${escapeHtml(log.task)}">
-                        時間修正
-                        <span class="tooltip-text" style="z-index: 10;">業務名は合っているけど<br>時間だけ修正したい場合はこちら</span>
-                        </button>
-                    `;
-                }
                 editButtons += `
                     <button class="edit-memo-btn text-xs bg-gray-500 text-white font-bold py-1 px-2 rounded hover:bg-gray-600" data-log-id="${log.id}" data-memo="${escapeHtml(log.memo || "")}">メモ修正</button>
                 `;
             }
-
-            let requestButton = "";
-            if (isSelf) {
-                requestButton = `
-                    <button onclick="handleRequestUpdateClick('${log.id}')" class="text-xs bg-yellow-500 text-white font-bold py-1 px-2 rounded hover:bg-yellow-600 ml-2 tooltip">
-                        変更申請
-                        <span class="tooltip-text" style="z-index: 10;">時間は合っているけど<br>業務名や件数工数を<br>忘れた場合はこちら</span>
-                    </button>
-                `;
-            }
             
-            // ★追加: 工数ログか休憩ログかで背景色や文字色を出し分ける
+            // 工数ログか休憩ログかで背景色や文字色を出し分ける
             const bgClass = log.task === "休憩" ? "bg-yellow-50" : (log.type === "goal" ? "bg-green-50" : "bg-gray-50");
             const textClass = log.task === "休憩" ? "text-yellow-800" : (log.type === "goal" ? "text-green-800" : "text-gray-800");
 
-            // ★追加: 工数ログの場合は終了時間を表示しない（「10:00 - 」のようにならないため）
+            // 工数ログの場合は終了時間を表示しない
             const timeDisplayHtml = log.type === "goal"
                 ? `<span class="font-mono text-sm bg-green-200 text-green-900 px-2 py-1 rounded">${startTimeStr} (進捗のみ)</span>`
                 : `<span class="font-mono text-sm bg-gray-200 px-2 py-1 rounded">${startTimeStr} - ${endTimeStr}</span>`;
 
-            // ★追加: 時間と件数のテキスト表記
+            // 時間と件数のテキスト表記
             let detailText = "";
             if (log.type !== "goal") {
                 detailText += `合計: ${formatDuration(log.duration || 0)}`;
@@ -118,24 +90,42 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
                      <div class="text-gray-500 text-sm">${detailText}</div>
                      <div class="flex gap-1">
                         ${editButtons}
-                        ${requestButton}
                      </div>
                 </div>
             </li>`;
         });
 
+        // 🔥 1日の総稼働時間（休憩・進捗登録除く）を直接計算
+        const totalWorkSeconds = logsForDay.reduce((total, log) => {
+            if (log.task && log.task !== "休憩" && log.type !== "goal") {
+                return total + (Number(log.duration) || 0);
+            }
+            return total;
+        }, 0);
+
         // サマリー表示
-        summaryHtml = '<h4 class="text-lg font-semibold mb-2">1日の合計 (休憩除く)</h4>';
+        summaryHtml = `
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-3 pb-2 border-b border-gray-200 gap-1">
+                <h4 class="text-lg font-semibold text-gray-800">1日の合計 (休憩除く)</h4>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs text-gray-500 font-bold">総稼働時間:</span>
+                    <span class="font-mono font-bold text-base text-indigo-700 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-200">
+                        ⏱️ ${formatDuration(totalWorkSeconds)}
+                    </span>
+                </div>
+            </div>
+        `;
+
         if (Object.keys(dailyWorkSummary).length > 0) {
             summaryHtml += '<ul class="space-y-2">';
-             Object.entries(dailyWorkSummary)
-                 .sort(([, a], [, b]) => b - a)
-                 .forEach(([taskKey, duration]) => {
-                     summaryHtml += `<li class="p-2 bg-gray-100 rounded-md flex justify-between"><strong>${escapeHtml(taskKey)}</strong> <span>${formatDuration(duration)}</span></li>`;
-                 });
-             summaryHtml += "</ul>";
+            Object.entries(dailyWorkSummary)
+                .sort(([, a], [, b]) => b - a)
+                .forEach(([taskKey, duration]) => {
+                    summaryHtml += `<li class="p-2 bg-gray-100 rounded-md flex justify-between"><strong>${escapeHtml(taskKey)}</strong> <span>${formatDuration(duration)}</span></li>`;
+                });
+            summaryHtml += "</ul>";
         } else {
-             summaryHtml += '<p class="text-gray-500 text-sm">この日の業務記録はありません。</p>';
+            summaryHtml += '<p class="text-gray-500 text-sm py-2">この日の業務記録はありません。</p>';
         }
 
         // ゴール貢献表示
@@ -150,11 +140,11 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
                      const firstLog = goalData.logs[0];
                      const editButtonHtml = isAdmin && firstLog ? `
                          <button class="edit-contribution-btn text-xs bg-blue-500 text-white font-bold py-1 px-2 rounded hover:bg-blue-600"
-                                 data-user-name="${escapeHtml(currentUserForDetailView)}"
-                                 data-goal-id="${firstLog.goalId}"
-                                 data-task-name="${escapeHtml(firstLog.task)}"
-                                 data-goal-title="${escapeHtml(firstLog.goalTitle)}"
-                                 data-date="${date}">修正</button>
+                                  data-user-name="${escapeHtml(currentUserForDetailView)}"
+                                  data-goal-id="${firstLog.goalId}"
+                                  data-task-name="${escapeHtml(firstLog.task)}"
+                                  data-goal-title="${escapeHtml(firstLog.goalTitle)}"
+                                  data-date="${date}">修正</button>
                      ` : "";
 
                      goalHtml += `<li class="p-2 bg-yellow-50 rounded-md flex justify-between items-center">
@@ -165,7 +155,7 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
              goalHtml += "</ul>";
         }
 
-         timelineHtml = timelineHtml ? `<h4 class="text-lg font-semibold mt-4 mb-2 border-t pt-4">タイムライン</h4><ul class="space-y-3">${timelineHtml}</ul>` : '';
+        timelineHtml = timelineHtml ? `<h4 class="text-lg font-semibold mt-4 mb-2 border-t pt-4">タイムライン</h4><ul class="space-y-3">${timelineHtml}</ul>` : '';
 
         detailsContentEl.innerHTML = summaryHtml + goalHtml + timelineHtml;
 
@@ -203,7 +193,26 @@ export function showMonthlyLogs(currentCalendarDate, logsForMonth, detailsTitleE
             }
         });
 
-        let contentHtml = '<h4 class="text-lg font-semibold mb-2">業務時間合計 (休憩除く)</h4>';
+        // 月の総稼働時間（秒数）を直接計算
+        const totalMonthlySeconds = logsForMonth.reduce((total, log) => {
+            if (log.task && log.task !== "休憩" && log.type !== "goal") {
+                return total + (Number(log.duration) || 0);
+            }
+            return total;
+        }, 0);
+
+        let contentHtml = `
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-3 pb-2 border-b border-gray-200 gap-1">
+                <h4 class="text-lg font-semibold text-gray-800">業務時間合計 (休憩除く)</h4>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs text-gray-500 font-bold">総稼働時間:</span>
+                    <span class="font-mono font-bold text-base text-indigo-700 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-200">
+                        ⏱️ ${formatDuration(totalMonthlySeconds)}
+                    </span>
+                </div>
+            </div>
+        `;
+
         if (Object.keys(monthlySummary).length > 0) {
             contentHtml += '<ul class="space-y-2">';
             Object.entries(monthlySummary)
@@ -213,10 +222,10 @@ export function showMonthlyLogs(currentCalendarDate, logsForMonth, detailsTitleE
                  });
              contentHtml += "</ul>";
         } else {
-             contentHtml += '<p class="text-gray-500 text-sm">この月の業務時間記録はありません。</p>';
+             contentHtml += '<p class="text-gray-500 text-sm py-2">この月の業務時間記録はありません。</p>';
         }
 
-         if (Object.keys(monthlyGoalContributions).length > 0) {
+        if (Object.keys(monthlyGoalContributions).length > 0) {
             contentHtml += '<h4 class="text-lg font-semibold mt-4 mb-2 border-t pt-4">目標貢献 合計</h4>';
             contentHtml += '<ul class="space-y-2">';
             Object.entries(monthlyGoalContributions)

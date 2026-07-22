@@ -168,7 +168,7 @@ export const clientViewTemplate = `
           <button id="view-my-progress-btn" class="w-full bg-cyan-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-cyan-700 transition shadow-sm">
             業務進捗を確認 (読取専用)
           </button>
-          <button id="fix-yesterday-checkout-btn" class="w-full bg-orange-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-orange-600 transition shadow-sm">
+          <button id="fix-yesterday-checkout-btn" class="hidden w-full bg-orange-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-orange-600 transition shadow-sm">
             退勤忘れを修正
           </button>
         </div>

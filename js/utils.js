@@ -86,8 +86,6 @@ export async function checkForCheckoutCorrection(uid) {
          return;
     }
 
-    // 【★追加】ガード節: 現在「従業員画面」が開いていないなら処理しない
-    // VIEWS 定数は main.js にあるため、単純に ID 文字列で判定します
     const clientView = document.getElementById("client-view");
     if (!clientView || !clientView.classList.contains("active-view")) {
         return;
@@ -101,25 +99,21 @@ export async function checkForCheckoutCorrection(uid) {
             if (fixCheckoutModal) {
                 const dateInput = fixCheckoutModal.querySelector("#fix-checkout-date-input");
                 const cancelBtn = fixCheckoutModal.querySelector("#fix-checkout-cancel-btn");
-                const descP = fixCheckoutModal.querySelector("p"); // 説明文の要素を取得
+                const descP = fixCheckoutModal.querySelector("p");
                 
-                // 昨日をデフォルト設定
                 if (dateInput) {
                     const yesterday = new Date();
                     yesterday.setDate(yesterday.getDate() - 1);
                     dateInput.value = getJSTDateString(yesterday);
                 }
 
-                // ★修正: 後回し不可にするため、キャンセルボタンを非表示にする
                 if (cancelBtn) cancelBtn.style.display = "none";
 
-                // ★追加: 説明文を警告メッセージに書き換え、赤字で強調する
                 if (descP) {
                     descP.textContent = "【重要】前回の退勤処理が完了していません。正しい退勤時刻を入力して修正してください。この操作は完了するまでスキップできません。";
                     descP.classList.add("text-red-600", "font-bold");
                 }
 
-                // モーダルを表示
                 fixCheckoutModal.classList.remove("hidden");
             }
         }
@@ -136,4 +130,51 @@ export function escapeHtml(unsafe) {
          .replace(/>/g, "&gt;")
          .replace(/"/g, "&quot;")
          .replace(/'/g, "&#039;");
- }
+}
+
+/**
+ * テキスト内のURLをリンクに変換し、さらに #文字# を赤色で少し大きく装飾する関数
+ * 画像URLやチャットツールの画像添付URLの場合は <img> タグのみを生成し、中央揃えで表示します。
+ * ※セキュリティのため、必ず先に escapeHtml を通した文字列を渡してください。
+ */
+export function linkify(escapedText) {
+    if (!escapedText) return "";
+    
+    // 0. 【自動修復】（変更なし）
+    let healedText = escapedText;
+    const healRegex = /(https?:\/\/[^\s<>#"]+)[\s\n]+([a-zA-Z0-9%=\?&\-\+_\/;]{15,})/gi;
+    
+    let previousText;
+    do {
+        previousText = healedText;
+        healedText = healedText.replace(healRegex, "$1$2");
+    } while (healedText !== previousText);
+    
+    // 1. URLの検知と置換
+    const urlRegex = /(\n*)(https?:\/\/[^\s\n<>"]+)/g;
+    let processedText = healedText.replace(urlRegex, (match, beforeLines, url) => {
+        
+        // パターン1: 通常の画像拡張子（.png, .jpg など）で終わるURL
+        const hasImageExtension = /\.(jpeg|jpg|gif|png|webp|svg)(\?.*)?$/i.test(url);
+        
+        // パターン2: Google Chat等の添付URL
+        const isImageContentType = /content_type=image/i.test(url);
+        
+        // どちらかの条件を満たしていれば画像として処理
+        if (hasImageExtension || isImageContentType) {
+            // 【改善点】画像URLを一切破壊せず、誤発火の原因だった onerror 属性のみを削除
+            return `<div class="my-2 flex justify-center"><img src="${url}" alt="貼り付けられた画像" class="max-w-full sm:max-w-xs md:max-w-md h-auto rounded-lg shadow-md border border-gray-200" /></div>`;
+        }
+        
+        // 通常のURL（画像ではないリンク）は元の安全な形でテキストリンク化
+        return `${beforeLines}<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline break-all">${url}</a>`;
+    });
+
+    // 2. 次に #（文字）# を検知して Tailwind CSS で赤文字＆少し大きく＆太字に変換（変更なし）
+    const decorRegex = /#([^#\n]+)#/g;
+    processedText = processedText.replace(decorRegex, (match, p1) => {
+        return `<span class="text-red-600 text-base font-bold">${p1}</span>`;
+    });
+
+    return processedText;
+}

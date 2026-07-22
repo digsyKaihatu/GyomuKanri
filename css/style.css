@@ -1,4 +1,8 @@
- body {
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
      /* Use Noto Sans JP first, then Inter, then generic sans-serif */
      font-family: 'Noto Sans JP', 'Inter', sans-serif;
  }

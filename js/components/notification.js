@@ -46,10 +46,10 @@ export async function triggerReservationNotification(actionName) {
 
     if (actionName === "休憩開始") {
         title = "休憩時間になりました";
-        message = "自動的に休憩に切り替わりました。ゆっくり休んでください。";
+        message = "休憩ボタンを忘れずに押して、ゆっくり休んでください。";
     } else if (actionName === "帰宅") {
-        title = "自動帰宅しました";
-        message = "セルフチェックを忘れずにお願いします！";
+        title = "帰宅時間になりました。";
+        message = "セルフチェックと帰宅ボタンを押すのを忘れずにお願いします！";
         isLeave = true; // ★追加：帰宅の場合はtrueにしてボタン自動クリックの対象にする
     } else if (actionName.startsWith("テスト")) {
         title = "通知テスト";

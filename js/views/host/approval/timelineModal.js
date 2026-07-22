@@ -3,6 +3,19 @@ import { db } from "../../../main.js";
 import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { escapeHtml, formatTime, formatDuration } from "../../../utils.js";
 
+// "HH:mm" または "HH:mm:ss" を秒数に変換するヘルパー関数
+function parseTimeToSeconds(timeStr) {
+    if (!timeStr || typeof timeStr !== 'string') return 0;
+    const parts = timeStr.split(':').map(Number);
+    if (parts.length >= 2) {
+        const hours = parts[0] || 0;
+        const minutes = parts[1] || 0;
+        const seconds = parts[2] || 0;
+        return hours * 3600 + minutes * 60 + seconds;
+    }
+    return 0;
+}
+
 export async function showTimelineModal(targetUserId, targetUserName, dateStr) {
     const existing = document.getElementById("approval-timeline-modal");
     if (existing) existing.remove();
@@ -34,14 +47,14 @@ export async function showTimelineModal(targetUserId, targetUserName, dateStr) {
 
     const contentEl = document.getElementById("timeline-content");
     try {
-        // 1. 打刻ログの取得クエリ
+        // 1. 打刻ログの取得
         const logsQuery = query(
             collection(db, "work_logs"), 
             where("userId", "==", targetUserId), 
             where("date", "==", dateStr)
         );
 
-        // 2. 申請データの取得クエリ (work_log_requests / requestDate / pending)
+        // 2. 未承認申請データの取得
         const requestsQuery = query(
             collection(db, "work_log_requests"),
             where("userId", "==", targetUserId),
@@ -49,7 +62,6 @@ export async function showTimelineModal(targetUserId, targetUserName, dateStr) {
             where("status", "==", "pending")
         );
 
-        // 並列取得
         const [logsSnapshot, requestsSnapshot] = await Promise.all([
             getDocs(logsQuery),
             getDocs(requestsQuery)
@@ -60,7 +72,7 @@ export async function showTimelineModal(targetUserId, targetUserName, dateStr) {
             return;
         }
 
-        // --- A. 打刻ログの整理 & 修正前の合計稼働時間（休憩除く）計算 ---
+        // --- A. 打刻ログの整理 & 修正前合計稼働時間の計算 (秒単位) ---
         const logs = logsSnapshot.docs
             .map(d => ({ id: d.id, ...d.data() }))
             .sort((a, b) => {
@@ -74,7 +86,7 @@ export async function showTimelineModal(targetUserId, targetUserName, dateStr) {
             return total + (Number(log.duration) || 0);
         }, 0);
 
-        // --- B. 未承認申請の計算 & 承認後の想定時間算出 ---
+        // --- B. 未承認申請の計算 (秒単位で安全に算出) ---
         const pendingRequests = requestsSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         const pendingCount = pendingRequests.length;
         
@@ -82,43 +94,62 @@ export async function showTimelineModal(targetUserId, targetUserName, dateStr) {
 
         pendingRequests.forEach(req => {
             const reqData = req.data || {};
-            // 休憩に関する申請は稼働時間から除外
-            if (reqData.task === '休憩' || reqData.taskName === '休憩') return;
+            // 休憩の申請は稼働時間から除外
+            if (reqData.task === '休憩' || reqData.taskName === '休憩' || reqData.task_name === '休憩') return;
 
-            // 1. 差異データ(diffMinutesなど)が保持されている場合は優先加算
-            if (reqData.diffMinutes !== undefined && !isNaN(Number(reqData.diffMinutes))) {
-                afterApprovalDuration += Number(reqData.diffMinutes);
-                return;
+            // ① 申請後の「稼働時間（秒）」を解析して算出
+            let newDurationInSeconds = null;
+
+            // 開始・終了時間の文字列（例: "15:50", "16:08"）がある場合
+            const startStr = reqData.startTime || reqData.newStartTime || reqData.start_time;
+            const endStr = reqData.endTime || reqData.newEndTime || reqData.end_time;
+
+            if (startStr && endStr) {
+                const startSec = parseTimeToSeconds(startStr);
+                const endSec = parseTimeToSeconds(endStr);
+                if (endSec > startSec) {
+                    newDurationInSeconds = endSec - startSec;
+                }
             }
 
-            // 2. 申請タイプ別の計算
+            // 数値（分または秒）として保持されている場合のフォールバック
+            if (newDurationInSeconds === null) {
+                const numVal = Number(reqData.duration || reqData.workMinutes || reqData.diffMinutes);
+                if (!isNaN(numVal) && numVal !== 0) {
+                    if (numVal > 1440) {
+                        newDurationInSeconds = Math.floor(numVal > 86400 ? numVal / 1000 : numVal); // ミリ秒/秒
+                    } else {
+                        newDurationInSeconds = numVal * 60; // 分 -> 秒変換
+                    }
+                }
+            }
+
+            // ② 申請タイプ別に差分適用
             if (req.type === 'add') {
-                // 新規追加申請
-                const addTime = Number(reqData.duration) || Number(reqData.workMinutes) || 0;
-                afterApprovalDuration += addTime;
+                if (newDurationInSeconds !== null) {
+                    afterApprovalDuration += newDurationInSeconds;
+                }
             } 
-            else if (req.type === 'time_correct' || req.type === 'forget_checkout') {
-                // 時間訂正・退勤忘れ修正
+            else if (req.type === 'time_correct' || req.type === 'forget_checkout' || req.type === 'edit') {
                 const originalLog = logs.find(l => l.id === req.targetLogId);
-                const oldTime = originalLog ? (Number(originalLog.duration) || 0) : 0;
-                const newTime = Number(reqData.duration) || Number(reqData.workMinutes) || 0;
+                const oldDurationSec = originalLog ? (Number(originalLog.duration) || 0) : 0;
                 
-                afterApprovalDuration += (newTime - oldTime);
+                if (newDurationInSeconds !== null) {
+                    afterApprovalDuration += (newDurationInSeconds - oldDurationSec);
+                }
             }
-            // ※ count_correct (工数件数修正) は稼働時間に影響しないため何もしない
         });
 
-        // 負の値にならないよう安全対策
+        // 負の値にならないよう保護
         afterApprovalDuration = Math.max(0, afterApprovalDuration);
 
-        // 表示用フォーマット
+        // フォーマット表示
         const totalWorkTimeStr = formatDuration(totalWorkDuration);
         const afterApprovalTimeStr = formatDuration(afterApprovalDuration);
 
         // --- C. UI構築 ---
         let html = `
         <div class="mb-4 p-3 bg-indigo-50 border border-indigo-100 rounded-lg text-xs space-y-2.5">
-            <!-- 修正前の稼働時間 -->
             <div class="flex items-center justify-between">
                 <span class="font-bold text-gray-700 flex items-center gap-1">
                     ⏱️ 修正前 合計稼働時間 <span class="text-[10px] text-gray-500 font-normal">(休憩除く)</span>
@@ -128,7 +159,6 @@ export async function showTimelineModal(targetUserId, targetUserName, dateStr) {
                 </span>
             </div>
             
-            <!-- 申請件数 & 全承認後の想定時間 -->
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-indigo-100">
                 <span class="font-bold flex items-center gap-1 ${pendingCount > 0 ? 'text-amber-600' : 'text-gray-500'}">
                     📝 未承認の申請: <span class="bg-white px-2 py-0.5 rounded border border-indigo-100">${pendingCount} 件</span>
@@ -143,7 +173,6 @@ export async function showTimelineModal(targetUserId, targetUserName, dateStr) {
         </div>
         <ul class="space-y-2">`;
 
-        // ログリスト出力
         logs.forEach(log => {
             const isGoalLog = log.type === 'goal';
             const bgColor = log.task === '休憩' ? 'bg-yellow-50 border-yellow-200' : (isGoalLog ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200');
@@ -174,7 +203,7 @@ export async function showTimelineModal(targetUserId, targetUserName, dateStr) {
         html += '</ul>';
         contentEl.innerHTML = html;
     } catch (error) {
-        console.error("タイムラインデータ取得エラー:", error);
+        console.error("タイムライン取得エラー:", error);
         contentEl.innerHTML = `<p class="text-center text-red-500 py-4 text-xs">データの取得に失敗しました。</p>`;
     }
 }

@@ -201,7 +201,7 @@ export async function showTimelineModal(targetUserId, targetUserName, dateStr) {
             
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-indigo-100">
                 <span class="font-bold flex items-center gap-1 ${pendingCount > 0 ? 'text-amber-600' : 'text-gray-500'}">
-                    📝 未承認の申請: <span class="bg-white px-2 py-0.5 rounded border border-indigo-100">${pendingCount} 件</span>
+                    📝 この日の未承認の申請: <span class="bg-white px-2 py-0.5 rounded border border-indigo-100">${pendingCount} 件</span>
                 </span>
                 <span class="font-bold text-gray-700 flex items-center gap-1">
                     ➡️ 全承認後の想定時間:

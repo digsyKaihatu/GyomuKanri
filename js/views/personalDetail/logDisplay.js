@@ -29,8 +29,6 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
             const startTimeStr = formatTime(log.startTime);
             const endTimeStr = formatTime(log.endTime);
 
-            // 集計処理
-
             // ① 目標貢献（件数）の集計：typeに関わらず、件数(contribution)が入っていれば加算
             if (log.goalTitle && log.task && (log.contribution > 0 || log.type === "goal")) {
                 const key = `[${log.task}] ${log.goalTitle}`;
@@ -68,7 +66,7 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
             const bgClass = log.task === "休憩" ? "bg-yellow-50" : (log.type === "goal" ? "bg-green-50" : "bg-gray-50");
             const textClass = log.task === "休憩" ? "text-yellow-800" : (log.type === "goal" ? "text-green-800" : "text-gray-800");
 
-            // 工数ログの場合は終了時間を表示しない（「10:00 - 」のようにならないため）
+            // 工数ログの場合は終了時間を表示しない
             const timeDisplayHtml = log.type === "goal"
                 ? `<span class="font-mono text-sm bg-green-200 text-green-900 px-2 py-1 rounded">${startTimeStr} (進捗のみ)</span>`
                 : `<span class="font-mono text-sm bg-gray-200 px-2 py-1 rounded">${startTimeStr} - ${endTimeStr}</span>`;
@@ -97,15 +95,24 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
             </li>`;
         });
 
-        // 🔥 サマリー表示：1日の総稼働時間を計算して表示
-        const totalDailyDuration = Object.values(dailyWorkSummary).reduce((sum, dur) => sum + dur, 0);
+        // 🔥 1日の総稼働時間（休憩・進捗登録除く）を直接計算
+        const totalWorkSeconds = logsForDay.reduce((total, log) => {
+            if (log.task && log.task !== "休憩" && log.type !== "goal") {
+                return total + (Number(log.duration) || 0);
+            }
+            return total;
+        }, 0);
 
+        // サマリー表示
         summaryHtml = `
-            <div class="flex justify-between items-center mb-3 pb-2 border-b">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-3 pb-2 border-b border-gray-200 gap-1">
                 <h4 class="text-lg font-semibold text-gray-800">1日の合計 (休憩除く)</h4>
-                <span class="font-mono font-bold text-base bg-indigo-100 text-indigo-800 px-3 py-1 rounded-lg border border-indigo-200">
-                    ⏱️ ${formatDuration(totalDailyDuration)}
-                </span>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs text-gray-500 font-bold">総稼働時間:</span>
+                    <span class="font-mono font-bold text-base text-indigo-700 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-200">
+                        ⏱️ ${formatDuration(totalWorkSeconds)}
+                    </span>
+                </div>
             </div>
         `;
 
@@ -186,15 +193,23 @@ export function showMonthlyLogs(currentCalendarDate, logsForMonth, detailsTitleE
             }
         });
 
-        // 月次の合計稼働時間算出
-        const totalMonthlyDuration = Object.values(monthlySummary).reduce((sum, dur) => sum + dur, 0);
+        // 月の総稼働時間（秒数）を直接計算
+        const totalMonthlySeconds = logsForMonth.reduce((total, log) => {
+            if (log.task && log.task !== "休憩" && log.type !== "goal") {
+                return total + (Number(log.duration) || 0);
+            }
+            return total;
+        }, 0);
 
         let contentHtml = `
-            <div class="flex justify-between items-center mb-3 pb-2 border-b">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-3 pb-2 border-b border-gray-200 gap-1">
                 <h4 class="text-lg font-semibold text-gray-800">業務時間合計 (休憩除く)</h4>
-                <span class="font-mono font-bold text-base bg-indigo-100 text-indigo-800 px-3 py-1 rounded-lg border border-indigo-200">
-                    ⏱️ ${formatDuration(totalMonthlyDuration)}
-                </span>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs text-gray-500 font-bold">総稼働時間:</span>
+                    <span class="font-mono font-bold text-base text-indigo-700 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-200">
+                        ⏱️ ${formatDuration(totalMonthlySeconds)}
+                    </span>
+                </div>
             </div>
         `;
 

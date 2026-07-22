@@ -50,7 +50,28 @@ export async function showTimelineModal(targetUserId, targetUserName, dateStr) {
                 return tA - tB;
             });
 
-        let html = '<ul class="space-y-2">';
+        // 休憩および進捗登録(goal)を除いた合計稼働時間を計算
+        const totalWorkDuration = logs.reduce((total, log) => {
+            if (log.task === '休憩' || log.type === 'goal') {
+                return total;
+            }
+            return total + (Number(log.duration) || 0);
+        }, 0);
+
+        const totalWorkTimeStr = formatDuration(totalWorkDuration);
+
+        // 合計稼働時間表示用ブロックを先頭に追加
+        let html = `
+        <div class="mb-3 p-3 bg-indigo-50 border border-indigo-100 rounded-lg flex items-center justify-between text-xs">
+            <span class="font-bold text-gray-700 flex items-center gap-1">
+                ⏱️ 修正前 合計稼働時間 <span class="text-[10px] text-gray-500 font-normal">(休憩除く)</span>
+            </span>
+            <span class="font-mono font-bold text-indigo-700 text-sm bg-white px-2.5 py-1 rounded border border-indigo-200">
+                ${totalWorkTimeStr}
+            </span>
+        </div>
+        <ul class="space-y-2">`;
+
         logs.forEach(log => {
             const isGoalLog = log.type === 'goal';
             const bgColor = log.task === '休憩' ? 'bg-yellow-50 border-yellow-200' : (isGoalLog ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200');

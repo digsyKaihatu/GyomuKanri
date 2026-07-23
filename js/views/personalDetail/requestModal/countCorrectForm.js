@@ -1,6 +1,6 @@
 // js/views/personalDetail/requestModal/countCorrectForm.js
 import { escapeHtml } from "../../../utils.js";
-import { fetchModalTimelineLogs } from "./index.js"; // ★ 親モジュールからインポート
+import { subscribeModalTimelineLogs } from "./index.js"; // ★ 親モジュールからリアルタイム購読をインポート
 
 export function renderCountCorrectFormHTML(defaultDate) {
     return `
@@ -16,13 +16,8 @@ export function renderCountCorrectFormHTML(defaultDate) {
         
         <div class="space-y-3 flex flex-col">
             <div>
-                <div class="flex justify-between items-center mb-1">
-                    <label class="block text-sm font-bold text-gray-700">工数件数の修正をしたい日付入力</label>
-                    <button type="button" id="req-countcorrect-refresh-btn" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1 transition" title="Firestoreから最新データを再取得">
-                        🔄 最新に更新
-                    </button>
-                </div>
-                <input type="date" id="req-countcorrect-date" value="${defaultDate}" class="block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                <label class="block text-sm font-bold text-gray-700">工数件数の修正をしたい日付入力</label>
+                <input type="date" id="req-countcorrect-date" value="${defaultDate}" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
             </div>
             <div class="flex flex-col flex-grow">
                 <div class="flex justify-between items-center mb-1">
@@ -60,25 +55,20 @@ export function renderCountCorrectFormHTML(defaultDate) {
 
 export function initCountCorrectForm() {
     const correctDateInput = document.getElementById("req-countcorrect-date");
-    const refreshBtn = document.getElementById("req-countcorrect-refresh-btn");
 
     if (!correctDateInput) return;
 
     correctDateInput.addEventListener("change", (e) => { 
-        fetchCountTimeline(e.target.value, false); 
+        setupRealtimeTimeline(e.target.value); 
     });
 
-    refreshBtn?.addEventListener("click", () => {
-        const dateVal = correctDateInput.value;
-        if (dateVal) {
-            fetchCountTimeline(dateVal, true);
-        }
-    });
-
-    fetchCountTimeline(correctDateInput.value, false);
+    setupRealtimeTimeline(correctDateInput.value);
 }
 
-async function fetchCountTimeline(dateStr, forceRefresh = false) {
+/**
+ * docChanges() 差分検知のリアルタイムリスナーを開始
+ */
+function setupRealtimeTimeline(dateStr) {
     const container = document.getElementById("req-countcorrect-timeline-container");
     const cacheBadge = document.getElementById("req-countcorrect-cache-badge");
     if (!container) return;
@@ -88,21 +78,18 @@ async function fetchCountTimeline(dateStr, forceRefresh = false) {
     container.innerHTML = '<p class="text-center text-gray-400 py-4 text-xs animate-pulse">業務記録を取得中...</p>';
     if (cacheBadge) cacheBadge.textContent = "☁️ 通信中...";
 
-    try {
-        // ★ 親モジュールの index.js 経由で共有ログを取得
-        const { logs, isCache } = await fetchModalTimelineLogs(dateStr, forceRefresh);
-
+    // ⚡ index.js の docChanges リスナーを呼び出し
+    subscribeModalTimelineLogs(dateStr, ({ logs, isCache, changeType }) => {
         if (cacheBadge) {
-            cacheBadge.textContent = isCache ? "⚡ キャッシュ表示中" : "☁️ Firestoreから同期済";
+            if (isCache) {
+                cacheBadge.textContent = "⚡ キャッシュ表示中";
+            } else {
+                cacheBadge.textContent = changeType ? `✨ 差分適用 (${changeType})` : "☁️ Firestore同期済";
+            }
         }
 
         renderTimelineList(container, logs);
-
-    } catch (error) {
-        console.error("Fetch timeline error:", error);
-        if (cacheBadge) cacheBadge.textContent = "";
-        container.innerHTML = '<p class="text-center text-red-500 py-4 text-xs">データの同期中にエラーが発生しました。</p>';
-    }
+    });
 }
 
 function renderTimelineList(container, logs) {

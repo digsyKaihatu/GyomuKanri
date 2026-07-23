@@ -197,11 +197,11 @@ async function fetchAndRenderTimeline(dateStr) {
 
                 document.getElementById("req-correct-log-id").value = log.id;
                 
-                // 【追加】クリックされた元の稼働時間・業務名・工数名を隠しインプットへ一時保存
+                // クリックされた元の稼働時間・業務名・工数名を隠しインプットへ一時保存
                 document.getElementById("req-correct-before-start").value = log.startTimeStr;
                 document.getElementById("req-correct-before-end").value = log.endTimeStr;
                 document.getElementById("req-correct-before-task").value = log.task; 
-                document.getElementById("req-correct-before-goal-title").value = log.goalTitle || ""; // ★工数タイトルを一時保存
+                document.getElementById("req-correct-before-goal-title").value = log.goalTitle || "";
 
                 if (taskSelect) taskSelect.value = log.task;
                 if (startTimeInput) startTimeInput.value = log.startTimeStr;
@@ -222,7 +222,6 @@ async function fetchAndRenderTimeline(dateStr) {
 }
 
 function resetCorrectionInputs() {
-    // フィールドリストに before-goal-title を追加
     const fields = ["req-correct-log-id", "req-correct-before-start", "req-correct-before-end", "req-correct-before-task", "req-correct-before-goal-title", "req-correct-task-select", "req-correct-goal-select", "req-correct-start-time", "req-correct-end-time", "req-correct-memo"];
     fields.forEach(id => {
         const el = document.getElementById(id);
@@ -241,7 +240,7 @@ export function getTimeCorrectFormData() {
     const beforeStart = document.getElementById("req-correct-before-start").value;
     const beforeEnd = document.getElementById("req-correct-before-end").value;
     const beforeTask = document.getElementById("req-correct-before-task").value; 
-    const beforeGoalTitle = document.getElementById("req-correct-before-goal-title").value; // ★隠しインプットから抽出
+    const beforeGoalTitle = document.getElementById("req-correct-before-goal-title").value;
     const dateVal = document.getElementById("req-correct-date").value;
     const taskName = document.getElementById("req-correct-task-select").value;
     const startTime = document.getElementById("req-correct-start-time").value;
@@ -253,7 +252,9 @@ export function getTimeCorrectFormData() {
 
     if (!targetLogId) throw new Error("エラー：修正したい当当日ログをタイムライン履歴から選択してください。");
     if (!taskName || !startTime || !endTime) throw new Error("エラー：業務、開始時間、終了時間は必須入力です。");
-    if (startTime >= endTime) throw new Error("エラー：終了時間は開始時間より後の時刻にしてください。");
+
+    // 【修正箇所】>（大なり）のみにすることで、開始時間と終了時間が同じ（startTime === endTime）場合もエラーにならず通過します
+    if (startTime > endTime) throw new Error("エラー：終了時間は開始時間以降の時刻にしてください。");
 
     let goalId = null;
     let goalTitle = null;
@@ -289,7 +290,7 @@ export function getTimeCorrectFormData() {
             applicationType: "変更",
             reasonCategory: "時間・業務の訂正",
             beforeTask: beforeTask, 
-            beforeGoalTitle: beforeGoalTitle, // ★送信データに「変更前の工数」を含める
+            beforeGoalTitle: beforeGoalTitle,
             task: taskName,
             goalId: goalId,
             goalTitle: goalTitle,

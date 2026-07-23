@@ -1,13 +1,6 @@
 // js/views/personalDetail/requestModal/countCorrectForm.js
-import { db, userId } from "../../../main.js";
-import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { escapeHtml } from "../../../utils.js";
-
-// -------------------------------------------------------------
-// ローカルキャッシュ管理 (セッション中保持 & 5分間のTTL設定)
-// -------------------------------------------------------------
-const logsCache = new Map(); // key: dateStr, value: { timestamp: number, logs: Array }
-const CACHE_TTL_MS = 5 * 60 * 1000; // キャッシュ保持時間: 5分
+import { fetchModalTimelineLogs } from "./index.js"; // ★ 親モジュールからインポート
 
 export function renderCountCorrectFormHTML(defaultDate) {
     return `
@@ -25,7 +18,6 @@ export function renderCountCorrectFormHTML(defaultDate) {
             <div>
                 <div class="flex justify-between items-center mb-1">
                     <label class="block text-sm font-bold text-gray-700">工数件数の修正をしたい日付入力</label>
-                    <!-- キャッシュを無視して最新の差分を取得する再取得ボタン -->
                     <button type="button" id="req-countcorrect-refresh-btn" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1 transition" title="Firestoreから最新データを再取得">
                         🔄 最新に更新
                     </button>
@@ -72,12 +64,10 @@ export function initCountCorrectForm() {
 
     if (!correctDateInput) return;
 
-    // 日付変更イベント（キャッシュがあればそれを利用）
     correctDateInput.addEventListener("change", (e) => { 
         fetchCountTimeline(e.target.value, false); 
     });
 
-    // 「最新に更新」ボタン（キャッシュを無視してwork_logsから再取得）
     refreshBtn?.addEventListener("click", () => {
         const dateVal = correctDateInput.value;
         if (dateVal) {
@@ -88,11 +78,6 @@ export function initCountCorrectForm() {
     fetchCountTimeline(correctDateInput.value, false);
 }
 
-/**
- * タイムラインログを取得・描画（work_logsを直接取得、ローカルキャッシュ併用）
- * @param {string} dateStr 対象日付 (YYYY-MM-DD)
- * @param {boolean} forceRefresh キャッシュを無視して強制的Firestore読み込みを行うか
- */
 async function fetchCountTimeline(dateStr, forceRefresh = false) {
     const container = document.getElementById("req-countcorrect-timeline-container");
     const cacheBadge = document.getElementById("req-countcorrect-cache-badge");
@@ -100,64 +85,17 @@ async function fetchCountTimeline(dateStr, forceRefresh = false) {
 
     resetCountInputs();
 
-    const now = Date.now();
-    const cachedData = logsCache.get(dateStr);
-
-    // -------------------------------------------------------------
-    // 【キャッシュ利用判定】
-    // -------------------------------------------------------------
-    if (!forceRefresh && cachedData && (now - cachedData.timestamp < CACHE_TTL_MS)) {
-        if (cacheBadge) cacheBadge.textContent = "⚡ キャッシュ表示中";
-        renderTimelineList(container, cachedData.logs);
-        return;
-    }
-
-    // -------------------------------------------------------------
-    // 【work_logs コレクションからの最新読み込み】
-    // -------------------------------------------------------------
     container.innerHTML = '<p class="text-center text-gray-400 py-4 text-xs animate-pulse">業務記録を取得中...</p>';
     if (cacheBadge) cacheBadge.textContent = "☁️ 通信中...";
 
     try {
-        const q = query(
-            collection(db, "work_logs"), 
-            where("userId", "==", userId), 
-            where("date", "==", dateStr)
-        );
-        const snapshot = await getDocs(q);
+        // ★ 親モジュールの index.js 経由で共有ログを取得
+        const { logs, isCache } = await fetchModalTimelineLogs(dateStr, forceRefresh);
 
-        if (snapshot.empty) {
-            logsCache.set(dateStr, { timestamp: now, logs: [] });
-            if (cacheBadge) cacheBadge.textContent = "";
-            container.innerHTML = '<p class="text-center text-gray-400 py-6 text-xs">この日の業務記録はありません。</p>';
-            return;
+        if (cacheBadge) {
+            cacheBadge.textContent = isCache ? "⚡ キャッシュ表示中" : "☁️ Firestoreから同期済";
         }
 
-        const convertTime = (t) => {
-            if (!t) return "";
-            if (typeof t === "string" && t.includes(":") && t.length <= 5) return t;
-            const d = t.toDate ? t.toDate() : new Date(t);
-            if (isNaN(d.getTime())) return "";
-            return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-        };
-
-        const logs = snapshot.docs.map(d => {
-            const data = d.data();
-            return {
-                id: d.id,
-                task: data.task || "不明",
-                startTimeStr: convertTime(data.startTime),
-                endTimeStr: convertTime(data.endTime),
-                goalId: data.goalId || null,
-                goalTitle: data.goalTitle || "",
-                count: data.count !== undefined ? data.count : 0
-            };
-        }).sort((a, b) => a.startTimeStr.localeCompare(b.startTimeStr));
-
-        // ローカルキャッシュに保存
-        logsCache.set(dateStr, { timestamp: now, logs: logs });
-
-        if (cacheBadge) cacheBadge.textContent = "☁️ Firestoreから同期済";
         renderTimelineList(container, logs);
 
     } catch (error) {
@@ -167,9 +105,6 @@ async function fetchCountTimeline(dateStr, forceRefresh = false) {
     }
 }
 
-/**
- * 取得したログ一覧をDOMに描画するサブ関数
- */
 function renderTimelineList(container, logs) {
     if (logs.length === 0) {
         container.innerHTML = '<p class="text-center text-gray-400 py-6 text-xs">この日の業務記録はありません。</p>';
@@ -257,7 +192,6 @@ export function getCountCorrectFormData() {
     if (countInput && countInput.disabled) throw new Error("エラー：選択された業務ログは工数が設定されていないため修正できません。");
     if (isNaN(countVal) || countVal < 0) throw new Error("エラー：成果件数は0以上の有効な数値を入力してください。");
 
-    // 件数の差分計算
     const diffCount = countVal - beforeCount;
 
     return {

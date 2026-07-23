@@ -1,19 +1,11 @@
 // js/views/personalDetail/requestModal/timeCorrectForm.js
-import { db, userId, allTaskObjects } from "../../../main.js";
-import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { allTaskObjects } from "../../../main.js";
 import { escapeHtml } from "../../../utils.js";
+import { fetchModalTimelineLogs } from "./index.js"; // ★ 親モジュールからインポート
 
-// -------------------------------------------------------------
-// ローカルキャッシュ管理 (セッション中保持 & 5分間のTTL設定)
-// -------------------------------------------------------------
-const logsCache = new Map(); // key: dateStr, value: { timestamp: number, logs: Array }
-const CACHE_TTL_MS = 5 * 60 * 1000; // キャッシュ保持時間: 5分
-
-// ①「時間・業務の訂正」用のHTMLテンプレート
 export function renderTimeCorrectFormHTML(defaultDate) {
     return `
     <div class="grid grid-cols-3 gap-x-6 gap-y-4 w-full animate-fade-in">
-        
         <div class="space-y-4">
             <div class="p-4 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-800 space-y-2">
                 <span class="font-bold block text-sm text-blue-900">⏱️ 時間・業務の訂正操作手順</span>
@@ -27,7 +19,6 @@ export function renderTimeCorrectFormHTML(defaultDate) {
             <div>
                 <div class="flex justify-between items-center mb-1">
                     <label class="block text-sm font-bold text-gray-700">時間・業務の訂正をしたい日付入力</label>
-                    <!-- キャッシュを無視して最新の差分を取得する再取得ボタン -->
                     <button type="button" id="req-correct-refresh-btn" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1 transition" title="Firestoreから最新データを再取得">
                         🔄 最新に更新
                     </button>
@@ -79,11 +70,9 @@ export function renderTimeCorrectFormHTML(defaultDate) {
                 <textarea id="req-correct-memo" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white resize-none flex-grow min-h-[60px] focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" placeholder="申請理由など" disabled></textarea>
             </div>
         </div>
-        
     </div>`;
 }
 
-// ② タイムライン自動取得 & プルダウン初期化
 export function initTimeCorrectForm() {
     const taskSelect = document.getElementById("req-correct-task-select");
     const correctDateInput = document.getElementById("req-correct-date");
@@ -104,12 +93,10 @@ export function initTimeCorrectForm() {
         updateCorrectGoalDropdown(e.target.value, null);
     });
 
-    // 日付変更イベント（キャッシュがあれば優先利用）
     correctDateInput.addEventListener("change", (e) => {
         fetchAndRenderTimeline(e.target.value, false);
     });
 
-    // 「最新に更新」ボタン（キャッシュ無視でwork_logsを再取得）
     refreshBtn?.addEventListener("click", () => {
         const dateVal = correctDateInput.value;
         if (dateVal) {
@@ -165,11 +152,6 @@ function updateCorrectGoalDropdown(selectedTaskName, selectedGoalValue) {
     }
 }
 
-/**
- * タイムラインログを取得・描画（work_logsを直接取得、ローカルキャッシュ併用）
- * @param {string} dateStr 対象日付 (YYYY-MM-DD)
- * @param {boolean} forceRefresh キャッシュを無視して強制的Firestore読み込みを行うか
- */
 async function fetchAndRenderTimeline(dateStr, forceRefresh = false) {
     const container = document.getElementById("req-correct-timeline-container");
     const cacheBadge = document.getElementById("req-correct-cache-badge");
@@ -177,64 +159,17 @@ async function fetchAndRenderTimeline(dateStr, forceRefresh = false) {
 
     resetCorrectionInputs();
 
-    const now = Date.now();
-    const cachedData = logsCache.get(dateStr);
-
-    // -------------------------------------------------------------
-    // 【キャッシュ利用判定】
-    // -------------------------------------------------------------
-    if (!forceRefresh && cachedData && (now - cachedData.timestamp < CACHE_TTL_MS)) {
-        if (cacheBadge) cacheBadge.textContent = "⚡ キャッシュ表示中";
-        renderTimelineList(container, cachedData.logs);
-        return;
-    }
-
-    // -------------------------------------------------------------
-    // 【work_logs コレクションからの最新読み込み】
-    // -------------------------------------------------------------
     container.innerHTML = '<p class="text-center text-gray-400 py-4 text-xs animate-pulse">業務記録を取得中...</p>';
     if (cacheBadge) cacheBadge.textContent = "☁️ 通信中...";
 
     try {
-        const q = query(
-            collection(db, "work_logs"), 
-            where("userId", "==", userId), 
-            where("date", "==", dateStr)
-        );
-        const snapshot = await getDocs(q);
+        // ★ 親モジュールの index.js 経由で共有ログを取得
+        const { logs, isCache } = await fetchModalTimelineLogs(dateStr, forceRefresh);
 
-        if (snapshot.empty) {
-            logsCache.set(dateStr, { timestamp: now, logs: [] });
-            if (cacheBadge) cacheBadge.textContent = "";
-            container.innerHTML = '<p class="text-center text-gray-400 py-6 text-xs">この日の業務記録はありません。</p>';
-            return;
+        if (cacheBadge) {
+            cacheBadge.textContent = isCache ? "⚡ キャッシュ表示中" : "☁️ Firestoreから同期済";
         }
 
-        const convertTime = (t) => {
-            if (!t) return "";
-            if (typeof t === "string" && t.includes(":") && t.length <= 5) return t;
-            const d = t.toDate ? t.toDate() : new Date(t);
-            if (isNaN(d.getTime())) return "";
-            return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-        };
-
-        const logs = snapshot.docs.map(d => {
-            const data = d.data();
-            return {
-                id: d.id,
-                task: data.task || "不明",
-                startTimeStr: convertTime(data.startTime),
-                endTimeStr: convertTime(data.endTime),
-                goalId: data.goalId || null,
-                goalTitle: data.goalTitle || "",
-                memo: data.memo || ""
-            };
-        }).sort((a, b) => a.startTimeStr.localeCompare(b.startTimeStr));
-
-        // ローカルキャッシュに保存
-        logsCache.set(dateStr, { timestamp: now, logs: logs });
-
-        if (cacheBadge) cacheBadge.textContent = "☁️ Firestoreから同期済";
         renderTimelineList(container, logs);
 
     } catch (error) {
@@ -244,9 +179,6 @@ async function fetchAndRenderTimeline(dateStr, forceRefresh = false) {
     }
 }
 
-/**
- * 取得したログ一覧をDOMに描画するサブ関数
- */
 function renderTimelineList(container, logs) {
     if (logs.length === 0) {
         container.innerHTML = '<p class="text-center text-gray-400 py-6 text-xs">この日の業務記録はありません。</p>';
@@ -278,7 +210,6 @@ function renderTimelineList(container, logs) {
 
             document.getElementById("req-correct-log-id").value = log.id;
             
-            // クリックされた元の稼働時間・業務名・工数名を隠しインプットへ一時保存
             document.getElementById("req-correct-before-start").value = log.startTimeStr;
             document.getElementById("req-correct-before-end").value = log.endTimeStr;
             document.getElementById("req-correct-before-task").value = log.task; 
@@ -311,7 +242,6 @@ function resetCorrectionInputs() {
     if (container) container.classList.add("hidden");
 }
 
-// ③ バリデーション & データ抽出
 export function getTimeCorrectFormData() {
     const targetLogId = document.getElementById("req-correct-log-id").value;
     const beforeStart = document.getElementById("req-correct-before-start").value;

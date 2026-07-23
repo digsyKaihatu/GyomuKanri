@@ -1,6 +1,6 @@
 // js/views/personalDetail/requestModal/index.js
 import { db, userId, userName } from "../../../main.js";
-import { collection, query, where, getDocs, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { collection, query, where, onSnapshot, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 import { renderAddFormHTML, initAddForm, getAddFormData } from "./addForm.js";
 import { renderTimeCorrectFormHTML, initTimeCorrectForm, getTimeCorrectFormData } from "./timeCorrectForm.js";
@@ -8,65 +8,78 @@ import { renderCountCorrectFormHTML, initCountCorrectForm, getCountCorrectFormDa
 import { renderForgetCheckoutFormHTML, initForgetCheckoutForm, getForgetCheckoutFormData } from "./forgetCheckoutForm.js";
 
 // -------------------------------------------------------------
-// モーダル共有キャッシュ管理 (セッション中保持 & 5分間のTTL設定)
+// モーダル共通 リアルタイム差分監視（docChanges管理）
 // -------------------------------------------------------------
-const modalLogsCache = new Map(); // key: dateStr, value: { timestamp: number, logs: Array }
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5分間保持
+let activeUnsubscribe = null;
+const modalLogsMap = new Map(); // docId -> logData
+
+function convertTime(t) {
+    if (!t) return "";
+    if (typeof t === "string" && t.includes(":") && t.length <= 5) return t;
+    const d = t.toDate ? t.toDate() : new Date(t);
+    if (isNaN(d.getTime())) return "";
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
 
 /**
- * サブフォーム（時間訂正・件数修正）間で共有するログデータ取得関数
+ * onSnapshot + docChanges() によるリアルタイム差分購読関数
  * @param {string} dateStr 対象日付 (YYYY-MM-DD)
- * @param {boolean} forceRefresh キャッシュを無視してFirestoreから再取得するか
- * @returns {Promise<{ logs: Array, isCache: boolean }>}
+ * @param {function} callback データ変更時に実行する描画用コールバック
+ * @returns {function} リスナー解除用関数
  */
-export async function fetchModalTimelineLogs(dateStr, forceRefresh = false) {
-    const now = Date.now();
-    const cachedData = modalLogsCache.get(dateStr);
-
-    // キャッシュが存在し、5分以内で強制更新でなければキャッシュを返す
-    if (!forceRefresh && cachedData && (now - cachedData.timestamp < CACHE_TTL_MS)) {
-        return { logs: cachedData.logs, isCache: true };
+export function subscribeModalTimelineLogs(dateStr, callback) {
+    // 既存の監視があれば解除
+    if (activeUnsubscribe) {
+        activeUnsubscribe();
+        activeUnsubscribe = null;
     }
+    modalLogsMap.clear();
 
-    // work_logs から取得
     const q = query(
         collection(db, "work_logs"),
         where("userId", "==", userId),
         where("date", "==", dateStr)
     );
-    const snapshot = await getDocs(q);
 
-    if (snapshot.empty) {
-        modalLogsCache.set(dateStr, { timestamp: now, logs: [] });
-        return { logs: [], isCache: false };
-    }
+    activeUnsubscribe = onSnapshot(q, (snapshot) => {
+        const isFromCache = snapshot.metadata.fromCache;
+        let lastChangeType = "";
 
-    const convertTime = (t) => {
-        if (!t) return "";
-        if (typeof t === "string" && t.includes(":") && t.length <= 5) return t;
-        const d = t.toDate ? t.toDate() : new Date(t);
-        if (isNaN(d.getTime())) return "";
-        return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+        // 🔥 docChanges() で差分（追加・修正・削除）のみローカルMapに適用
+        snapshot.docChanges().forEach((change) => {
+            const docId = change.doc.id;
+            lastChangeType = change.type;
+
+            if (change.type === "added" || change.type === "modified") {
+                const data = change.doc.data();
+                modalLogsMap.set(docId, {
+                    id: docId,
+                    task: data.task || "不明",
+                    startTimeStr: convertTime(data.startTime),
+                    endTimeStr: convertTime(data.endTime),
+                    goalId: data.goalId || null,
+                    goalTitle: data.goalTitle || "",
+                    count: data.count !== undefined ? data.count : 0,
+                    memo: data.memo || ""
+                });
+            } else if (change.type === "removed") {
+                modalLogsMap.delete(docId);
+            }
+        });
+
+        const sortedLogs = Array.from(modalLogsMap.values()).sort((a, b) => 
+            a.startTimeStr.localeCompare(b.startTimeStr)
+        );
+
+        callback({ logs: sortedLogs, isCache: isFromCache, changeType: lastChangeType });
+    });
+
+    return () => {
+        if (activeUnsubscribe) {
+            activeUnsubscribe();
+            activeUnsubscribe = null;
+        }
     };
-
-    const logs = snapshot.docs.map(d => {
-        const data = d.data();
-        return {
-            id: d.id,
-            task: data.task || "不明",
-            startTimeStr: convertTime(data.startTime),
-            endTimeStr: convertTime(data.endTime),
-            goalId: data.goalId || null,
-            goalTitle: data.goalTitle || "",
-            count: data.count !== undefined ? data.count : 0,
-            memo: data.memo || ""
-        };
-    }).sort((a, b) => a.startTimeStr.localeCompare(b.startTimeStr));
-
-    // 共有キャッシュに保存
-    modalLogsCache.set(dateStr, { timestamp: now, logs: logs });
-
-    return { logs, isCache: false };
 }
 
 function createUnifiedRequestModalHTML() {
@@ -144,6 +157,10 @@ export function openUnifiedRequestModal(dateStr) {
 }
 
 function closeUnifiedRequestModal() {
+    if (activeUnsubscribe) {
+        activeUnsubscribe();
+        activeUnsubscribe = null;
+    }
     const modal = document.getElementById("unified-request-modal");
     if (modal) modal.classList.add("hidden");
 }

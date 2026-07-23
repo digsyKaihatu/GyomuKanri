@@ -1,11 +1,73 @@
 // js/views/personalDetail/requestModal/index.js
 import { db, userId, userName } from "../../../main.js";
-import { collection, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { collection, query, where, getDocs, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 import { renderAddFormHTML, initAddForm, getAddFormData } from "./addForm.js";
 import { renderTimeCorrectFormHTML, initTimeCorrectForm, getTimeCorrectFormData } from "./timeCorrectForm.js";
 import { renderCountCorrectFormHTML, initCountCorrectForm, getCountCorrectFormData } from "./countCorrectForm.js";
 import { renderForgetCheckoutFormHTML, initForgetCheckoutForm, getForgetCheckoutFormData } from "./forgetCheckoutForm.js";
+
+// -------------------------------------------------------------
+// モーダル共有キャッシュ管理 (セッション中保持 & 5分間のTTL設定)
+// -------------------------------------------------------------
+const modalLogsCache = new Map(); // key: dateStr, value: { timestamp: number, logs: Array }
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5分間保持
+
+/**
+ * サブフォーム（時間訂正・件数修正）間で共有するログデータ取得関数
+ * @param {string} dateStr 対象日付 (YYYY-MM-DD)
+ * @param {boolean} forceRefresh キャッシュを無視してFirestoreから再取得するか
+ * @returns {Promise<{ logs: Array, isCache: boolean }>}
+ */
+export async function fetchModalTimelineLogs(dateStr, forceRefresh = false) {
+    const now = Date.now();
+    const cachedData = modalLogsCache.get(dateStr);
+
+    // キャッシュが存在し、5分以内で強制更新でなければキャッシュを返す
+    if (!forceRefresh && cachedData && (now - cachedData.timestamp < CACHE_TTL_MS)) {
+        return { logs: cachedData.logs, isCache: true };
+    }
+
+    // work_logs から取得
+    const q = query(
+        collection(db, "work_logs"),
+        where("userId", "==", userId),
+        where("date", "==", dateStr)
+    );
+    const snapshot = await getDocs(q);
+
+    if (snapshot.empty) {
+        modalLogsCache.set(dateStr, { timestamp: now, logs: [] });
+        return { logs: [], isCache: false };
+    }
+
+    const convertTime = (t) => {
+        if (!t) return "";
+        if (typeof t === "string" && t.includes(":") && t.length <= 5) return t;
+        const d = t.toDate ? t.toDate() : new Date(t);
+        if (isNaN(d.getTime())) return "";
+        return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    };
+
+    const logs = snapshot.docs.map(d => {
+        const data = d.data();
+        return {
+            id: d.id,
+            task: data.task || "不明",
+            startTimeStr: convertTime(data.startTime),
+            endTimeStr: convertTime(data.endTime),
+            goalId: data.goalId || null,
+            goalTitle: data.goalTitle || "",
+            count: data.count !== undefined ? data.count : 0,
+            memo: data.memo || ""
+        };
+    }).sort((a, b) => a.startTimeStr.localeCompare(b.startTimeStr));
+
+    // 共有キャッシュに保存
+    modalLogsCache.set(dateStr, { timestamp: now, logs: logs });
+
+    return { logs, isCache: false };
+}
 
 function createUnifiedRequestModalHTML() {
     if (document.getElementById("unified-request-modal")) return;
@@ -149,22 +211,20 @@ async function handleRequestSubmit() {
         sendBtn.disabled = true;
         sendBtn.textContent = "送信中...";
 
-        // 【要件の完全実現】指定された13項目（裏側項目含む）がログとして追えるデータ構造でFirestoreにインサート
         await addDoc(collection(db, "work_log_requests"), {
-            userId: userId,                      // 【要件】申請者ID
-            userName: userName,                  // 【要件】申請者名
+            userId: userId,
+            userName: userName,
             type: type,
-            status: "pending",                   // 【要件】ステータス
-            requestDate: payload.requestDate,     // 【要件】対象年月日
+            status: "pending",
+            requestDate: payload.requestDate,
             targetLogId: payload.targetLogId || null,
-            createdAt: new Date().toISOString(), // 【要件】申請日付
+            createdAt: new Date().toISOString(),
             
-            // 承認者関連ログ（申請時点ではログの器としてnull初期化）
-            approverId: null,                    // 【要件】承認者ID
-            approverName: null,                  // 【要件】承認者名
-            approvedAt: null,                    // 【要件】承認日時
+            approverId: null,
+            approverName: null,
+            approvedAt: null,
             
-            data: payload.data                   // 内包データ（案件名、修正前後時間、差異、理由区分、自由記述）
+            data: payload.data
         });
 
         alert("変更申請を送信しました。管理者の承認をお待ちください。");

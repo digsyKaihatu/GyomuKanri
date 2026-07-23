@@ -6,7 +6,7 @@ import { escapeHtml } from "../../../utils.js";
 // -------------------------------------------------------------
 // ローカルキャッシュ管理 (セッション中保持 & 5分間のTTL設定)
 // -------------------------------------------------------------
-const summaryCache = new Map(); // key: dateStr, value: { timestamp: number, logs: Array }
+const logsCache = new Map(); // key: dateStr, value: { timestamp: number, logs: Array }
 const CACHE_TTL_MS = 5 * 60 * 1000; // キャッシュ保持時間: 5分
 
 // ①「時間・業務の訂正」用のHTMLテンプレート
@@ -109,7 +109,7 @@ export function initTimeCorrectForm() {
         fetchAndRenderTimeline(e.target.value, false);
     });
 
-    // 「最新に更新」ボタン（キャッシュ無視でFirestore再取得）
+    // 「最新に更新」ボタン（キャッシュ無視でwork_logsを再取得）
     refreshBtn?.addEventListener("click", () => {
         const dateVal = correctDateInput.value;
         if (dateVal) {
@@ -166,7 +166,7 @@ function updateCorrectGoalDropdown(selectedTaskName, selectedGoalValue) {
 }
 
 /**
- * タイムラインログを取得・描画（ローカルキャッシュ優先）
+ * タイムラインログを取得・描画（work_logsを直接取得、ローカルキャッシュ併用）
  * @param {string} dateStr 対象日付 (YYYY-MM-DD)
  * @param {boolean} forceRefresh キャッシュを無視して強制的Firestore読み込みを行うか
  */
@@ -178,11 +178,10 @@ async function fetchAndRenderTimeline(dateStr, forceRefresh = false) {
     resetCorrectionInputs();
 
     const now = Date.now();
-    const cachedData = summaryCache.get(dateStr);
+    const cachedData = logsCache.get(dateStr);
 
     // -------------------------------------------------------------
     // 【キャッシュ利用判定】
-    // 強制更新でなく、かつ有効期限内のキャッシュが存在する場合は即座に返却 (Firestore Access = 0)
     // -------------------------------------------------------------
     if (!forceRefresh && cachedData && (now - cachedData.timestamp < CACHE_TTL_MS)) {
         if (cacheBadge) cacheBadge.textContent = "⚡ キャッシュ表示中";
@@ -191,29 +190,25 @@ async function fetchAndRenderTimeline(dateStr, forceRefresh = false) {
     }
 
     // -------------------------------------------------------------
-    // 【Firestoreからの読み込み】
+    // 【work_logs コレクションからの最新読み込み】
     // -------------------------------------------------------------
     container.innerHTML = '<p class="text-center text-gray-400 py-4 text-xs animate-pulse">業務記録を取得中...</p>';
     if (cacheBadge) cacheBadge.textContent = "☁️ 通信中...";
 
     try {
-        const q = query(collection(db, "daily_summaries"), where("date", "==", dateStr));
+        const q = query(
+            collection(db, "work_logs"), 
+            where("userId", "==", userId), 
+            where("date", "==", dateStr)
+        );
         const snapshot = await getDocs(q);
 
         if (snapshot.empty) {
-            summaryCache.set(dateStr, { timestamp: now, logs: [] });
+            logsCache.set(dateStr, { timestamp: now, logs: [] });
             if (cacheBadge) cacheBadge.textContent = "";
             container.innerHTML = '<p class="text-center text-gray-400 py-6 text-xs">この日の業務記録はありません。</p>';
             return;
         }
-
-        // daily_summaries 内の logsJson からログイン中ユーザーのログのみ抽出
-        const rawLogs = snapshot.docs.flatMap(doc => {
-            const data = doc.data();
-            return data.logsJson ? JSON.parse(data.logsJson) : [];
-        });
-
-        const userLogs = rawLogs.filter(log => log.userId === userId);
 
         const convertTime = (t) => {
             if (!t) return "";
@@ -223,20 +218,21 @@ async function fetchAndRenderTimeline(dateStr, forceRefresh = false) {
             return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
         };
 
-        const logs = userLogs.map(log => {
+        const logs = snapshot.docs.map(d => {
+            const data = d.data();
             return {
-                id: log.id || log.logId || "",
-                task: log.task || "不明",
-                startTimeStr: log.startTimeStr || convertTime(log.startTime),
-                endTimeStr: log.endTimeStr || convertTime(log.endTime),
-                goalId: log.goalId || null,
-                goalTitle: log.goalTitle || "",
-                memo: log.memo || ""
+                id: d.id,
+                task: data.task || "不明",
+                startTimeStr: convertTime(data.startTime),
+                endTimeStr: convertTime(data.endTime),
+                goalId: data.goalId || null,
+                goalTitle: data.goalTitle || "",
+                memo: data.memo || ""
             };
         }).sort((a, b) => a.startTimeStr.localeCompare(b.startTimeStr));
 
-        // ローカルキャッシュに保存（タイムスタンプ付き）
-        summaryCache.set(dateStr, { timestamp: now, logs: logs });
+        // ローカルキャッシュに保存
+        logsCache.set(dateStr, { timestamp: now, logs: logs });
 
         if (cacheBadge) cacheBadge.textContent = "☁️ Firestoreから同期済";
         renderTimelineList(container, logs);

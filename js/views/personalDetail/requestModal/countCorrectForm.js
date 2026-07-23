@@ -51,7 +51,6 @@ export function renderCountCorrectFormHTML(defaultDate) {
     </div>`;
 }
 
-// (中間の initCountCorrectForm, fetchCountTimeline, resetCountInputs は変更なしのため維持)
 export function initCountCorrectForm() {
     const correctDateInput = document.getElementById("req-countcorrect-date");
     if (!correctDateInput) return;
@@ -67,7 +66,8 @@ async function fetchCountTimeline(dateStr) {
     resetCountInputs();
 
     try {
-        const q = query(collection(db, "work_logs"), where("userId", "==", userId), where("date", "==", dateStr));
+        // 【変更点1】work_logs ではなく daily_summaries を検索
+        const q = query(collection(db, "daily_summaries"), where("date", "==", dateStr));
         const snapshot = await getDocs(q);
 
         if (snapshot.empty) {
@@ -75,22 +75,37 @@ async function fetchCountTimeline(dateStr) {
             return;
         }
 
+        // 【変更点2】logsJson をパースし、ログイン中ユーザー(userId)のログのみ抽出
+        const rawLogs = snapshot.docs.flatMap(doc => {
+            const data = doc.data();
+            return data.logsJson ? JSON.parse(data.logsJson) : [];
+        });
+
+        const userLogs = rawLogs.filter(log => log.userId === userId);
+
+        if (userLogs.length === 0) {
+            container.innerHTML = '<p class="text-center text-gray-400 py-6 text-xs">この日の業務記録はありません。</p>';
+            return;
+        }
+
+        // 【変更点3】JSON化された時刻形式（文字列/Date/Timestamp）に対応する安全な変換関数
         const convertTime = (t) => {
             if (!t) return "";
+            if (typeof t === "string" && t.includes(":") && t.length <= 5) return t; // すでに "HH:mm" の場合
             const d = t.toDate ? t.toDate() : new Date(t);
+            if (isNaN(d.getTime())) return "";
             return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
         };
 
-        const logs = snapshot.docs.map(d => {
-            const data = d.data();
+        const logs = userLogs.map(log => {
             return {
-                id: d.id,
-                task: data.task || "不明",
-                startTimeStr: convertTime(data.startTime),
-                endTimeStr: convertTime(data.endTime),
-                goalId: data.goalId || null,
-                goalTitle: data.goalTitle || "",
-                count: data.count !== undefined ? data.count : 0
+                id: log.id || log.logId || "",
+                task: log.task || "不明",
+                startTimeStr: log.startTimeStr || convertTime(log.startTime),
+                endTimeStr: log.endTimeStr || convertTime(log.endTime),
+                goalId: log.goalId || null,
+                goalTitle: log.goalTitle || "",
+                count: log.count !== undefined ? log.count : 0
             };
         }).sort((a, b) => a.startTimeStr.localeCompare(b.startTimeStr));
 
@@ -186,18 +201,18 @@ export function getCountCorrectFormData() {
         requestDate: dateVal,
         targetLogId: targetLogId,
         data: {
-            applicationType: "変更",        // 【要件】申請種別
-            reasonCategory: "工数件数の修正", // 【要件】理由（区分）
-            task: taskName,                  // 【要件】案件名
+            applicationType: "変更",        // 申請種別
+            reasonCategory: "工数件数の修正", // 理由（区分）
+            task: taskName,                  // 案件名
             goalId: goalId,
             goalTitle: goalTitle,
-            beforeStartTime: "",             // 【要件】修正前の時間（件数修正のため対象外）
+            beforeStartTime: "",             // 修正前の時間（件数修正のため対象外）
             beforeEndTime: "",
-            afterStartTime: "",              // 【要件】修正後の時間（件数修正のため対象外）
+            afterStartTime: "",              // 修正後の時間（件数修正のため対象外）
             afterEndTime: "",
-            timeDifference: diffCount >= 0 ? `+${diffCount}件` : `${diffCount}件`, // 【要件】差異
+            timeDifference: diffCount >= 0 ? `+${diffCount}件` : `${diffCount}件`, // 差異
             count: countVal,
-            memo: memoVal                    // 【要件】理由（自由記述）
+            memo: memoVal                    // 理由（自由記述）
         }
     };
 }

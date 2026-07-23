@@ -3,6 +3,12 @@ import { db, userId } from "../../../main.js";
 import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { escapeHtml } from "../../../utils.js";
 
+// -------------------------------------------------------------
+// ローカルキャッシュ管理 (セッション中保持 & 5分間のTTL設定)
+// -------------------------------------------------------------
+const summaryCache = new Map(); // key: dateStr, value: { timestamp: number, logs: Array }
+const CACHE_TTL_MS = 5 * 60 * 1000; // キャッシュ保持時間: 5分 (必要に応じて変更可能)
+
 export function renderCountCorrectFormHTML(defaultDate) {
     return `
     <div class="grid grid-cols-3 gap-x-6 gap-y-4 w-full animate-fade-in">
@@ -17,12 +23,21 @@ export function renderCountCorrectFormHTML(defaultDate) {
         
         <div class="space-y-3 flex flex-col">
             <div>
-                <label class="block text-sm font-bold text-gray-700">工数件数の修正をしたい日付入力</label>
-                <input type="date" id="req-countcorrect-date" value="${defaultDate}" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                <div class="flex justify-between items-center mb-1">
+                    <label class="block text-sm font-bold text-gray-700">工数件数の修正をしたい日付入力</label>
+                    <!-- キャッシュを無視して最新の差分を取得する再取得ボタン -->
+                    <button type="button" id="req-countcorrect-refresh-btn" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1 transition" title="Firestoreから最新データを再取得">
+                        🔄 最新に更新
+                    </button>
+                </div>
+                <input type="date" id="req-countcorrect-date" value="${defaultDate}" class="block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
             </div>
             <div class="flex flex-col flex-grow">
-                <label class="block text-sm font-bold text-gray-700">タイムライン履歴</label>
-                <div id="req-countcorrect-timeline-container" class="mt-1 border border-gray-300 rounded-lg p-3 bg-gray-50 min-h-[220px] max-h-[320px] overflow-y-auto space-y-2 custom-scrollbar text-sm">
+                <div class="flex justify-between items-center mb-1">
+                    <label class="block text-sm font-bold text-gray-700">タイムライン履歴</label>
+                    <span id="req-countcorrect-cache-badge" class="text-[10px] text-gray-400 font-mono"></span>
+                </div>
+                <div id="req-countcorrect-timeline-container" class="border border-gray-300 rounded-lg p-3 bg-gray-50 min-h-[220px] max-h-[320px] overflow-y-auto space-y-2 custom-scrollbar text-sm">
                     ログデータを読み込み中...
                 </div>
             </div>
@@ -53,29 +68,69 @@ export function renderCountCorrectFormHTML(defaultDate) {
 
 export function initCountCorrectForm() {
     const correctDateInput = document.getElementById("req-countcorrect-date");
+    const refreshBtn = document.getElementById("req-countcorrect-refresh-btn");
+
     if (!correctDateInput) return;
-    correctDateInput.addEventListener("change", (e) => { fetchCountTimeline(e.target.value); });
-    fetchCountTimeline(correctDateInput.value);
+
+    // 日付変更イベント（キャッシュがあればそれを利用）
+    correctDateInput.addEventListener("change", (e) => { 
+        fetchCountTimeline(e.target.value, false); 
+    });
+
+    // 「最新に更新」ボタン（キャッシュを無視して強制的にFirestoreから再取得）
+    refreshBtn?.addEventListener("click", () => {
+        const dateVal = correctDateInput.value;
+        if (dateVal) {
+            fetchCountTimeline(dateVal, true);
+        }
+    });
+
+    fetchCountTimeline(correctDateInput.value, false);
 }
 
-async function fetchCountTimeline(dateStr) {
+/**
+ * タイムラインログを取得・描画（ローカルキャッシュ優先）
+ * @param {string} dateStr 対象日付 (YYYY-MM-DD)
+ * @param {boolean} forceRefresh キャッシュを無視して強制的Firestore読み込みを行うか
+ */
+async function fetchCountTimeline(dateStr, forceRefresh = false) {
     const container = document.getElementById("req-countcorrect-timeline-container");
+    const cacheBadge = document.getElementById("req-countcorrect-cache-badge");
     if (!container) return;
 
-    container.innerHTML = '<p class="text-center text-gray-400 py-4 text-xs animate-pulse">業務記録を取得中...</p>';
     resetCountInputs();
 
+    const now = Date.now();
+    const cachedData = summaryCache.get(dateStr);
+
+    // -------------------------------------------------------------
+    // 【キャッシュ利用判定】
+    // 強制更新でなく、かつ有効期限内のキャッシュが存在する場合は即座に返却 (Firestore Access = 0)
+    // -------------------------------------------------------------
+    if (!forceRefresh && cachedData && (now - cachedData.timestamp < CACHE_TTL_MS)) {
+        if (cacheBadge) cacheBadge.textContent = "⚡ キャッシュ表示中";
+        renderTimelineList(container, cachedData.logs);
+        return;
+    }
+
+    // -------------------------------------------------------------
+    // 【Firestoreからの読み込み】
+    // キャッシュがない、または有効期限切れ、または手動更新時のみ実行
+    // -------------------------------------------------------------
+    container.innerHTML = '<p class="text-center text-gray-400 py-4 text-xs animate-pulse">業務記録を取得中...</p>';
+    if (cacheBadge) cacheBadge.textContent = "☁️ 通信中...";
+
     try {
-        // 【変更点1】work_logs ではなく daily_summaries を検索
         const q = query(collection(db, "daily_summaries"), where("date", "==", dateStr));
         const snapshot = await getDocs(q);
 
         if (snapshot.empty) {
+            summaryCache.set(dateStr, { timestamp: now, logs: [] });
+            if (cacheBadge) cacheBadge.textContent = "";
             container.innerHTML = '<p class="text-center text-gray-400 py-6 text-xs">この日の業務記録はありません。</p>';
             return;
         }
 
-        // 【変更点2】logsJson をパースし、ログイン中ユーザー(userId)のログのみ抽出
         const rawLogs = snapshot.docs.flatMap(doc => {
             const data = doc.data();
             return data.logsJson ? JSON.parse(data.logsJson) : [];
@@ -83,15 +138,9 @@ async function fetchCountTimeline(dateStr) {
 
         const userLogs = rawLogs.filter(log => log.userId === userId);
 
-        if (userLogs.length === 0) {
-            container.innerHTML = '<p class="text-center text-gray-400 py-6 text-xs">この日の業務記録はありません。</p>';
-            return;
-        }
-
-        // 【変更点3】JSON化された時刻形式（文字列/Date/Timestamp）に対応する安全な変換関数
         const convertTime = (t) => {
             if (!t) return "";
-            if (typeof t === "string" && t.includes(":") && t.length <= 5) return t; // すでに "HH:mm" の場合
+            if (typeof t === "string" && t.includes(":") && t.length <= 5) return t;
             const d = t.toDate ? t.toDate() : new Date(t);
             if (isNaN(d.getTime())) return "";
             return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -109,57 +158,75 @@ async function fetchCountTimeline(dateStr) {
             };
         }).sort((a, b) => a.startTimeStr.localeCompare(b.startTimeStr));
 
-        container.innerHTML = "";
-        logs.forEach(log => {
-            const item = document.createElement("div");
-            item.className = "timeline-log-item border border-gray-200 rounded-lg p-2.5 bg-white hover:bg-blue-50 cursor-pointer transition flex items-center justify-between text-xs text-gray-700 shadow-sm";
-            const goalBadge = log.goalTitle ? `<span class="bg-gray-100 border text-gray-500 px-1 rounded ml-1 scale-95 inline-block truncate max-w-[130px]">${escapeHtml(log.goalTitle)}</span>` : "";
-            
-            item.innerHTML = `
-                <div class="flex items-center">
-                    <span class="text-blue-600 font-mono text-sm font-bold mr-2">${log.startTimeStr} - ${log.endTimeStr}</span>
-                    <span class="text-gray-800 font-medium">${escapeHtml(log.task)}${goalBadge}</span>
-                </div>
-                <span class="bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded scale-95">現件数: ${log.count}</span>
-            `;
+        // ローカルキャッシュに保存（タイムスタンプ付き）
+        summaryCache.set(dateStr, { timestamp: now, logs: logs });
 
-            item.addEventListener("click", () => {
-                document.querySelectorAll("#req-countcorrect-timeline-container .timeline-log-item").forEach(el => el.classList.remove("bg-blue-100", "border-blue-400", "ring-2", "ring-blue-100"));
-                item.classList.add("bg-blue-100", "border-blue-400", "ring-2", "ring-blue-100");
+        if (cacheBadge) cacheBadge.textContent = "☁️ Firestoreから同期済";
+        renderTimelineList(container, logs);
 
-                const displayInput = document.getElementById("req-countcorrect-task-display");
-                const countInput = document.getElementById("req-countcorrect-value");
-                const memoInput = document.getElementById("req-countcorrect-memo");
-
-                document.getElementById("req-countcorrect-log-id").value = log.id;
-                document.getElementById("req-countcorrect-task-name").value = log.task;
-                document.getElementById("req-countcorrect-goal-id").value = log.goalId || "";
-                document.getElementById("req-countcorrect-goal-title").value = log.goalTitle || "";
-                document.getElementById("req-countcorrect-before-count").value = log.count;
-                
-                const goalText = log.goalTitle ? ` (${log.goalTitle})` : "";
-                if (displayInput) displayInput.value = `${log.task}${goalText}`;
-                
-                if (countInput) {
-                    countInput.value = log.count;
-                    if (log.goalTitle) {
-                        countInput.disabled = false;
-                        countInput.placeholder = "0";
-                        countInput.className = "mt-1 block w-full border border-gray-300 rounded-lg p-3 text-lg font-bold bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500";
-                    } else {
-                        countInput.disabled = true;
-                        countInput.placeholder = "工数未設定のため入力不可";
-                        countInput.className = "mt-1 block w-full border border-gray-300 rounded-lg p-3 text-sm font-semibold bg-gray-100 text-gray-400 focus:outline-none";
-                    }
-                }
-                if (memoInput) memoInput.disabled = false;
-            });
-            container.appendChild(item);
-        });
     } catch (error) {
-        console.error(error);
+        console.error("Fetch timeline error:", error);
+        if (cacheBadge) cacheBadge.textContent = "";
         container.innerHTML = '<p class="text-center text-red-500 py-4 text-xs">データの同期中にエラーが発生しました。</p>';
     }
+}
+
+/**
+ * 取得したログ一覧をDOMに描画するサブ関数
+ */
+function renderTimelineList(container, logs) {
+    if (logs.length === 0) {
+        container.innerHTML = '<p class="text-center text-gray-400 py-6 text-xs">この日の業務記録はありません。</p>';
+        return;
+    }
+
+    container.innerHTML = "";
+    logs.forEach(log => {
+        const item = document.createElement("div");
+        item.className = "timeline-log-item border border-gray-200 rounded-lg p-2.5 bg-white hover:bg-blue-50 cursor-pointer transition flex items-center justify-between text-xs text-gray-700 shadow-sm";
+        const goalBadge = log.goalTitle ? `<span class="bg-gray-100 border text-gray-500 px-1 rounded ml-1 scale-95 inline-block truncate max-w-[130px]">${escapeHtml(log.goalTitle)}</span>` : "";
+        
+        item.innerHTML = `
+            <div class="flex items-center">
+                <span class="text-blue-600 font-mono text-sm font-bold mr-2">${log.startTimeStr} - ${log.endTimeStr}</span>
+                <span class="text-gray-800 font-medium">${escapeHtml(log.task)}${goalBadge}</span>
+            </div>
+            <span class="bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded scale-95">現件数: ${log.count}</span>
+        `;
+
+        item.addEventListener("click", () => {
+            document.querySelectorAll("#req-countcorrect-timeline-container .timeline-log-item").forEach(el => el.classList.remove("bg-blue-100", "border-blue-400", "ring-2", "ring-blue-100"));
+            item.classList.add("bg-blue-100", "border-blue-400", "ring-2", "ring-blue-100");
+
+            const displayInput = document.getElementById("req-countcorrect-task-display");
+            const countInput = document.getElementById("req-countcorrect-value");
+            const memoInput = document.getElementById("req-countcorrect-memo");
+
+            document.getElementById("req-countcorrect-log-id").value = log.id;
+            document.getElementById("req-countcorrect-task-name").value = log.task;
+            document.getElementById("req-countcorrect-goal-id").value = log.goalId || "";
+            document.getElementById("req-countcorrect-goal-title").value = log.goalTitle || "";
+            document.getElementById("req-countcorrect-before-count").value = log.count;
+            
+            const goalText = log.goalTitle ? ` (${log.goalTitle})` : "";
+            if (displayInput) displayInput.value = `${log.task}${goalText}`;
+            
+            if (countInput) {
+                countInput.value = log.count;
+                if (log.goalTitle) {
+                    countInput.disabled = false;
+                    countInput.placeholder = "0";
+                    countInput.className = "mt-1 block w-full border border-gray-300 rounded-lg p-3 text-lg font-bold bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500";
+                } else {
+                    countInput.disabled = true;
+                    countInput.placeholder = "工数未設定のため入力不可";
+                    countInput.className = "mt-1 block w-full border border-gray-300 rounded-lg p-3 text-sm font-semibold bg-gray-100 text-gray-400 focus:outline-none";
+                }
+            }
+            if (memoInput) memoInput.disabled = false;
+        });
+        container.appendChild(item);
+    });
 }
 
 function resetCountInputs() {
@@ -201,18 +268,18 @@ export function getCountCorrectFormData() {
         requestDate: dateVal,
         targetLogId: targetLogId,
         data: {
-            applicationType: "変更",        // 申請種別
-            reasonCategory: "工数件数の修正", // 理由（区分）
-            task: taskName,                  // 案件名
+            applicationType: "変更",
+            reasonCategory: "工数件数の修正",
+            task: taskName,
             goalId: goalId,
             goalTitle: goalTitle,
-            beforeStartTime: "",             // 修正前の時間（件数修正のため対象外）
+            beforeStartTime: "",
             beforeEndTime: "",
-            afterStartTime: "",              // 修正後の時間（件数修正のため対象外）
+            afterStartTime: "",
             afterEndTime: "",
-            timeDifference: diffCount >= 0 ? `+${diffCount}件` : `${diffCount}件`, // 差異
+            timeDifference: diffCount >= 0 ? `+${diffCount}件` : `${diffCount}件`,
             count: countVal,
-            memo: memoVal                    // 理由（自由記述）
+            memo: memoVal
         }
     };
 }

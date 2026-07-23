@@ -3,6 +3,12 @@ import { db, userId, allTaskObjects } from "../../../main.js";
 import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { escapeHtml } from "../../../utils.js";
 
+// -------------------------------------------------------------
+// ローカルキャッシュ管理 (セッション中保持 & 5分間のTTL設定)
+// -------------------------------------------------------------
+const summaryCache = new Map(); // key: dateStr, value: { timestamp: number, logs: Array }
+const CACHE_TTL_MS = 5 * 60 * 1000; // キャッシュ保持時間: 5分
+
 // ①「時間・業務の訂正」用のHTMLテンプレート
 export function renderTimeCorrectFormHTML(defaultDate) {
     return `
@@ -19,12 +25,21 @@ export function renderTimeCorrectFormHTML(defaultDate) {
         
         <div class="space-y-3 flex flex-col">
             <div>
-                <label class="block text-sm font-bold text-gray-700">時間・業務の訂正をしたい日付入力</label>
-                <input type="date" id="req-correct-date" value="${defaultDate}" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                <div class="flex justify-between items-center mb-1">
+                    <label class="block text-sm font-bold text-gray-700">時間・業務の訂正をしたい日付入力</label>
+                    <!-- キャッシュを無視して最新の差分を取得する再取得ボタン -->
+                    <button type="button" id="req-correct-refresh-btn" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1 transition" title="Firestoreから最新データを再取得">
+                        🔄 最新に更新
+                    </button>
+                </div>
+                <input type="date" id="req-correct-date" value="${defaultDate}" class="block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
             </div>
             <div class="flex flex-col flex-grow">
-                <label class="block text-sm font-bold text-gray-700">タイムライン履歴</label>
-                <div id="req-correct-timeline-container" class="mt-1 border border-gray-300 rounded-lg p-3 bg-gray-50 min-h-[220px] max-h-[320px] overflow-y-auto space-y-2 custom-scrollbar text-sm">
+                <div class="flex justify-between items-center mb-1">
+                    <label class="block text-sm font-bold text-gray-700">タイムライン履歴</label>
+                    <span id="req-correct-cache-badge" class="text-[10px] text-gray-400 font-mono"></span>
+                </div>
+                <div id="req-correct-timeline-container" class="border border-gray-300 rounded-lg p-3 bg-gray-50 min-h-[220px] max-h-[320px] overflow-y-auto space-y-2 custom-scrollbar text-sm">
                     ログデータを読み込み中...
                 </div>
             </div>
@@ -35,7 +50,9 @@ export function renderTimeCorrectFormHTML(defaultDate) {
             <input type="hidden" id="req-correct-before-start" value="">
             <input type="hidden" id="req-correct-before-end" value="">
             <input type="hidden" id="req-correct-before-task" value=""> 
-            <input type="hidden" id="req-correct-before-goal-title" value=""> <div>
+            <input type="hidden" id="req-correct-before-goal-title" value="">
+            
+            <div>
                 <label class="block text-sm font-bold text-gray-700">変更したい業務のプルダウン</label>
                 <select id="req-correct-task-select" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" disabled>
                     <option value="">業務を選択...</option>
@@ -70,6 +87,8 @@ export function renderTimeCorrectFormHTML(defaultDate) {
 export function initTimeCorrectForm() {
     const taskSelect = document.getElementById("req-correct-task-select");
     const correctDateInput = document.getElementById("req-correct-date");
+    const refreshBtn = document.getElementById("req-correct-refresh-btn");
+
     if (!taskSelect || !correctDateInput) return;
 
     taskSelect.innerHTML = '<option value="">業務を選択...</option>';
@@ -85,11 +104,20 @@ export function initTimeCorrectForm() {
         updateCorrectGoalDropdown(e.target.value, null);
     });
 
+    // 日付変更イベント（キャッシュがあれば優先利用）
     correctDateInput.addEventListener("change", (e) => {
-        fetchAndRenderTimeline(e.target.value);
+        fetchAndRenderTimeline(e.target.value, false);
     });
 
-    fetchAndRenderTimeline(correctDateInput.value);
+    // 「最新に更新」ボタン（キャッシュ無視でFirestore再取得）
+    refreshBtn?.addEventListener("click", () => {
+        const dateVal = correctDateInput.value;
+        if (dateVal) {
+            fetchAndRenderTimeline(dateVal, true);
+        }
+    });
+
+    fetchAndRenderTimeline(correctDateInput.value, false);
 }
 
 function updateCorrectGoalDropdown(selectedTaskName, selectedGoalValue) {
@@ -137,88 +165,141 @@ function updateCorrectGoalDropdown(selectedTaskName, selectedGoalValue) {
     }
 }
 
-async function fetchAndRenderTimeline(dateStr) {
+/**
+ * タイムラインログを取得・描画（ローカルキャッシュ優先）
+ * @param {string} dateStr 対象日付 (YYYY-MM-DD)
+ * @param {boolean} forceRefresh キャッシュを無視して強制的Firestore読み込みを行うか
+ */
+async function fetchAndRenderTimeline(dateStr, forceRefresh = false) {
     const container = document.getElementById("req-correct-timeline-container");
+    const cacheBadge = document.getElementById("req-correct-cache-badge");
     if (!container) return;
 
-    container.innerHTML = '<p class="text-center text-gray-400 py-4 text-xs animate-pulse">業務記録を取得中...</p>';
     resetCorrectionInputs();
 
+    const now = Date.now();
+    const cachedData = summaryCache.get(dateStr);
+
+    // -------------------------------------------------------------
+    // 【キャッシュ利用判定】
+    // 強制更新でなく、かつ有効期限内のキャッシュが存在する場合は即座に返却 (Firestore Access = 0)
+    // -------------------------------------------------------------
+    if (!forceRefresh && cachedData && (now - cachedData.timestamp < CACHE_TTL_MS)) {
+        if (cacheBadge) cacheBadge.textContent = "⚡ キャッシュ表示中";
+        renderTimelineList(container, cachedData.logs);
+        return;
+    }
+
+    // -------------------------------------------------------------
+    // 【Firestoreからの読み込み】
+    // -------------------------------------------------------------
+    container.innerHTML = '<p class="text-center text-gray-400 py-4 text-xs animate-pulse">業務記録を取得中...</p>';
+    if (cacheBadge) cacheBadge.textContent = "☁️ 通信中...";
+
     try {
-        const q = query(collection(db, "work_logs"), where("userId", "==", userId), where("date", "==", dateStr));
+        const q = query(collection(db, "daily_summaries"), where("date", "==", dateStr));
         const snapshot = await getDocs(q);
 
         if (snapshot.empty) {
+            summaryCache.set(dateStr, { timestamp: now, logs: [] });
+            if (cacheBadge) cacheBadge.textContent = "";
             container.innerHTML = '<p class="text-center text-gray-400 py-6 text-xs">この日の業務記録はありません。</p>';
             return;
         }
 
+        // daily_summaries 内の logsJson からログイン中ユーザーのログのみ抽出
+        const rawLogs = snapshot.docs.flatMap(doc => {
+            const data = doc.data();
+            return data.logsJson ? JSON.parse(data.logsJson) : [];
+        });
+
+        const userLogs = rawLogs.filter(log => log.userId === userId);
+
         const convertTime = (t) => {
             if (!t) return "";
+            if (typeof t === "string" && t.includes(":") && t.length <= 5) return t;
             const d = t.toDate ? t.toDate() : new Date(t);
+            if (isNaN(d.getTime())) return "";
             return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
         };
 
-        const logs = snapshot.docs.map(d => {
-            const data = d.data();
+        const logs = userLogs.map(log => {
             return {
-                id: d.id,
-                task: data.task || "不明",
-                startTimeStr: convertTime(data.startTime),
-                endTimeStr: convertTime(data.endTime),
-                goalId: data.goalId || null,
-                goalTitle: data.goalTitle || "",
-                memo: data.memo || ""
+                id: log.id || log.logId || "",
+                task: log.task || "不明",
+                startTimeStr: log.startTimeStr || convertTime(log.startTime),
+                endTimeStr: log.endTimeStr || convertTime(log.endTime),
+                goalId: log.goalId || null,
+                goalTitle: log.goalTitle || "",
+                memo: log.memo || ""
             };
         }).sort((a, b) => a.startTimeStr.localeCompare(b.startTimeStr));
 
-        container.innerHTML = "";
-        logs.forEach(log => {
-            const item = document.createElement("div");
-            item.className = "timeline-log-item border border-gray-200 rounded-lg p-2.5 bg-white hover:bg-blue-50 cursor-pointer transition flex flex-col gap-1 text-xs text-gray-700 shadow-sm";
-            const goalBadge = log.goalTitle ? `<span class="bg-gray-100 border text-gray-500 px-1 rounded ml-1 scale-95 inline-block truncate max-w-[130px]">${escapeHtml(log.goalTitle)}</span>` : "";
-            
-            item.innerHTML = `
-                <div class="flex justify-between items-center font-bold">
-                    <span class="text-blue-600 font-mono text-sm">${log.startTimeStr} - ${log.endTimeStr}</span>
-                    <span class="text-gray-800">${escapeHtml(log.task)}${goalBadge}</span>
-                </div>
-                ${log.memo ? `<p class="text-gray-400 truncate italic mt-0.5 pl-1 border-l">💬 ${escapeHtml(log.memo)}</p>` : ""}
-            `;
+        // ローカルキャッシュに保存（タイムスタンプ付き）
+        summaryCache.set(dateStr, { timestamp: now, logs: logs });
 
-            item.addEventListener("click", () => {
-                document.querySelectorAll(".timeline-log-item").forEach(el => el.classList.remove("bg-blue-100", "border-blue-400", "ring-2", "ring-blue-100"));
-                item.classList.add("bg-blue-100", "border-blue-400", "ring-2", "ring-blue-100");
+        if (cacheBadge) cacheBadge.textContent = "☁️ Firestoreから同期済";
+        renderTimelineList(container, logs);
 
-                const taskSelect = document.getElementById("req-correct-task-select");
-                const startTimeInput = document.getElementById("req-correct-start-time");
-                const endTimeInput = document.getElementById("req-correct-end-time");
-                const memoInput = document.getElementById("req-correct-memo");
-
-                document.getElementById("req-correct-log-id").value = log.id;
-                
-                // クリックされた元の稼働時間・業務名・工数名を隠しインプットへ一時保存
-                document.getElementById("req-correct-before-start").value = log.startTimeStr;
-                document.getElementById("req-correct-before-end").value = log.endTimeStr;
-                document.getElementById("req-correct-before-task").value = log.task; 
-                document.getElementById("req-correct-before-goal-title").value = log.goalTitle || "";
-
-                if (taskSelect) taskSelect.value = log.task;
-                if (startTimeInput) startTimeInput.value = log.startTimeStr;
-                if (endTimeInput) endTimeInput.value = log.endTimeStr;
-                if (memoInput) memoInput.value = log.memo;
-
-                [taskSelect, startTimeInput, endTimeInput, memoInput].forEach(el => { if (el) el.disabled = false; });
-
-                updateCorrectGoalDropdown(log.task, log.goalId || log.goalTitle);
-            });
-
-            container.appendChild(item);
-        });
     } catch (error) {
-        console.error(error);
+        console.error("Fetch timeline error:", error);
+        if (cacheBadge) cacheBadge.textContent = "";
         container.innerHTML = '<p class="text-center text-red-500 py-4 text-xs">データの同期中にエラーが発生しました。</p>';
     }
+}
+
+/**
+ * 取得したログ一覧をDOMに描画するサブ関数
+ */
+function renderTimelineList(container, logs) {
+    if (logs.length === 0) {
+        container.innerHTML = '<p class="text-center text-gray-400 py-6 text-xs">この日の業務記録はありません。</p>';
+        return;
+    }
+
+    container.innerHTML = "";
+    logs.forEach(log => {
+        const item = document.createElement("div");
+        item.className = "timeline-log-item border border-gray-200 rounded-lg p-2.5 bg-white hover:bg-blue-50 cursor-pointer transition flex flex-col gap-1 text-xs text-gray-700 shadow-sm";
+        const goalBadge = log.goalTitle ? `<span class="bg-gray-100 border text-gray-500 px-1 rounded ml-1 scale-95 inline-block truncate max-w-[130px]">${escapeHtml(log.goalTitle)}</span>` : "";
+        
+        item.innerHTML = `
+            <div class="flex justify-between items-center font-bold">
+                <span class="text-blue-600 font-mono text-sm">${log.startTimeStr} - ${log.endTimeStr}</span>
+                <span class="text-gray-800">${escapeHtml(log.task)}${goalBadge}</span>
+            </div>
+            ${log.memo ? `<p class="text-gray-400 truncate italic mt-0.5 pl-1 border-l">💬 ${escapeHtml(log.memo)}</p>` : ""}
+        `;
+
+        item.addEventListener("click", () => {
+            document.querySelectorAll(".timeline-log-item").forEach(el => el.classList.remove("bg-blue-100", "border-blue-400", "ring-2", "ring-blue-100"));
+            item.classList.add("bg-blue-100", "border-blue-400", "ring-2", "ring-blue-100");
+
+            const taskSelect = document.getElementById("req-correct-task-select");
+            const startTimeInput = document.getElementById("req-correct-start-time");
+            const endTimeInput = document.getElementById("req-correct-end-time");
+            const memoInput = document.getElementById("req-correct-memo");
+
+            document.getElementById("req-correct-log-id").value = log.id;
+            
+            // クリックされた元の稼働時間・業務名・工数名を隠しインプットへ一時保存
+            document.getElementById("req-correct-before-start").value = log.startTimeStr;
+            document.getElementById("req-correct-before-end").value = log.endTimeStr;
+            document.getElementById("req-correct-before-task").value = log.task; 
+            document.getElementById("req-correct-before-goal-title").value = log.goalTitle || "";
+
+            if (taskSelect) taskSelect.value = log.task;
+            if (startTimeInput) startTimeInput.value = log.startTimeStr;
+            if (endTimeInput) endTimeInput.value = log.endTimeStr;
+            if (memoInput) memoInput.value = log.memo;
+
+            [taskSelect, startTimeInput, endTimeInput, memoInput].forEach(el => { if (el) el.disabled = false; });
+
+            updateCorrectGoalDropdown(log.task, log.goalId || log.goalTitle);
+        });
+
+        container.appendChild(item);
+    });
 }
 
 function resetCorrectionInputs() {
@@ -253,7 +334,6 @@ export function getTimeCorrectFormData() {
     if (!targetLogId) throw new Error("エラー：修正したい当当日ログをタイムライン履歴から選択してください。");
     if (!taskName || !startTime || !endTime) throw new Error("エラー：業務、開始時間、終了時間は必須入力です。");
 
-    // 【修正箇所】>（大なり）のみにすることで、開始時間と終了時間が同じ（startTime === endTime）場合もエラーにならず通過します
     if (startTime > endTime) throw new Error("エラー：終了時間は開始時間以降の時刻にしてください。");
 
     let goalId = null;

@@ -3,6 +3,7 @@ import { db } from "../../../main.js";
 import { collection, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { escapeHtml, formatTime, formatDuration } from "../../../utils.js";
 import { handleApprove, handleRejectRequest } from "./approvalActions.js";
+import { handleApprove, handleRejectRequest, handleBulkApprove, handleBulkRejectRequest } from "./approvalActions.js";
 
 let currentUnsubscribes = [];
 
@@ -185,8 +186,6 @@ function render2ColumnTimelineUI(containerEl, logs, pendingRequestDocs) {
     // ② 仮タイムライン（全承認後）用データの構成
     const simulatedLogs = logs.map(l => ({ ...l, pendingReqs: [] }));
     const standaloneRequests = [];
-
-    // 💡 修正前ログ用: 申請の対象となっているログIDを記録する
     const targetedLogIds = new Set();
 
     pendingRequestDocs.forEach(reqDocSnap => {
@@ -198,7 +197,7 @@ function render2ColumnTimelineUI(containerEl, logs, pendingRequestDocs) {
         const targetLog = simulatedLogs.find(l => l.id === targetLogId);
 
         if (targetLog) {
-            targetedLogIds.add(targetLogId); // 対象として記録
+            targetedLogIds.add(targetLogId);
             targetLog.pendingReqs.push({ docSnap: reqDocSnap, reqData: req });
             
             if (reqType === 'time_correct' || reqType === 'update') {
@@ -273,7 +272,7 @@ function render2ColumnTimelineUI(containerEl, logs, pendingRequestDocs) {
 
     totalWorkDurationAfter = Math.max(0, totalWorkDurationAfter);
 
-    // HTMLの構築
+    // 💡 右ヘッダーに一括承認・一括却下ボタンを追加
     containerEl.innerHTML = `
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <!-- 左カラム: 修正前タイムライン -->
@@ -287,19 +286,31 @@ function render2ColumnTimelineUI(containerEl, logs, pendingRequestDocs) {
                 </span>
             </div>
             <div class="space-y-2.5 overflow-y-auto max-h-[60vh] pr-1 scroll-smooth">
-                ${renderOriginalTimelineListHtml(logs, targetedLogIds)} <!-- 💡 targetedLogIds を渡す -->
+                ${renderOriginalTimelineListHtml(logs, targetedLogIds)}
             </div>
         </div>
 
         <!-- 右カラム: 全部承認後の仮タイムライン -->
         <div class="bg-white p-4 rounded-xl border-2 border-indigo-200 shadow-sm flex flex-col">
-            <div class="pb-3 mb-3 border-b border-indigo-100 flex justify-between items-center bg-indigo-50/50 -m-4 p-4 rounded-t-xl">
+            <div class="pb-3 mb-3 border-b border-indigo-100 flex flex-wrap justify-between items-center bg-indigo-50/50 -m-4 p-4 rounded-t-xl gap-2">
                 <h4 class="font-bold text-indigo-900 text-sm flex items-center gap-1.5">
                     <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span> 仮タイムライン (全部承認後)
                 </h4>
-                <span class="text-xs font-mono font-bold text-emerald-700 bg-emerald-100 px-2 py-1 rounded border border-emerald-200">
-                    想定合計: ${formatDuration(totalWorkDurationAfter)}
-                </span>
+                <div class="flex items-center gap-2 flex-wrap">
+                    <span class="text-xs font-mono font-bold text-emerald-700 bg-emerald-100 px-2 py-1 rounded border border-emerald-200">
+                        想定合計: ${formatDuration(totalWorkDurationAfter)}
+                    </span>
+                    ${pendingRequestDocs.length > 0 ? `
+                        <div class="flex items-center gap-1.5 ml-1">
+                            <button id="bulk-approve-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-2.5 py-1 rounded text-xs transition shadow-sm focus:outline-none flex items-center gap-1">
+                                ✨ 一括承認
+                            </button>
+                            <button id="bulk-reject-btn" class="bg-red-500 hover:bg-red-600 text-white font-bold px-2.5 py-1 rounded text-xs transition shadow-sm focus:outline-none flex items-center gap-1">
+                                🚨 一括却下
+                            </button>
+                        </div>
+                    ` : ''}
+                </div>
             </div>
             <div id="simulated-timeline-container" class="space-y-2.5 overflow-y-auto max-h-[60vh] pr-1 mt-2 scroll-smooth">
                 ${renderSimulatedTimelineListHtml(simulatedLogs)}
@@ -307,9 +318,20 @@ function render2ColumnTimelineUI(containerEl, logs, pendingRequestDocs) {
         </div>
     </div>`;
 
-    // --- 👇 イベントリスナーの紐付け 👇 ---
+    // --- イベントリスナーの紐付け ---
 
-    // 右カラム内の承認・却下ボタン
+    // 💡 一括承認・一括却下ボタンのイベント紐付け
+    const bulkApproveBtn = containerEl.querySelector("#bulk-approve-btn");
+    if (bulkApproveBtn) {
+        bulkApproveBtn.addEventListener("click", () => handleBulkApprove(pendingRequestDocs));
+    }
+
+    const bulkRejectBtn = containerEl.querySelector("#bulk-reject-btn");
+    if (bulkRejectBtn) {
+        bulkRejectBtn.addEventListener("click", () => handleBulkRejectRequest(pendingRequestDocs));
+    }
+
+    // 個別承認・却下ボタン
     containerEl.querySelectorAll(".approve-single-btn").forEach(btn => {
         btn.addEventListener("click", (e) => {
             const docId = e.currentTarget.dataset.docid;
@@ -326,21 +348,18 @@ function render2ColumnTimelineUI(containerEl, logs, pendingRequestDocs) {
         });
     });
 
-    // 💡 左カラムの「申請対象ログ」をクリックしたときの連動ハイライト処理
+    // スクロール連動処理
     containerEl.querySelectorAll("[data-link-logid]").forEach(el => {
         el.addEventListener("click", (e) => {
             const logId = e.currentTarget.getAttribute("data-link-logid");
             const targetEl = containerEl.querySelector(`#simulated-log-${logId}`);
             
             if (targetEl) {
-                // 右カラムの該当要素へスムーズにスクロール
                 targetEl.scrollIntoView({ behavior: "smooth", block: "center" });
-                
-                // 一時的なハイライト効果 (赤いリング + 少し拡大)
                 targetEl.classList.add("ring-4", "ring-rose-400", "ring-opacity-50", "scale-[1.02]", "z-50");
                 setTimeout(() => {
                     targetEl.classList.remove("ring-4", "ring-rose-400", "ring-opacity-50", "scale-[1.02]", "z-50");
-                }, 1500); // 1.5秒後に元に戻す
+                }, 1500);
             }
         });
     });

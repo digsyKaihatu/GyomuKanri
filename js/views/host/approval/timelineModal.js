@@ -411,6 +411,18 @@ function renderSimulatedTimelineListHtml(simulatedLogs) {
         const startStr = log.simulatedStartTime || formatTime(log.startTime);
         const endStr = log.simulatedEndTime || (log.endTime ? formatTime(log.endTime) : '---');
 
+        // 💡 仮タイムライン用の稼働時間を算出（補正後の時刻から自動計算）
+        let durationStr = '';
+        if (!isGoalLog) {
+            const startSec = parseTimeToSeconds(startStr);
+            const endSec = parseTimeToSeconds(endStr);
+            if (startSec !== null && endSec !== null && endSec >= startSec) {
+                durationStr = formatDuration(endSec - startSec);
+            } else if (log.duration) {
+                durationStr = formatDuration(log.duration);
+            }
+        }
+
         let mainContent = `<span class="font-bold text-gray-800 text-xs">${escapeHtml(log.task)}</span>`;
         if (log.goalTitle) mainContent += ` <span class="text-[10px] text-gray-500 bg-white border border-gray-200 px-1 rounded ml-1">${escapeHtml(log.goalTitle)}</span>`;
         if (log.contribution !== undefined && log.contribution !== null) {
@@ -464,7 +476,7 @@ function renderSimulatedTimelineListHtml(simulatedLogs) {
             }).join('');
         }
 
-        // 💡 id="simulated-log-${log.id}" を付与してスクロールのターゲットにする
+        // 💡 右端に `⏱ 00:21:29` のような稼働時間を追加表示
         return `
         <div id="simulated-log-${log.id}" class="p-2.5 rounded-lg border ${bgColor} flex flex-col gap-1 transition-all duration-300 relative hover:z-50">
             <div class="flex justify-between items-center gap-2">
@@ -472,6 +484,7 @@ function renderSimulatedTimelineListHtml(simulatedLogs) {
                     ${timeDisplay}
                     ${mainContent}
                 </div>
+                ${!isGoalLog && durationStr ? `<div class="font-bold text-indigo-700 text-xs font-mono whitespace-nowrap">⏱ ${durationStr}</div>` : ''}
             </div>
             ${actionAreaHtml}
         </div>`;

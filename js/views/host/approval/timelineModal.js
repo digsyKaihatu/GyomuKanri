@@ -186,6 +186,9 @@ function render2ColumnTimelineUI(containerEl, logs, pendingRequestDocs) {
     const simulatedLogs = logs.map(l => ({ ...l, pendingReqs: [] }));
     const standaloneRequests = [];
 
+    // 💡 修正前ログ用: 申請の対象となっているログIDを記録する
+    const targetedLogIds = new Set();
+
     pendingRequestDocs.forEach(reqDocSnap => {
         const req = reqDocSnap.data();
         const d = req.data || {};
@@ -195,7 +198,9 @@ function render2ColumnTimelineUI(containerEl, logs, pendingRequestDocs) {
         const targetLog = simulatedLogs.find(l => l.id === targetLogId);
 
         if (targetLog) {
+            targetedLogIds.add(targetLogId); // 対象として記録
             targetLog.pendingReqs.push({ docSnap: reqDocSnap, reqData: req });
+            
             if (reqType === 'time_correct' || reqType === 'update') {
                 if (d.task || d.taskName) targetLog.task = d.task || d.taskName;
                 if (d.goalTitle !== undefined) targetLog.goalTitle = d.goalTitle;
@@ -229,12 +234,10 @@ function render2ColumnTimelineUI(containerEl, logs, pendingRequestDocs) {
     // 仮タイムラインの時刻ソート
     simulatedLogs.sort((a, b) => {
         const getSec = (log) => {
-            // ① 申請による変更後の時間("12:13"など)があれば、それを秒に変換（"変更なし"の場合は null になる）
             if (log.simulatedStartTime) {
                 const sec = parseTimeToSeconds(log.simulatedStartTime);
                 if (sec !== null) return sec;
             }
-            // ② 変更後の時間がない、または"変更なし"の場合は、元の startTime をフォーマットして秒に変換
             if (log.startTime) {
                 const timeStr = formatTime(log.startTime);
                 const sec = parseTimeToSeconds(timeStr);
@@ -283,8 +286,8 @@ function render2ColumnTimelineUI(containerEl, logs, pendingRequestDocs) {
                     合計: ${formatDuration(totalWorkDurationBefore)}
                 </span>
             </div>
-            <div class="space-y-2.5 overflow-y-auto max-h-[60vh] pr-1">
-                ${renderOriginalTimelineListHtml(logs)}
+            <div class="space-y-2.5 overflow-y-auto max-h-[60vh] pr-1 scroll-smooth">
+                ${renderOriginalTimelineListHtml(logs, targetedLogIds)} <!-- 💡 targetedLogIds を渡す -->
             </div>
         </div>
 
@@ -298,13 +301,15 @@ function render2ColumnTimelineUI(containerEl, logs, pendingRequestDocs) {
                     想定合計: ${formatDuration(totalWorkDurationAfter)}
                 </span>
             </div>
-            <div class="space-y-2.5 overflow-y-auto max-h-[60vh] pr-1 mt-2">
+            <div id="simulated-timeline-container" class="space-y-2.5 overflow-y-auto max-h-[60vh] pr-1 mt-2 scroll-smooth">
                 ${renderSimulatedTimelineListHtml(simulatedLogs)}
             </div>
         </div>
     </div>`;
 
-    // 右カラム内の承認・却下ボタンイベント紐付け
+    // --- 👇 イベントリスナーの紐付け 👇 ---
+
+    // 右カラム内の承認・却下ボタン
     containerEl.querySelectorAll(".approve-single-btn").forEach(btn => {
         btn.addEventListener("click", (e) => {
             const docId = e.currentTarget.dataset.docid;
@@ -320,17 +325,49 @@ function render2ColumnTimelineUI(containerEl, logs, pendingRequestDocs) {
             if (reqDocSnap) handleRejectRequest(reqDocSnap);
         });
     });
+
+    // 💡 左カラムの「申請対象ログ」をクリックしたときの連動ハイライト処理
+    containerEl.querySelectorAll("[data-link-logid]").forEach(el => {
+        el.addEventListener("click", (e) => {
+            const logId = e.currentTarget.getAttribute("data-link-logid");
+            const targetEl = containerEl.querySelector(`#simulated-log-${logId}`);
+            
+            if (targetEl) {
+                // 右カラムの該当要素へスムーズにスクロール
+                targetEl.scrollIntoView({ behavior: "smooth", block: "center" });
+                
+                // 一時的なハイライト効果 (赤いリング + 少し拡大)
+                targetEl.classList.add("ring-4", "ring-rose-400", "ring-opacity-50", "scale-[1.02]", "z-50");
+                setTimeout(() => {
+                    targetEl.classList.remove("ring-4", "ring-rose-400", "ring-opacity-50", "scale-[1.02]", "z-50");
+                }, 1500); // 1.5秒後に元に戻す
+            }
+        });
+    });
 }
 
 /**
  * 修正前リスト描画
  */
-function renderOriginalTimelineListHtml(logs) {
+function renderOriginalTimelineListHtml(logs, targetedLogIds) {
     if (logs.length === 0) return `<p class="text-xs text-gray-400 text-center py-6">勤務ログがありません</p>`;
 
     return logs.map(log => {
         const isGoalLog = log.type === 'goal';
-        const bgColor = log.task === '休憩' ? 'bg-yellow-50/60 border-yellow-200' : (isGoalLog ? 'bg-green-50/60 border-green-200' : 'bg-gray-50 border-gray-200');
+        const isTargeted = targetedLogIds && targetedLogIds.has(log.id); // 💡 このログが申請対象か判定
+
+        let bgColor = log.task === '休憩' ? 'bg-yellow-50/60 border-yellow-200' : (isGoalLog ? 'bg-green-50/60 border-green-200' : 'bg-gray-50 border-gray-200');
+        
+        let extraAttributes = '';
+        let badgeHtml = '';
+        
+        // 💡 申請対象のログを目立たせる（背景を赤系にしてクリック可能に）
+        if (isTargeted) {
+            bgColor = 'bg-rose-50 border-rose-300 shadow-md cursor-pointer hover:bg-rose-100 hover:shadow-lg transition-all duration-200';
+            extraAttributes = `data-link-logid="${log.id}" title="クリックで申請後のタイムラインへ移動"`;
+            badgeHtml = `<div class="absolute -top-2 -right-2 bg-rose-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-sm animate-pulse z-10">📝 変更申請あり</div>`;
+        }
+
         const startStr = formatTime(log.startTime);
         const endStr = log.endTime ? formatTime(log.endTime) : '---';
         const durationStr = log.duration ? formatDuration(log.duration) : '';
@@ -344,8 +381,9 @@ function renderOriginalTimelineListHtml(logs) {
             : `<span class="font-mono text-xs text-gray-600 bg-white px-1.5 py-0.5 rounded border border-gray-200">${startStr} - ${endStr}</span>`;
 
         return `
-        <div class="p-2.5 rounded-lg border ${bgColor} flex justify-between items-center gap-2">
-            <div class="space-y-1">
+        <div class="p-2.5 rounded-lg border ${bgColor} flex justify-between items-center gap-2 relative" ${extraAttributes}>
+            ${badgeHtml}
+            <div class="space-y-1 w-full">
                 <div class="flex items-center flex-wrap gap-1.5">
                     ${timeDisplay}
                     ${mainContent}
@@ -383,7 +421,7 @@ function renderSimulatedTimelineListHtml(simulatedLogs) {
             ? `<span class="text-[10px] text-gray-400">${startStr} (進捗)</span>` 
             : `<span class="font-mono text-xs text-indigo-700 bg-indigo-100/80 px-1.5 py-0.5 rounded font-bold">${startStr} - ${endStr}</span>`;
 
-        // 申請アクションエリア（操作ボタン ＆ ホバーツールチップ）
+        // 申請アクションエリア
         let actionAreaHtml = '';
         if (hasPending) {
             actionAreaHtml = log.pendingReqs.map(item => {
@@ -399,8 +437,6 @@ function renderSimulatedTimelineListHtml(simulatedLogs) {
 
                 return `
                 <div class="mt-2 pt-2 border-t border-indigo-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white/80 p-2 rounded-lg relative">
-                    <!-- マウスオーバーでコメント表示する要素 -->
-                    <!-- 💡 title属性を追加して、ブラウザ標準のツールチップでも確実に読めるように保険をかける -->
                     <div class="relative group cursor-help flex items-center gap-1.5" title="${escapeHtml(fullComment)}">
                         <span class="bg-amber-100 text-amber-800 text-[10px] font-bold px-1.5 py-0.5 rounded border border-amber-200">
                             仮: ${escapeHtml(appType)}申請
@@ -409,8 +445,6 @@ function renderSimulatedTimelineListHtml(simulatedLogs) {
                             💬 コメントあり (ホバーで確認)
                         </span>
 
-                        <!-- ホバー時の黒いツールチップ（デザイン版） -->
-                        <!-- 💡 下に表示させ、opacityとvisibilityで表示制御＆z-index強化 -->
                         <div class="absolute left-0 top-full mt-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible z-[100] w-64 p-2.5 bg-gray-900 text-white text-xs rounded-lg shadow-xl pointer-events-none transition-all duration-200">
                             <div class="font-bold text-amber-300 mb-0.5">📌 申請コメント / 理由</div>
                             <div class="text-[11px] leading-relaxed text-gray-200 whitespace-pre-wrap">${escapeHtml(fullComment)}</div>
@@ -418,7 +452,6 @@ function renderSimulatedTimelineListHtml(simulatedLogs) {
                         </div>
                     </div>
 
-                    <!-- 承認・却下ボタン -->
                     <div class="flex items-center gap-1.5 ml-auto">
                         <button data-docid="${docId}" class="approve-single-btn bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-2.5 py-1 rounded text-[11px] transition shadow-sm focus:outline-none">
                             承認
@@ -431,9 +464,9 @@ function renderSimulatedTimelineListHtml(simulatedLogs) {
             }).join('');
         }
 
-        // 💡 外枠の div に `relative hover:z-50` を追加して、ホバー時に裏へ隠れるのを防ぐ
+        // 💡 id="simulated-log-${log.id}" を付与してスクロールのターゲットにする
         return `
-        <div class="p-2.5 rounded-lg border ${bgColor} flex flex-col gap-1 transition relative hover:z-50">
+        <div id="simulated-log-${log.id}" class="p-2.5 rounded-lg border ${bgColor} flex flex-col gap-1 transition-all duration-300 relative hover:z-50">
             <div class="flex justify-between items-center gap-2">
                 <div class="flex items-center flex-wrap gap-1.5">
                     ${timeDisplay}

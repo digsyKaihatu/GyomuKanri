@@ -395,11 +395,13 @@ function renderSimulatedTimelineListHtml(simulatedLogs) {
                 const appType = d.applicationType || (req.type === "add" ? "追加" : "変更");
                 const memoText = d.memo || d.reason || "理由記述なし";
                 const reasonCat = d.reasonCategory ? `[${d.reasonCategory}] ` : "";
+                const fullComment = reasonCat + memoText;
 
                 return `
-                <div class="mt-2 pt-2 border-t border-indigo-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white/80 p-2 rounded-lg">
+                <div class="mt-2 pt-2 border-t border-indigo-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white/80 p-2 rounded-lg relative">
                     <!-- マウスオーバーでコメント表示する要素 -->
-                    <div class="relative group cursor-help flex items-center gap-1.5">
+                    <!-- 💡 title属性を追加して、ブラウザ標準のツールチップでも確実に読めるように保険をかける -->
+                    <div class="relative group cursor-help flex items-center gap-1.5" title="${escapeHtml(fullComment)}">
                         <span class="bg-amber-100 text-amber-800 text-[10px] font-bold px-1.5 py-0.5 rounded border border-amber-200">
                             仮: ${escapeHtml(appType)}申請
                         </span>
@@ -407,10 +409,11 @@ function renderSimulatedTimelineListHtml(simulatedLogs) {
                             💬 コメントあり (ホバーで確認)
                         </span>
 
-                        <!-- ホバー時のツールチップ -->
-                        <div class="absolute left-0 bottom-full mb-1.5 hidden group-hover:block z-30 w-64 p-2.5 bg-gray-900 text-white text-xs rounded-lg shadow-xl pointer-events-none transition animate-fade-in">
+                        <!-- ホバー時の黒いツールチップ（デザイン版） -->
+                        <!-- 💡 下に表示させ、opacityとvisibilityで表示制御＆z-index強化 -->
+                        <div class="absolute left-0 top-full mt-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible z-[100] w-64 p-2.5 bg-gray-900 text-white text-xs rounded-lg shadow-xl pointer-events-none transition-all duration-200">
                             <div class="font-bold text-amber-300 mb-0.5">📌 申請コメント / 理由</div>
-                            <div class="text-[11px] leading-relaxed text-gray-200">${escapeHtml(reasonCat + memoText)}</div>
+                            <div class="text-[11px] leading-relaxed text-gray-200 whitespace-pre-wrap">${escapeHtml(fullComment)}</div>
                             <div class="text-[9px] text-gray-400 mt-1 border-t border-gray-700 pt-0.5">申請者: ${escapeHtml(req.userName || "")}</div>
                         </div>
                     </div>
@@ -428,8 +431,9 @@ function renderSimulatedTimelineListHtml(simulatedLogs) {
             }).join('');
         }
 
+        // 💡 外枠の div に `relative hover:z-50` を追加して、ホバー時に裏へ隠れるのを防ぐ
         return `
-        <div class="p-2.5 rounded-lg border ${bgColor} flex flex-col gap-1 transition">
+        <div class="p-2.5 rounded-lg border ${bgColor} flex flex-col gap-1 transition relative hover:z-50">
             <div class="flex justify-between items-center gap-2">
                 <div class="flex items-center flex-wrap gap-1.5">
                     ${timeDisplay}

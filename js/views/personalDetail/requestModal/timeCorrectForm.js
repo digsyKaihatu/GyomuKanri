@@ -342,17 +342,17 @@ function renderPendingListUI() {
         
         const d = item.data;
         div.innerHTML = `
-            <div class="flex-grow grid grid-cols-12 gap-2 items-center">
-                <span class="col-span-2 font-mono text-gray-500 font-bold">${item.requestDate}</span>
+            <div class="flex-grow min-w-0 grid grid-cols-12 gap-2 items-center">
+                <span class="col-span-2 font-mono text-gray-500 font-bold whitespace-nowrap">${item.requestDate}</span>
                 <div class="col-span-5 flex items-center gap-1 truncate">
-                    <span class="text-gray-400 line-through">${d.beforeStartTime}-${d.beforeEndTime} (${escapeHtml(d.beforeTask)})</span>
-                    <span>➔</span>
-                    <span class="font-bold text-blue-600">${d.afterStartTime}-${d.afterEndTime} (${escapeHtml(d.task)})</span>
+                    <span class="text-gray-400 line-through truncate">${d.beforeStartTime}-${d.beforeEndTime} (${escapeHtml(d.beforeTask)})</span>
+                    <span class="shrink-0">➔</span>
+                    <span class="font-bold text-blue-600 truncate">${d.afterStartTime}-${d.afterEndTime} (${escapeHtml(d.task)})</span>
                 </div>
-                <div class="col-span-3 text-emerald-600 font-bold text-right">${d.timeDifference}</div>
+                <div class="col-span-3 text-emerald-600 font-bold text-right whitespace-nowrap">${d.timeDifference}</div>
                 <div class="col-span-2 text-gray-400 truncate">${escapeHtml(d.memo || "メモなし")}</div>
             </div>
-            <button type="button" class="btn-remove-pending text-red-500 hover:text-red-700 font-bold px-2 py-1 rounded hover:bg-red-50 text-xs" data-index="${index}">
+            <button type="button" class="btn-remove-pending text-red-500 hover:text-red-700 font-bold px-2 py-1 rounded hover:bg-red-50 text-xs whitespace-nowrap shrink-0" data-index="${index}">
                 削除
             </button>
         `;

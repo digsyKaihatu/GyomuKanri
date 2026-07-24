@@ -191,7 +191,7 @@ export async function handleUpdateGoalProgress(taskName, goalId, inputElement) {
         if (error.message === "TASK_NOT_FOUND" || error.message === "GOAL_NOT_FOUND") {
             alert("対象の業務または工数が削除されているため、更新できませんでした。");
         } else {
-            alert("【不具合発生のお知らせ】...");
+            alert("【不具合発生のお知らせ】\n現在、業務管理アプリで一時的な不具合が発生しています。\n\nお手数ですが、以下の時間帯に再度「件数入力」または「申請」をお願いいたします。\n\n■ 16時より前 ➔ 本日の16時以降に\n■ 16時以降   ➔ 明日の16時以降に");
         }
     }
 }

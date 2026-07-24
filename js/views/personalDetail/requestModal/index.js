@@ -2,10 +2,10 @@
 import { db, userId, userName } from "../../../main.js";
 import { collection, query, where, onSnapshot, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-import { renderAddFormHTML, initAddForm, getAddFormData } from "./addForm.js";
-// ⚡ getPendingTimeCorrectDataList に変更
+// ⚡ 各フォームから一括データ取得用の関数をインポート
+import { renderAddFormHTML, initAddForm, getPendingAddDataList } from "./addForm.js";
 import { renderTimeCorrectFormHTML, initTimeCorrectForm, getPendingTimeCorrectDataList } from "./timeCorrectForm.js";
-import { renderCountCorrectFormHTML, initCountCorrectForm, getCountCorrectFormData } from "./countCorrectForm.js";
+import { renderCountCorrectFormHTML, initCountCorrectForm, getPendingCountCorrectDataList } from "./countCorrectForm.js";
 import { renderForgetCheckoutFormHTML, initForgetCheckoutForm, getForgetCheckoutFormData } from "./forgetCheckoutForm.js";
 
 // -------------------------------------------------------------
@@ -222,15 +222,29 @@ async function handleRequestSubmit() {
 
     try {
         // -------------------------------------------------------------
-        // ⏱️ 「時間・業務の訂正」の場合：複数件の一括送信処理
+        // 📦 リスト（複数件一括送信）対応の申請タイプ処理
         // -------------------------------------------------------------
-        if (type === "time_correct") {
-            const requestsList = getPendingTimeCorrectDataList(); // 配列を取得
+        if (type === "time_correct" || type === "add" || type === "count_correct") {
+            let requestsList = [];
+            
+            if (type === "time_correct") {
+                requestsList = getPendingTimeCorrectDataList();
+            } else if (type === "add") {
+                requestsList = getPendingAddDataList();
+            } else if (type === "count_correct") {
+                requestsList = getPendingCountCorrectDataList();
+            }
 
-            // 📋 確認ダイアログ用の申請一覧テキスト生成
+            // 📋 確認ダイアログテキスト表示の分岐
             const summaryText = requestsList.map((req, idx) => {
                 const d = req.data;
-                return `${idx + 1}. [${req.requestDate}] ${d.beforeTask}(${d.beforeStartTime}-${d.beforeEndTime}) ➔ ${d.task}(${d.afterStartTime}-${d.afterEndTime})`;
+                if (type === "time_correct") {
+                    return `${idx + 1}. [${req.requestDate}] ${d.beforeTask}(${d.beforeStartTime}-${d.beforeEndTime}) ➔ ${d.task}(${d.afterStartTime}-${d.afterEndTime})`;
+                } else if (type === "add") {
+                    return `${idx + 1}. [${req.requestDate}] ${d.task}(${d.afterStartTime}-${d.afterEndTime}) ${d.count}件`;
+                } else if (type === "count_correct") {
+                    return `${idx + 1}. [${req.requestDate}] ${d.task} ➔ 件数: ${d.count}件 (${d.timeDifference})`;
+                }
             }).join("\n");
 
             const isConfirmed = confirm(
@@ -260,19 +274,20 @@ async function handleRequestSubmit() {
                 });
             }
 
-            alert(`計 ${requestsList.length} 件の変更申請を送信しました。管理者の承認をお待ちください。`);
+            alert(`計 ${requestsList.length} 件の申請を送信しました。管理者の承認をお待ちください。`);
             closeUnifiedRequestModal();
             return;
         }
 
         // -------------------------------------------------------------
-        // 📝 その他の申請タイプ（単一送信）
+        // 📝 その他の申請タイプ（退勤忘れなど・単一送信）
         // -------------------------------------------------------------
         let payload = null;
-        if (type === "add") { payload = getAddFormData(); } 
-        else if (type === "count_correct") { payload = getCountCorrectFormData(); } 
-        else if (type === "forget_checkout") { payload = getForgetCheckoutFormData(); } 
-        else { throw new Error("現在、この申請タイプの送信ロジックは未実装です。"); }
+        if (type === "forget_checkout") { 
+            payload = getForgetCheckoutFormData(); 
+        } else { 
+            throw new Error("現在、この申請タイプの送信ロジックは未実装です。"); 
+        }
 
         const sendBtn = document.getElementById("unified-req-send-btn");
         sendBtn.disabled = true;

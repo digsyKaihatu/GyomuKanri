@@ -36,7 +36,7 @@ async function renderClientProgressChart(taskName, finalGoalId) {
         const dateList = getLast7Days();
         const startDate = dateList[0];
 
-        // 直近7日分のみ取得
+        // 軽量クエリ: 直近7日分のみ取得
         const q = query(
             collection(db, "work_logs"),
             where("goalId", "==", finalGoalId),
@@ -45,14 +45,12 @@ async function renderClientProgressChart(taskName, finalGoalId) {
         const snapshot = await getDocs(q);
 
         const userMap = {};
-        let weekTotal = 0; // 直近7日間の合計件数
 
         snapshot.forEach(docSnap => {
             const data = docSnap.data();
             if (dateList.includes(data.date)) {
                 const uId = data.userId || "unknown";
                 const uName = data.userName || "不明なユーザー";
-                const contrib = data.contribution || 0;
 
                 if (!userMap[uId]) {
                     userMap[uId] = {
@@ -61,16 +59,9 @@ async function renderClientProgressChart(taskName, finalGoalId) {
                     };
                     dateList.forEach(d => userMap[uId].counts[d] = 0);
                 }
-                userMap[uId].counts[data.date] += contrib;
-                weekTotal += contrib;
+                userMap[uId].counts[data.date] += (data.contribution || 0);
             }
         });
-
-        // 直近7日間の合計件数を画面へ反映
-        const weekTotalEl = document.getElementById("ui-week-total-val");
-        if (weekTotalEl) {
-            weekTotalEl.textContent = weekTotal;
-        }
 
         if (!userMap[userId]) {
             userMap[userId] = {
@@ -135,6 +126,7 @@ export async function handleUpdateGoalProgress(taskName, goalId, inputElement) {
 
     try {
         let newCurrentValue = 0;
+        let targetValue = 0;
         let updatedGoalTitle = "";
 
         const newTaskList = await runTransaction(db, async (transaction) => {
@@ -153,6 +145,7 @@ export async function handleUpdateGoalProgress(taskName, goalId, inputElement) {
             newCurrentValue = (goal.current || 0) + contribution;
             goal.current = newCurrentValue;
             
+            targetValue = goal.target;
             updatedGoalTitle = goal.title;
 
             transaction.set(tasksRef, { list: taskList });
@@ -168,9 +161,18 @@ export async function handleUpdateGoalProgress(taskName, goalId, inputElement) {
 
         updateGlobalTaskObjects(newTaskList);
 
-        // 累計件数表示テキストを更新
+        // 画面の数値・バー・パーセンテージを即時更新
         const valEl = document.getElementById("ui-current-val");
+        const barEl = document.getElementById("ui-current-bar");
+        const pctEl = document.getElementById("ui-current-percent");
+
         if (valEl) valEl.textContent = newCurrentValue;
+        if (barEl || pctEl) {
+            const target = targetValue || 1;
+            const newPercent = Math.min(100, Math.round((newCurrentValue / target) * 100));
+            if (barEl) barEl.style.width = `${newPercent}%`;
+            if (pctEl) pctEl.textContent = `${newPercent}%`;
+        }
 
         inputElement.value = "";
         setHasContributed(true);
@@ -199,6 +201,8 @@ export function renderSingleGoalDisplay(task, goalId) {
     }
     
     const current = goal.current || 0;
+    const target = goal.target || 0;
+    const percentage = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
 
     const memoHtml = goal.memo ? `
         <div class="w-fit max-w-full bg-gray-50 border-l-4 border-blue-600 p-2 mb-3 rounded text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">${linkify(escapeHtml(goal.memo))}</div>
@@ -224,20 +228,19 @@ export function renderSingleGoalDisplay(task, goalId) {
         deadlineHtml += `</div>`;
     }
 
-    // ★ 目標値を削除し、「累計: X 件」と「直近7日間: Y 件」のみ表示
+    // ★ 現在/目標値、パーセンテージ、プログレスバーを完全復活
     container.innerHTML = `
         <div class="border-b pb-4 mb-4">
             <h3 class="text-sm font-bold text-gray-700 mb-2">${escapeHtml(goal.title)}</h3>
             ${memoHtml}
             ${deadlineHtml}
-            
-            <div class="flex items-center justify-between text-xs text-gray-600 mb-3 font-semibold">
-                <span>累計: <span id="ui-current-val" class="font-bold text-base text-blue-600">${current}</span> 件</span>
-                <span class="bg-blue-50 border border-blue-200 text-blue-800 px-2.5 py-1 rounded-md">
-                    直近7日間: <span id="ui-week-total-val" class="font-bold text-sm text-blue-600">0</span> 件
-                </span>
+            <div class="flex items-center justify-between text-xs text-gray-600 mb-1">
+                <span>現在: <span id="ui-current-val" class="font-bold text-lg">${current}</span> / 目標: ${target}</span>
+                <span id="ui-current-percent">${percentage}%</span>
             </div>
-
+            <div class="w-full bg-gray-200 rounded-full h-2.5 mb-3">
+                <div id="ui-current-bar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-500" style="width: ${percentage}%"></div>
+            </div>
             <div class="flex gap-2 items-center">
                 <input type="number" id="goal-contribution-input" 
                     class="flex-grow p-2 border border-gray-300 rounded text-sm" 

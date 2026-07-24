@@ -98,7 +98,7 @@ export function renderTimeCorrectFormHTML(defaultDate) {
                 </div>
             </div>
             <!-- 💡 高さを固定(h-[160px])にして内部スクロール(overflow-y-auto, custom-scrollbar)を強制適用 -->
-            <div id="pending-list-container" class="border border-gray-200 rounded-xl bg-gray-50 p-3 h-[130px] overflow-y-auto custom-scrollbar space-y-2 text-xs">
+            <div id="pending-list-container" class="border border-gray-200 rounded-xl bg-gray-50 p-3 h-[100px] overflow-y-auto custom-scrollbar space-y-2 text-xs">
                 <p class="text-center text-gray-400 py-4">追加された申請データはありません。</p>
             </div>
         </div>

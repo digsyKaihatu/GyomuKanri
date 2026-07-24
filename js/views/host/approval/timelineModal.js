@@ -229,9 +229,16 @@ function render2ColumnTimelineUI(containerEl, logs, pendingRequestDocs) {
     // 仮タイムラインの時刻ソート
     simulatedLogs.sort((a, b) => {
         const getSec = (log) => {
-            if (log.simulatedStartTime) return parseTimeToSeconds(log.simulatedStartTime) || 0;
+            // ① 申請による変更後の時間("12:13"など)があれば、それを秒に変換（"変更なし"の場合は null になる）
+            if (log.simulatedStartTime) {
+                const sec = parseTimeToSeconds(log.simulatedStartTime);
+                if (sec !== null) return sec;
+            }
+            // ② 変更後の時間がない、または"変更なし"の場合は、元の startTime をフォーマットして秒に変換
             if (log.startTime) {
-                return typeof log.startTime === 'string' ? parseTimeToSeconds(log.startTime) || 0 : (log.startTime.toMillis ? log.startTime.toMillis()/1000 : 0);
+                const timeStr = formatTime(log.startTime);
+                const sec = parseTimeToSeconds(timeStr);
+                if (sec !== null) return sec;
             }
             return 0;
         };

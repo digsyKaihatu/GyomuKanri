@@ -97,7 +97,8 @@ export function renderTimeCorrectFormHTML(defaultDate) {
                     <span id="simulated-total-work-time" class="text-blue-700 font-mono text-sm font-extrabold">0時間0分</span>
                 </div>
             </div>
-            <div id="pending-list-container" class="border border-gray-200 rounded-xl bg-gray-50 p-3 min-h-[90px] max-h-[180px] overflow-y-auto space-y-2 text-xs">
+            <!-- 💡 高さを固定(h-[160px])にして内部スクロール(overflow-y-auto, custom-scrollbar)を強制適用 -->
+            <div id="pending-list-container" class="border border-gray-200 rounded-xl bg-gray-50 p-3 h-[160px] overflow-y-auto custom-scrollbar space-y-2 text-xs">
                 <p class="text-center text-gray-400 py-4">追加された申請データはありません。</p>
             </div>
         </div>
@@ -365,6 +366,9 @@ function renderPendingListUI() {
 
         container.appendChild(div);
     });
+
+    // 新しい要素が追加された際に最新（一番下）へ自動スクロール
+    container.scrollTop = container.scrollHeight;
 }
 
 function updateCorrectGoalDropdown(selectedTaskName, selectedGoalValue) {

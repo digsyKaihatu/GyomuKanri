@@ -75,3 +75,84 @@ export async function handleRejectRequest(reqDoc) {
         alert(`却下処理中にエラーが発生しました:\n${error.message}`);
     }
 }
+
+// 💡 一括承認処理を追加
+export async function handleBulkApprove(reqDocs) {
+    if (!reqDocs || reqDocs.length === 0) return;
+    
+    if (!confirm(`表示中の未承認申請（計 ${reqDocs.length} 件）をすべて一括承認して、勤務記録へ反映させますか？`)) return;
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const reqDoc of reqDocs) {
+        try {
+            const response = await fetch(`${WORKER_URL}/approve-request`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    requestId: reqDoc.id,
+                    adminId: currentAdminId,
+                    adminName: currentAdminName
+                })
+            });
+            if (response.ok) successCount++;
+            else failCount++;
+        } catch (error) {
+            console.error("Bulk approval error:", error);
+            failCount++;
+        }
+    }
+
+    if (failCount === 0) {
+        alert(`${successCount} 件の申請を一括承認しました。`);
+    } else {
+        alert(`一括承認処理が完了しました。\n成功: ${successCount} 件 / 失敗: ${failCount} 件`);
+    }
+
+    if (typeof window.refreshApprovalList === "function") {
+        window.refreshApprovalList();
+    }
+}
+
+// 💡 一括却下処理を追加（却下理由の入力対応）
+export async function handleBulkRejectRequest(reqDocs) {
+    if (!reqDocs || reqDocs.length === 0) return;
+
+    const reason = prompt(`表示中の未承認申請（計 ${reqDocs.length} 件）を一括却下しますか？\n却下理由を入力してください（空欄のままでも却下可能です。キャンセルで中断します）:`);
+
+    if (reason === null) return; // キャンセルされた場合
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const reqDoc of reqDocs) {
+        try {
+            const response = await fetch(`${WORKER_URL}/reject-request`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    requestId: reqDoc.id,
+                    adminId: currentAdminId,
+                    adminName: currentAdminName,
+                    rejectReason: reason.trim()
+                })
+            });
+            if (response.ok) successCount++;
+            else failCount++;
+        } catch (error) {
+            console.error("Bulk reject error:", error);
+            failCount++;
+        }
+    }
+
+    if (failCount === 0) {
+        alert(`${successCount} 件の申請を一括却下しました。`);
+    } else {
+        alert(`一括却下処理が完了しました。\n成功: ${successCount} 件 / 失敗: ${failCount} 件`);
+    }
+
+    if (typeof window.refreshApprovalList === "function") {
+        window.refreshApprovalList();
+    }
+}

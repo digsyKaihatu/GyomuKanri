@@ -1,15 +1,14 @@
 // js/views/client/goalProgress.js
 
-// ★ query, where, getDocs をインポートに追加
 import { db, userId, userName, allTaskObjects, updateGlobalTaskObjects, escapeHtml } from "../../main.js"; 
 import { addDoc, collection, doc, setDoc, Timestamp, runTransaction, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; 
 import { getJSTDateString, linkify } from "../../utils.js";
 import { setHasContributed } from "./timer.js";
-import { createLineChart, destroyCharts } from "../../components/chart.js"; // ★追加: チャート共通コンポーネントをインポート
+import { createLineChart, destroyCharts } from "../../components/chart.js";
 
-let clientLineChartInstance = null; // ★追加: チャートの多重描画バグを防ぐためのインスタンス保持変数
+let clientLineChartInstance = null;
 
-// ★追加: 直近7日間の日付（YYYY-MM-DD）の配列を取得するヘルパー関数
+// 直近7日間の日付（YYYY-MM-DD）の配列を取得するヘルパー関数
 function getLast7Days() {
     const dates = [];
     for (let i = 6; i >= 0; i--) {
@@ -34,21 +33,21 @@ async function renderClientProgressChart(taskName, finalGoalId) {
     }
 
     try {
-        // ★修正: where("userId", "==", userId) を削除し、この工数に「入った人全員」のログを取得
+        const dateList = getLast7Days();
+        const startDate = dateList[0];
+
+        // 軽量クエリ: 直近7日分のみ取得
         const q = query(
             collection(db, "work_logs"),
-            where("goalId", "==", finalGoalId)
+            where("goalId", "==", finalGoalId),
+            where("date", ">=", startDate)
         );
         const snapshot = await getDocs(q);
 
-        const dateList = getLast7Days();
-        
-        // ★追加: ユーザーごとの集計用オブジェクトを作成
         const userMap = {};
 
         snapshot.forEach(docSnap => {
             const data = docSnap.data();
-            // 直近7日間の範囲内の日付であれば集計対象にする
             if (dateList.includes(data.date)) {
                 const uId = data.userId || "unknown";
                 const uName = data.userName || "不明なユーザー";
@@ -58,14 +57,12 @@ async function renderClientProgressChart(taskName, finalGoalId) {
                         name: uName,
                         counts: {}
                     };
-                    // 7日間分を0件で初期化
                     dateList.forEach(d => userMap[uId].counts[d] = 0);
                 }
                 userMap[uId].counts[data.date] += (data.contribution || 0);
             }
         });
 
-        // ★追加: 自分がまだ1件も書き込んでいなくても、グラフ上に自分の線（0件の線）が必ず出るように保証
         if (!userMap[userId]) {
             userMap[userId] = {
                 name: userName,
@@ -74,19 +71,17 @@ async function renderClientProgressChart(taskName, finalGoalId) {
             dateList.forEach(d => userMap[userId].counts[d] = 0);
         }
 
-        // ユーザーごとに Chart.js 用の dataset を生成する
         const datasets = Object.keys(userMap).map((uId, index) => {
             const userData = userMap[uId];
             const isMe = (uId === userId);
 
             let color;
             if (isMe) {
-                color = "rgb(59, 130, 246)"; // 自分のメインカラー（青）
+                color = "rgb(59, 130, 246)";
             } else {
-                // ★修正: 自分の色（青系: HSLの色相170〜260）と被りそうな場合は、数値をシフトして排除する
                 let hue = (index * 137.508) % 360;
                 if (hue >= 170 && hue <= 260) {
-                    hue = (hue + 100) % 360; // 青・水色・紫系を綺麗に避けて、黄色や緑・オレンジ系に変調
+                    hue = (hue + 100) % 360;
                 }
                 color = `hsl(${hue}, 65%, 55%)`; 
             }
@@ -98,9 +93,9 @@ async function renderClientProgressChart(taskName, finalGoalId) {
                 backgroundColor: isMe ? "rgba(59, 130, 246, 0.08)" : "transparent",
                 tension: 0.2,
                 fill: isMe, 
-                borderWidth: isMe ? 3 : 1.5, // 自分を太く
-                pointRadius: isMe ? 4 : 2,   // 自分の点を大きく
-                hoverRadius: isMe ? 6 : 4    // マウスが乗った時さらに強調
+                borderWidth: isMe ? 3 : 1.5,
+                pointRadius: isMe ? 4 : 2,
+                hoverRadius: isMe ? 6 : 4
             };
         });
 
@@ -113,8 +108,6 @@ async function renderClientProgressChart(taskName, finalGoalId) {
         const ctx = canvas.getContext("2d");
         
         const titleText = "チーム全体の週間進捗グラフ";
-        
-        // ★修正: 第7引数に 'nearest' を指定することで、「今マウスが乗っている折れ線（その人）の説明だけ」をポップアップさせる
         clientLineChartInstance = await createLineChart(ctx, labels, datasets, titleText, "件数", userName, 'nearest');
 
     } catch (error) {
@@ -168,6 +161,7 @@ export async function handleUpdateGoalProgress(taskName, goalId, inputElement) {
 
         updateGlobalTaskObjects(newTaskList);
 
+        // 画面の数値・バー・パーセンテージを即時更新
         const valEl = document.getElementById("ui-current-val");
         const barEl = document.getElementById("ui-current-bar");
         const pctEl = document.getElementById("ui-current-percent");
@@ -183,7 +177,6 @@ export async function handleUpdateGoalProgress(taskName, goalId, inputElement) {
         inputElement.value = "";
         setHasContributed(true);
 
-        // ★追加: 「登録」ボタンを押して件数が追加された直後にチャートを動的に更新する
         await renderClientProgressChart(taskName, finalGoalId);
 
     } catch (error) {
@@ -191,7 +184,7 @@ export async function handleUpdateGoalProgress(taskName, goalId, inputElement) {
         if (error.message === "TASK_NOT_FOUND" || error.message === "GOAL_NOT_FOUND") {
             alert("対象の業務または工数が削除されているため、更新できませんでした。");
         } else {
-            alert("【不具合発生のお知らせ】...");
+            alert("【不具合発生のお知らせ】\n現在、業務管理アプリで一時的な不具合が発生しています。\n\nお手数ですが、以下の時間帯に再度「件数入力」または「申請」をお願いいたします。\n\n■ 16時より前 ➔ 本日の16時以降に\n■ 16時以降   ➔ 明日の16時以降に");
         }
     }
 }
@@ -210,7 +203,7 @@ export function renderSingleGoalDisplay(task, goalId) {
     const current = goal.current || 0;
     const target = goal.target || 0;
     const percentage = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
-    
+
     const memoHtml = goal.memo ? `
         <div class="w-fit max-w-full bg-gray-50 border-l-4 border-blue-600 p-2 mb-3 rounded text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">${linkify(escapeHtml(goal.memo))}</div>
     ` : '';
@@ -235,7 +228,7 @@ export function renderSingleGoalDisplay(task, goalId) {
         deadlineHtml += `</div>`;
     }
 
-    // ★ 件数入力フォーム（flex gap-2 items-center）の下に、チャート用のCanvasWrapper要素を挿入
+    // ★ 現在/目標値、パーセンテージ、プログレスバーを完全復活
     container.innerHTML = `
         <div class="border-b pb-4 mb-4">
             <h3 class="text-sm font-bold text-gray-700 mb-2">${escapeHtml(goal.title)}</h3>
@@ -275,6 +268,5 @@ export function renderSingleGoalDisplay(task, goalId) {
         if (e.key === "Enter") handleUpdateGoalProgress(task.name, tid, inputVal);
     };
 
-    // ★追加: 工数画面がレンダリングされた初期タイミングでチャートを描画する
     renderClientProgressChart(task.name, tid);
 }

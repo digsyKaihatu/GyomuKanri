@@ -2,9 +2,10 @@
 import { db, userId, userName } from "../../../main.js";
 import { collection, query, where, onSnapshot, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-import { renderAddFormHTML, initAddForm, getAddFormData } from "./addForm.js";
-import { renderTimeCorrectFormHTML, initTimeCorrectForm, getTimeCorrectFormData } from "./timeCorrectForm.js";
-import { renderCountCorrectFormHTML, initCountCorrectForm, getCountCorrectFormData } from "./countCorrectForm.js";
+// ⚡ 各フォームから一括データ取得用の関数をインポート
+import { renderAddFormHTML, initAddForm, getPendingAddDataList } from "./addForm.js";
+import { renderTimeCorrectFormHTML, initTimeCorrectForm, getPendingTimeCorrectDataList } from "./timeCorrectForm.js";
+import { renderCountCorrectFormHTML, initCountCorrectForm, getPendingCountCorrectDataList } from "./countCorrectForm.js";
 import { renderForgetCheckoutFormHTML, initForgetCheckoutForm, getForgetCheckoutFormData } from "./forgetCheckoutForm.js";
 
 // -------------------------------------------------------------
@@ -202,6 +203,9 @@ function handleUnifiedTypeChange(event) {
     }
 }
 
+/**
+ * 🚀 申請送信ハンドラー（一括処理対応）
+ */
 async function handleRequestSubmit() {
     const type = document.getElementById("unified-req-type-select").value;
     const errorBar = document.getElementById("unified-req-error-bar");
@@ -216,13 +220,74 @@ async function handleRequestSubmit() {
         return;
     }
 
-    let payload = null;
     try {
-        if (type === "add") { payload = getAddFormData(); } 
-        else if (type === "time_correct") { payload = getTimeCorrectFormData(); } 
-        else if (type === "count_correct") { payload = getCountCorrectFormData(); } 
-        else if (type === "forget_checkout") { payload = getForgetCheckoutFormData(); } 
-        else { throw new Error("現在、この申請タイプの送信ロジックは未実装です。"); }
+        // -------------------------------------------------------------
+        // 📦 リスト（複数件一括送信）対応の申請タイプ処理
+        // -------------------------------------------------------------
+        if (type === "time_correct" || type === "add" || type === "count_correct") {
+            let requestsList = [];
+            
+            if (type === "time_correct") {
+                requestsList = getPendingTimeCorrectDataList();
+            } else if (type === "add") {
+                requestsList = getPendingAddDataList();
+            } else if (type === "count_correct") {
+                requestsList = getPendingCountCorrectDataList();
+            }
+
+            // 📋 確認ダイアログテキスト表示の分岐
+            const summaryText = requestsList.map((req, idx) => {
+                const d = req.data;
+                if (type === "time_correct") {
+                    return `${idx + 1}. [${req.requestDate}] ${d.beforeTask}(${d.beforeStartTime}-${d.beforeEndTime}) ➔ ${d.task}(${d.afterStartTime}-${d.afterEndTime})`;
+                } else if (type === "add") {
+                    return `${idx + 1}. [${req.requestDate}] ${d.task}(${d.afterStartTime}-${d.afterEndTime}) ${d.count}件`;
+                } else if (type === "count_correct") {
+                    return `${idx + 1}. [${req.requestDate}] ${d.task} ➔ 件数: ${d.count}件 (${d.timeDifference})`;
+                }
+            }).join("\n");
+
+            const isConfirmed = confirm(
+                `計 ${requestsList.length} 件の申請をまとめて送信します。\n内容をご確認ください：\n\n${summaryText}\n\n送信してよろしいですか？`
+            );
+
+            if (!isConfirmed) return;
+
+            const sendBtn = document.getElementById("unified-req-send-btn");
+            sendBtn.disabled = true;
+            sendBtn.textContent = "送信中...";
+
+            // 📦 申請データを1件ずつ個別にFirestoreへ保存
+            for (const payload of requestsList) {
+                await addDoc(collection(db, "work_log_requests"), {
+                    userId: userId,
+                    userName: userName,
+                    type: type,
+                    status: "pending",
+                    requestDate: payload.requestDate,
+                    targetLogId: payload.targetLogId || null,
+                    createdAt: new Date().toISOString(),
+                    approverId: null,
+                    approverName: null,
+                    approvedAt: null,
+                    data: payload.data
+                });
+            }
+
+            alert(`計 ${requestsList.length} 件の申請を送信しました。管理者の承認をお待ちください。`);
+            closeUnifiedRequestModal();
+            return;
+        }
+
+        // -------------------------------------------------------------
+        // 📝 その他の申請タイプ（退勤忘れなど・単一送信）
+        // -------------------------------------------------------------
+        let payload = null;
+        if (type === "forget_checkout") { 
+            payload = getForgetCheckoutFormData(); 
+        } else { 
+            throw new Error("現在、この申請タイプの送信ロジックは未実装です。"); 
+        }
 
         const sendBtn = document.getElementById("unified-req-send-btn");
         sendBtn.disabled = true;
@@ -236,16 +301,15 @@ async function handleRequestSubmit() {
             requestDate: payload.requestDate,
             targetLogId: payload.targetLogId || null,
             createdAt: new Date().toISOString(),
-            
             approverId: null,
             approverName: null,
             approvedAt: null,
-            
             data: payload.data
         });
 
         alert("変更申請を送信しました。管理者の承認をお待ちください。");
         closeUnifiedRequestModal();
+
     } catch (error) {
         errorEl.textContent = error.message || "申請の送信中にシステムエラーが発生しました。";
         errorBar.classList.remove("hidden");

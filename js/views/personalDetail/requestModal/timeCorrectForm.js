@@ -3,8 +3,9 @@ import { allTaskObjects } from "../../../main.js";
 import { escapeHtml } from "../../../utils.js";
 import { subscribeModalTimelineLogs } from "./index.js";
 
-// 📝 一時保存する申請データのリスト
+// 📝 一時保存データ & 現在選択中の日の元ログデータ
 let pendingCorrections = [];
+let currentTimelineLogs = []; // 現在表示中の日の元のタイムラインログ
 
 export function renderTimeCorrectFormHTML(defaultDate) {
     return `
@@ -89,6 +90,12 @@ export function renderTimeCorrectFormHTML(defaultDate) {
                     🛒 申請予定の訂正リスト
                     <span id="pending-count-badge" class="bg-emerald-100 text-emerald-800 text-xs px-2 py-0.5 rounded-full font-bold">0件</span>
                 </h4>
+                
+                <!-- ⏱️ 申請適用後の合計稼働時間表示エリア -->
+                <div class="text-xs font-bold text-gray-700 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
+                    <span>⏱️ 申請適用後の想定稼働時間:</span>
+                    <span id="simulated-total-work-time" class="text-blue-700 font-mono text-sm font-extrabold">0時間0分</span>
+                </div>
             </div>
             <div id="pending-list-container" class="border border-gray-200 rounded-xl bg-gray-50 p-3 min-h-[90px] max-h-[180px] overflow-y-auto space-y-2 text-xs">
                 <p class="text-center text-gray-400 py-4">追加された申請データはありません。</p>
@@ -98,8 +105,8 @@ export function renderTimeCorrectFormHTML(defaultDate) {
 }
 
 export function initTimeCorrectForm() {
-    // 状態の初期化
     pendingCorrections = [];
+    currentTimelineLogs = [];
 
     const taskSelect = document.getElementById("req-correct-task-select");
     const correctDateInput = document.getElementById("req-correct-date");
@@ -124,7 +131,6 @@ export function initTimeCorrectForm() {
         setupRealtimeTimeline(e.target.value);
     });
 
-    // 「リストに追加」ボタンのイベント
     if (addBtn) {
         addBtn.addEventListener("click", () => {
             try {
@@ -136,6 +142,86 @@ export function initTimeCorrectForm() {
     }
 
     setupRealtimeTimeline(correctDateInput.value);
+}
+
+/**
+ * ⏱️ 時刻文字列 (HH:MM) を分（数値）に変換
+ */
+function toMinutes(timeStr) {
+    if (!timeStr) return 0;
+    const [h, m] = timeStr.split(":").map(Number);
+    return h * 60 + m;
+}
+
+/**
+ * 🔍 指定日のログ一覧に対し、カート（pendingCorrections）内の修正を反映させたシミュレーションログ配列を生成
+ */
+function getSimulatedLogsForDate(dateStr, testPendingList = pendingCorrections) {
+    return currentTimelineLogs.map(log => {
+        const correction = testPendingList.find(p => p.targetLogId === log.id && p.requestDate === dateStr);
+        if (correction) {
+            return {
+                id: log.id,
+                task: correction.data.task,
+                startTimeStr: correction.data.afterStartTime,
+                endTimeStr: correction.data.afterEndTime,
+                isCorrected: true
+            };
+        }
+        return {
+            id: log.id,
+            task: log.task,
+            startTimeStr: log.startTimeStr,
+            endTimeStr: log.endTimeStr,
+            isCorrected: false
+        };
+    });
+}
+
+/**
+ * ⚠️ 時間の重複・かぶりチェック
+ */
+function checkTimeOverlap(simulatedLogs) {
+    for (let i = 0; i < simulatedLogs.length; i++) {
+        for (let j = i + 1; j < simulatedLogs.length; j++) {
+            const logA = simulatedLogs[i];
+            const logB = simulatedLogs[j];
+
+            const startA = toMinutes(logA.startTimeStr);
+            const endA = toMinutes(logA.endTimeStr);
+            const startB = toMinutes(logB.startTimeStr);
+            const endB = toMinutes(logB.endTimeStr);
+
+            // 重複の数学的判定条件: (startA < endB) かつ (startB < endA)
+            if (startA < endB && startB < endA) {
+                return `「${logA.task} (${logA.startTimeStr}～${logA.endTimeStr})」と「${logB.task} (${logB.startTimeStr}～${logB.endTimeStr})」の時間がかぶっています！`;
+            }
+        }
+    }
+    return null; // かぶりなし
+}
+
+/**
+ * 🧮 申請適用後の合計稼働時間（休憩除く）を算出
+ */
+function calculateSimulatedTotalWorkTime(dateStr) {
+    const simulatedLogs = getSimulatedLogsForDate(dateStr);
+    let totalMinutes = 0;
+
+    simulatedLogs.forEach(log => {
+        // 「休憩」は稼働時間から除外
+        if (log.task === "休憩") return;
+
+        const start = toMinutes(log.startTimeStr);
+        const end = toMinutes(log.endTimeStr);
+        if (end > start) {
+            totalMinutes += (end - start);
+        }
+    });
+
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    return `${h}時間${m}分`;
 }
 
 /**
@@ -158,7 +244,7 @@ function addCurrentToPendingList() {
 
     if (!targetLogId) throw new Error("修正したいタイムラインログを選択してください。");
     if (!taskName || !startTime || !endTime) throw new Error("業務、開始時間、終了時間は必須です。");
-    if (startTime > endTime) throw new Error("終了時間は開始時間以降にしてください。");
+    if (startTime >= endTime) throw new Error("終了時間は開始時間より後の時刻にしてください。");
 
     // 重複追加の防止チェック
     if (pendingCorrections.some(item => item.targetLogId === targetLogId)) {
@@ -176,7 +262,6 @@ function addCurrentToPendingList() {
 
     let timeDifference = "変更なし";
     if (beforeStart && beforeEnd && startTime && endTime) {
-        const toMinutes = (timeStr) => { const [h, m] = timeStr.split(":").map(Number); return h * 60 + m; };
         const diffBefore = toMinutes(beforeEnd) - toMinutes(beforeStart);
         const diffAfter = toMinutes(endTime) - toMinutes(startTime);
         const diffMin = diffAfter - diffBefore;
@@ -192,7 +277,6 @@ function addCurrentToPendingList() {
         }
     }
 
-    // 独立した1件の申請オブジェクトを作成
     const newItem = {
         id: `pending-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
         requestDate: dateVal,
@@ -214,20 +298,37 @@ function addCurrentToPendingList() {
         }
     };
 
+    // 🚨 【追加前重複判定】この修正を追加したと仮定して時間の重複・かぶりをチェック
+    const testPendingList = [...pendingCorrections, newItem];
+    const simulatedLogs = getSimulatedLogsForDate(dateVal, testPendingList);
+    const overlapError = checkTimeOverlap(simulatedLogs);
+
+    if (overlapError) {
+        throw new Error(overlapError); // 重複があった場合はアラートを出して追加を中止
+    }
+
     pendingCorrections.push(newItem);
     renderPendingListUI();
     resetCorrectionInputs();
 }
 
 /**
- * 画面下部の一時保存リスト描画
+ * 画面下部の一時保存リスト描画 & 合計稼働時間の更新
  */
 function renderPendingListUI() {
     const container = document.getElementById("pending-list-container");
     const countBadge = document.getElementById("pending-count-badge");
+    const totalTimeEl = document.getElementById("simulated-total-work-time");
+    const currentDateVal = document.getElementById("req-correct-date")?.value;
+
     if (!container) return;
 
     if (countBadge) countBadge.textContent = `${pendingCorrections.length}件`;
+
+    // ⏱️ 申請適用後の合計稼働時間を更新
+    if (totalTimeEl && currentDateVal) {
+        totalTimeEl.textContent = calculateSimulatedTotalWorkTime(currentDateVal);
+    }
 
     if (pendingCorrections.length === 0) {
         container.innerHTML = '<p class="text-center text-gray-400 py-4">追加された申請データはありません。</p>';
@@ -322,6 +423,8 @@ function setupRealtimeTimeline(dateStr) {
     if (cacheBadge) cacheBadge.textContent = "☁️ 通信中...";
 
     subscribeModalTimelineLogs(dateStr, ({ logs, isCache, changeType }) => {
+        currentTimelineLogs = logs; // 最新の元のログを退避
+
         if (cacheBadge) {
             if (isCache) {
                 cacheBadge.textContent = "⚡ キャッシュ表示中";
@@ -331,6 +434,7 @@ function setupRealtimeTimeline(dateStr) {
         }
 
         renderTimelineList(container, logs);
+        renderPendingListUI(); // 元ログが取得できたら稼働時間表示も計算更新
     });
 }
 
@@ -404,13 +508,11 @@ function resetCorrectionInputs() {
 
 /**
  * 📦 呼び出し元（親モーダルなど）が一括送信時にデータを取り出す関数
- * @returns {Array<Object>} 申請データの配列
  */
 export function getPendingTimeCorrectDataList() {
     if (pendingCorrections.length === 0) {
         throw new Error("申請リストにデータが追加されていません。「リストに追加」を実行してください。");
     }
-    // 不要な内部識別用IDを取り除いて、純粋な申請データオブジェクト配列として返却
     return pendingCorrections.map(item => ({
         requestDate: item.requestDate,
         targetLogId: item.targetLogId,

@@ -2,7 +2,6 @@
 import { db } from "../../../main.js";
 import { collection, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { escapeHtml, formatTime, formatDuration } from "../../../utils.js";
-import { handleApprove, handleRejectRequest } from "./approvalActions.js";
 import { handleApprove, handleRejectRequest, handleBulkApprove, handleBulkRejectRequest } from "./approvalActions.js";
 
 let currentUnsubscribes = [];

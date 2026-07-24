@@ -1,3 +1,5 @@
+// js/views/client/goalProgress.js
+
 import { db, userId, userName, allTaskObjects, updateGlobalTaskObjects, escapeHtml } from "../../main.js"; 
 import { addDoc, collection, doc, setDoc, Timestamp, runTransaction, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; 
 import { getJSTDateString, linkify } from "../../utils.js";
@@ -32,9 +34,9 @@ async function renderClientProgressChart(taskName, finalGoalId) {
 
     try {
         const dateList = getLast7Days();
-        const startDate = dateList[0]; // 直近7日間のうち最も古い日付 (例: "2026-07-18")
+        const startDate = dateList[0];
 
-        // ★ 改善ポイント: where("date", ">=", startDate) を追加し、Firestore側で直近7日分のみ取得
+        // 直近7日分のみ取得
         const q = query(
             collection(db, "work_logs"),
             where("goalId", "==", finalGoalId),
@@ -42,14 +44,15 @@ async function renderClientProgressChart(taskName, finalGoalId) {
         );
         const snapshot = await getDocs(q);
 
-        // ユーザーごとの集計用オブジェクト
         const userMap = {};
+        let weekTotal = 0; // 直近7日間の合計件数
 
         snapshot.forEach(docSnap => {
             const data = docSnap.data();
             if (dateList.includes(data.date)) {
                 const uId = data.userId || "unknown";
                 const uName = data.userName || "不明なユーザー";
+                const contrib = data.contribution || 0;
 
                 if (!userMap[uId]) {
                     userMap[uId] = {
@@ -58,11 +61,17 @@ async function renderClientProgressChart(taskName, finalGoalId) {
                     };
                     dateList.forEach(d => userMap[uId].counts[d] = 0);
                 }
-                userMap[uId].counts[data.date] += (data.contribution || 0);
+                userMap[uId].counts[data.date] += contrib;
+                weekTotal += contrib;
             }
         });
 
-        // 自分のデータ（0件の場合のライン保持）
+        // 直近7日間の合計件数を画面へ反映
+        const weekTotalEl = document.getElementById("ui-week-total-val");
+        if (weekTotalEl) {
+            weekTotalEl.textContent = weekTotal;
+        }
+
         if (!userMap[userId]) {
             userMap[userId] = {
                 name: userName,
@@ -71,7 +80,6 @@ async function renderClientProgressChart(taskName, finalGoalId) {
             dateList.forEach(d => userMap[userId].counts[d] = 0);
         }
 
-        // Chart.js 用 datasets の生成
         const datasets = Object.keys(userMap).map((uId, index) => {
             const userData = userMap[uId];
             const isMe = (uId === userId);
@@ -160,10 +168,13 @@ export async function handleUpdateGoalProgress(taskName, goalId, inputElement) {
 
         updateGlobalTaskObjects(newTaskList);
 
+        // 累計件数表示テキストを更新
+        const valEl = document.getElementById("ui-current-val");
+        if (valEl) valEl.textContent = newCurrentValue;
+
         inputElement.value = "";
         setHasContributed(true);
 
-        // 登録直後に直近7日分のチャートを更新
         await renderClientProgressChart(taskName, finalGoalId);
 
     } catch (error) {
@@ -187,6 +198,8 @@ export function renderSingleGoalDisplay(task, goalId) {
         return;
     }
     
+    const current = goal.current || 0;
+
     const memoHtml = goal.memo ? `
         <div class="w-fit max-w-full bg-gray-50 border-l-4 border-blue-600 p-2 mb-3 rounded text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">${linkify(escapeHtml(goal.memo))}</div>
     ` : '';
@@ -211,13 +224,20 @@ export function renderSingleGoalDisplay(task, goalId) {
         deadlineHtml += `</div>`;
     }
 
-    // ★ プログレスバー関連のHTML要素をオミットし、入力フォームと直近7日分のチャートのみ表示
+    // ★ 目標値を削除し、「累計: X 件」と「直近7日間: Y 件」のみ表示
     container.innerHTML = `
         <div class="border-b pb-4 mb-4">
             <h3 class="text-sm font-bold text-gray-700 mb-2">${escapeHtml(goal.title)}</h3>
             ${memoHtml}
             ${deadlineHtml}
             
+            <div class="flex items-center justify-between text-xs text-gray-600 mb-3 font-semibold">
+                <span>累計: <span id="ui-current-val" class="font-bold text-base text-blue-600">${current}</span> 件</span>
+                <span class="bg-blue-50 border border-blue-200 text-blue-800 px-2.5 py-1 rounded-md">
+                    直近7日間: <span id="ui-week-total-val" class="font-bold text-sm text-blue-600">0</span> 件
+                </span>
+            </div>
+
             <div class="flex gap-2 items-center">
                 <input type="number" id="goal-contribution-input" 
                     class="flex-grow p-2 border border-gray-300 rounded text-sm" 
@@ -245,6 +265,5 @@ export function renderSingleGoalDisplay(task, goalId) {
         if (e.key === "Enter") handleUpdateGoalProgress(task.name, tid, inputVal);
     };
 
-    // 初期表示時に直近7日分の進捗グラフを表示
     renderClientProgressChart(task.name, tid);
 }

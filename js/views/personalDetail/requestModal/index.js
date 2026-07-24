@@ -3,7 +3,8 @@ import { db, userId, userName } from "../../../main.js";
 import { collection, query, where, onSnapshot, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 import { renderAddFormHTML, initAddForm, getAddFormData } from "./addForm.js";
-import { renderTimeCorrectFormHTML, initTimeCorrectForm, getTimeCorrectFormData } from "./timeCorrectForm.js";
+// ⚡ getPendingTimeCorrectDataList に変更
+import { renderTimeCorrectFormHTML, initTimeCorrectForm, getPendingTimeCorrectDataList } from "./timeCorrectForm.js";
 import { renderCountCorrectFormHTML, initCountCorrectForm, getCountCorrectFormData } from "./countCorrectForm.js";
 import { renderForgetCheckoutFormHTML, initForgetCheckoutForm, getForgetCheckoutFormData } from "./forgetCheckoutForm.js";
 
@@ -202,6 +203,9 @@ function handleUnifiedTypeChange(event) {
     }
 }
 
+/**
+ * 🚀 申請送信ハンドラー（一括処理対応）
+ */
 async function handleRequestSubmit() {
     const type = document.getElementById("unified-req-type-select").value;
     const errorBar = document.getElementById("unified-req-error-bar");
@@ -216,10 +220,56 @@ async function handleRequestSubmit() {
         return;
     }
 
-    let payload = null;
     try {
+        // -------------------------------------------------------------
+        // ⏱️ 「時間・業務の訂正」の場合：複数件の一括送信処理
+        // -------------------------------------------------------------
+        if (type === "time_correct") {
+            const requestsList = getPendingTimeCorrectDataList(); // 配列を取得
+
+            // 📋 確認ダイアログ用の申請一覧テキスト生成
+            const summaryText = requestsList.map((req, idx) => {
+                const d = req.data;
+                return `${idx + 1}. [${req.requestDate}] ${d.beforeTask}(${d.beforeStartTime}-${d.beforeEndTime}) ➔ ${d.task}(${d.afterStartTime}-${d.afterEndTime})`;
+            }).join("\n");
+
+            const isConfirmed = confirm(
+                `計 ${requestsList.length} 件の申請をまとめて送信します。\n内容をご確認ください：\n\n${summaryText}\n\n送信してよろしいですか？`
+            );
+
+            if (!isConfirmed) return;
+
+            const sendBtn = document.getElementById("unified-req-send-btn");
+            sendBtn.disabled = true;
+            sendBtn.textContent = "送信中...";
+
+            // 📦 申請データを1件ずつ個別にFirestoreへ保存
+            for (const payload of requestsList) {
+                await addDoc(collection(db, "work_log_requests"), {
+                    userId: userId,
+                    userName: userName,
+                    type: type,
+                    status: "pending",
+                    requestDate: payload.requestDate,
+                    targetLogId: payload.targetLogId || null,
+                    createdAt: new Date().toISOString(),
+                    approverId: null,
+                    approverName: null,
+                    approvedAt: null,
+                    data: payload.data
+                });
+            }
+
+            alert(`計 ${requestsList.length} 件の変更申請を送信しました。管理者の承認をお待ちください。`);
+            closeUnifiedRequestModal();
+            return;
+        }
+
+        // -------------------------------------------------------------
+        // 📝 その他の申請タイプ（単一送信）
+        // -------------------------------------------------------------
+        let payload = null;
         if (type === "add") { payload = getAddFormData(); } 
-        else if (type === "time_correct") { payload = getTimeCorrectFormData(); } 
         else if (type === "count_correct") { payload = getCountCorrectFormData(); } 
         else if (type === "forget_checkout") { payload = getForgetCheckoutFormData(); } 
         else { throw new Error("現在、この申請タイプの送信ロジックは未実装です。"); }
@@ -236,16 +286,15 @@ async function handleRequestSubmit() {
             requestDate: payload.requestDate,
             targetLogId: payload.targetLogId || null,
             createdAt: new Date().toISOString(),
-            
             approverId: null,
             approverName: null,
             approvedAt: null,
-            
             data: payload.data
         });
 
         alert("変更申請を送信しました。管理者の承認をお待ちください。");
         closeUnifiedRequestModal();
+
     } catch (error) {
         errorEl.textContent = error.message || "申請の送信中にシステムエラーが発生しました。";
         errorBar.classList.remove("hidden");

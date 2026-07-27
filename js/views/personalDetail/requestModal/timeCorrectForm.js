@@ -245,7 +245,7 @@ function addCurrentToPendingList() {
 
     if (!targetLogId) throw new Error("修正したいタイムラインログを選択してください。");
     if (!taskName || !startTime || !endTime) throw new Error("業務、開始時間、終了時間は必須です。");
-    if (startTime >= endTime) throw new Error("終了時間は開始時間より後の時刻にしてください。");
+    if (startTime > endTime) throw new Error("終了時間は開始時間より後の時刻にしてください。");
 
     // 重複追加の防止チェック
     if (pendingCorrections.some(item => item.targetLogId === targetLogId)) {

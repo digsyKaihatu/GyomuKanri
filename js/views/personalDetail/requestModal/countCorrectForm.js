@@ -265,9 +265,14 @@ function renderTimelineList(container, logs) {
         item.className = "timeline-log-item border border-gray-200 rounded-lg p-2.5 bg-white hover:bg-blue-50 cursor-pointer transition flex items-center justify-between text-xs text-gray-700 shadow-sm";
         const goalBadge = log.goalTitle ? `<span class="bg-gray-100 border text-gray-500 px-1 rounded ml-1 scale-95 inline-block truncate max-w-[130px]">${escapeHtml(log.goalTitle)}</span>` : "";
         
+        // ⏱️ ログの所要時間計算
+        const startMin = toMinutes(log.startTimeStr);
+        const endMin = toMinutes(log.endTimeStr);
+        const duration = endMin > startMin ? (endMin - startMin) : 0;
+
         item.innerHTML = `
             <div class="flex items-center">
-                <span class="text-blue-600 font-mono text-sm font-bold mr-2">${log.startTimeStr} - ${log.endTimeStr}</span>
+                <span class="text-blue-600 font-mono text-sm font-bold mr-2">${log.startTimeStr} - ${log.endTimeStr} <span class="text-gray-500 font-normal text-xs">(${duration}分)</span></span>
                 <span class="text-gray-800 font-medium">${escapeHtml(log.task)}${goalBadge}</span>
             </div>
             <span class="bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded scale-95">現件数: ${log.count}</span>

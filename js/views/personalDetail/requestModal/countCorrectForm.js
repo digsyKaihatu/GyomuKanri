@@ -270,7 +270,7 @@ function renderTimelineList(container, logs) {
         
         const isGoalOnly = log.type === "goal" || !log.endTimeStr;
         const timeLabel = isGoalOnly
-            ? `<span class="bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded font-mono font-bold mr-2">${log.startTimeStr} [工数登録]</span>`
+            ? `<span class="bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded font-mono font-bold mr-2">${log.startTimeStr} </span>`
             : `<span class="text-blue-600 font-mono text-sm font-bold mr-2">${log.startTimeStr} - ${log.endTimeStr}</span>`;
 
         item.innerHTML = `

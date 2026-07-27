@@ -127,7 +127,6 @@ export function initAddForm() {
     taskSelect.addEventListener("change", handleTaskChange);
     dateInput.addEventListener("change", (e) => setupRealtimeTimeline(e.target.value));
 
-    // 時間変更時のリアルタイム所要時間表示イベント
     if (startTimeInput && endTimeInput) {
         const handleTimeChange = () => updateAddDurationBadge();
         startTimeInput.addEventListener("input", handleTimeChange);
@@ -168,6 +167,9 @@ function updateAddDurationBadge() {
     if (diff > 0) {
         badge.textContent = `⏱️ ${diff}分`;
         badge.className = "text-[10px] font-bold text-emerald-600 font-mono";
+    } else if (diff === 0) {
+        badge.textContent = "🗑️ 削除申請";
+        badge.className = "text-[10px] font-bold text-purple-600 font-mono";
     } else {
         badge.textContent = "⚠️ 不正な時間";
         badge.className = "text-[10px] font-bold text-red-500 font-mono";
@@ -283,8 +285,8 @@ function addCurrentToPendingList() {
     if (!dateVal || !startTime || !endTime || !taskName) {
         throw new Error("日付、時間、業務内容は必須入力です。");
     }
-    if (startTime >= endTime) {
-        throw new Error("終了時間は開始時間より後の時刻にしてください。");
+    if (startTime > endTime) {
+        throw new Error("終了時間は開始時間と同じ、またはそれ以降の時刻にしてください。");
     }
 
     const goalId = goalSelect && !goalSelect.disabled && goalSelect.value ? goalSelect.value : null;
@@ -402,7 +404,6 @@ function renderTimelineList(container, logs) {
         const item = document.createElement("div");
         item.className = "border border-gray-200 rounded-lg p-2 bg-white flex justify-between items-center text-xs text-gray-700 shadow-sm";
         
-        // ⏱️ ログの所要時間計算
         const startMin = toMinutes(log.startTimeStr);
         const endMin = toMinutes(log.endTimeStr);
         const duration = endMin > startMin ? (endMin - startMin) : 0;

@@ -5,6 +5,7 @@ import { subscribeModalTimelineLogs } from "./index.js";
 
 let pendingAdds = [];
 let currentTimelineLogs = [];
+let editingPendingId = null; // ✏️ 現在編集中のリストアイテムID
 
 export function renderAddFormHTML(defaultDate) {
     return `
@@ -17,6 +18,7 @@ export function renderAddFormHTML(defaultDate) {
                     <p>① 追加したい日付を選択します。</p>
                     <p>② 中央のタイムライン履歴で既存ログを確認しながら右側フォームに入力します。</p>
                     <p>③ <b>「申請リストに追加」</b>を押し、複数件ある場合は繰り返し追加します。</p>
+                    <p>💡 <b>リストのアイテムをクリックすると再編集できます。</b></p>
                     <p>④ 最後に下部の<b>「申請を送る」</b>ボタンでまとめて送信してください。</p>
                 </div>
             </div>
@@ -58,11 +60,7 @@ export function renderAddFormHTML(defaultDate) {
                         <input type="time" id="req-add-start-time" value="12:00" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500">
                     </div>
                     <div>
-                        <div class="flex justify-between items-center">
-                            <label class="block text-xs font-bold text-gray-700">終了時間</label>
-                            <!-- ⏱️ 入力所要時間バッジ -->
-                            <span id="req-add-duration-badge" class="text-[10px] font-bold text-emerald-600 font-mono"></span>
-                        </div>
+                        <label class="block text-xs font-bold text-gray-700">終了時間</label>
                         <input type="time" id="req-add-end-time" value="12:45" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500">
                     </div>
                     <div>
@@ -75,7 +73,7 @@ export function renderAddFormHTML(defaultDate) {
                     <textarea id="req-add-memo" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white resize-none min-h-[40px] focus:ring-2 focus:ring-emerald-500" placeholder="補足事項など"></textarea>
                 </div>
 
-                <!-- ➕ リスト追加ボタン -->
+                <!-- ➕ リスト追加／更新ボタン -->
                 <button type="button" id="btn-add-queue" class="w-full py-2 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg transition text-sm shadow-sm flex items-center justify-center gap-1">
                     <span>➕ 申請リストに追加</span>
                 </button>
@@ -106,11 +104,10 @@ export function renderAddFormHTML(defaultDate) {
 export function initAddForm() {
     pendingAdds = [];
     currentTimelineLogs = [];
+    editingPendingId = null;
 
     const taskSelect = document.getElementById("req-add-task-select");
     const dateInput = document.getElementById("req-add-date");
-    const startTimeInput = document.getElementById("req-add-start-time");
-    const endTimeInput = document.getElementById("req-add-end-time");
     const addBtn = document.getElementById("btn-add-queue");
 
     if (!taskSelect || !dateInput) return;
@@ -127,15 +124,6 @@ export function initAddForm() {
     taskSelect.addEventListener("change", handleTaskChange);
     dateInput.addEventListener("change", (e) => setupRealtimeTimeline(e.target.value));
 
-    if (startTimeInput && endTimeInput) {
-        const handleTimeChange = () => updateAddDurationBadge();
-        startTimeInput.addEventListener("input", handleTimeChange);
-        startTimeInput.addEventListener("change", handleTimeChange);
-        endTimeInput.addEventListener("input", handleTimeChange);
-        endTimeInput.addEventListener("change", handleTimeChange);
-        updateAddDurationBadge();
-    }
-
     if (addBtn) {
         addBtn.addEventListener("click", () => {
             try {
@@ -149,35 +137,8 @@ export function initAddForm() {
     setupRealtimeTimeline(dateInput.value);
 }
 
-function updateAddDurationBadge() {
-    const badge = document.getElementById("req-add-duration-badge");
-    const startTime = document.getElementById("req-add-start-time")?.value;
-    const endTime = document.getElementById("req-add-end-time")?.value;
-
-    if (!badge) return;
-    if (!startTime || !endTime) {
-        badge.textContent = "";
-        return;
-    }
-
-    const startMin = toMinutes(startTime);
-    const endMin = toMinutes(endTime);
-    const diff = endMin - startMin;
-
-    if (diff > 0) {
-        badge.textContent = `⏱️ ${diff}分`;
-        badge.className = "text-[10px] font-bold text-emerald-600 font-mono";
-    } else if (diff === 0) {
-        badge.textContent = "🗑️ 削除申請";
-        badge.className = "text-[10px] font-bold text-purple-600 font-mono";
-    } else {
-        badge.textContent = "⚠️ 不正な時間";
-        badge.className = "text-[10px] font-bold text-red-500 font-mono";
-    }
-}
-
 function handleTaskChange(e) {
-    const selectedTaskName = e.target.value;
+    const selectedTaskName = typeof e === "string" ? e : e.target.value;
     const goalSelect = document.getElementById("req-add-goal-select");
     if (!goalSelect) return;
 
@@ -285,8 +246,8 @@ function addCurrentToPendingList() {
     if (!dateVal || !startTime || !endTime || !taskName) {
         throw new Error("日付、時間、業務内容は必須入力です。");
     }
-    if (startTime > endTime) {
-        throw new Error("終了時間は開始時間と同じ、またはそれ以降の時刻にしてください。");
+    if (startTime >= endTime) {
+        throw new Error("終了時間は開始時間より後の時刻にしてください。");
     }
 
     const goalId = goalSelect && !goalSelect.disabled && goalSelect.value ? goalSelect.value : null;
@@ -297,27 +258,55 @@ function addCurrentToPendingList() {
 
     const durationMin = toMinutes(endTime) - toMinutes(startTime);
 
-    const newItem = {
-        id: `pending-add-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-        requestDate: dateVal,
-        data: {
-            applicationType: "追加",
-            reasonCategory: "記録の追加",
-            task: taskName,
-            goalId: goalId,
-            goalTitle: goalTitle,
-            beforeStartTime: "",
-            beforeEndTime: "",
-            afterStartTime: startTime,
-            afterEndTime: endTime,
-            timeDifference: `+${durationMin}分`,
-            count: countVal,
-            memo: memoVal
-        }
+    const updatedData = {
+        applicationType: "追加",
+        reasonCategory: "記録の追加",
+        task: taskName,
+        goalId: goalId,
+        goalTitle: goalTitle,
+        beforeStartTime: "",
+        beforeEndTime: "",
+        afterStartTime: startTime,
+        afterEndTime: endTime,
+        timeDifference: `+${durationMin}分`,
+        count: countVal,
+        memo: memoVal
     };
 
-    pendingAdds.push(newItem);
+    if (editingPendingId) {
+        const item = pendingAdds.find(p => p.id === editingPendingId);
+        if (item) {
+            item.requestDate = dateVal;
+            item.data = updatedData;
+        }
+        editingPendingId = null;
+    } else {
+        const newItem = {
+            id: `pending-add-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+            requestDate: dateVal,
+            data: updatedData
+        };
+        pendingAdds.push(newItem);
+    }
+
+    resetAddFormInputs();
     renderPendingListUI();
+}
+
+function resetAddFormInputs() {
+    editingPendingId = null;
+    document.getElementById("req-add-task-select").value = "";
+    handleTaskChange({ target: { value: "" } });
+    document.getElementById("req-add-start-time").value = "12:00";
+    document.getElementById("req-add-end-time").value = "12:45";
+    document.getElementById("req-add-count").value = "0";
+    document.getElementById("req-add-memo").value = "";
+
+    const addBtn = document.getElementById("btn-add-queue");
+    if (addBtn) {
+        addBtn.innerHTML = "<span>➕ 申請リストに追加</span>";
+        addBtn.className = "w-full py-2 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg transition text-sm shadow-sm flex items-center justify-center gap-1";
+    }
 }
 
 function renderPendingListUI() {
@@ -341,7 +330,10 @@ function renderPendingListUI() {
     container.innerHTML = "";
     pendingAdds.forEach((item, index) => {
         const div = document.createElement("div");
-        div.className = "flex justify-between items-center bg-white p-2.5 rounded-lg border border-gray-200 shadow-sm gap-3";
+        const isEditing = item.id === editingPendingId;
+        const activeClasses = isEditing ? "bg-amber-50 border-amber-400 ring-2 ring-amber-200" : "bg-white border-gray-200 hover:border-emerald-300";
+
+        div.className = `flex justify-between items-center p-2.5 rounded-lg border shadow-sm gap-3 cursor-pointer transition ${activeClasses}`;
         const d = item.data;
         div.innerHTML = `
             <div class="flex-grow min-w-0 grid grid-cols-12 gap-2 items-center">
@@ -357,9 +349,42 @@ function renderPendingListUI() {
             </button>
         `;
 
+        // ✏️ アイテムクリックでフォームに再セット
+        div.addEventListener("click", (e) => {
+            if (e.target.closest(".btn-remove-pending-add")) return;
+
+            editingPendingId = item.id;
+            document.getElementById("req-add-date").value = item.requestDate;
+            const taskSelect = document.getElementById("req-add-task-select");
+            taskSelect.value = d.task;
+            handleTaskChange({ target: { value: d.task } });
+
+            if (d.goalId) {
+                const goalSelect = document.getElementById("req-add-goal-select");
+                if (goalSelect) goalSelect.value = d.goalId;
+            }
+
+            document.getElementById("req-add-start-time").value = d.afterStartTime;
+            document.getElementById("req-add-end-time").value = d.afterEndTime;
+            document.getElementById("req-add-count").value = d.count;
+            document.getElementById("req-add-memo").value = d.memo || "";
+
+            const addBtn = document.getElementById("btn-add-queue");
+            if (addBtn) {
+                addBtn.innerHTML = "<span>✏️ 申請リストの項目を更新</span>";
+                addBtn.className = "w-full py-2 px-4 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg transition text-sm shadow-sm flex items-center justify-center gap-1";
+            }
+
+            renderPendingListUI();
+        });
+
         div.querySelector(".btn-remove-pending-add").addEventListener("click", (e) => {
+            e.stopPropagation();
             const idx = parseInt(e.currentTarget.getAttribute("data-index"), 10);
-            pendingAdds.splice(idx, 1);
+            const removed = pendingAdds.splice(idx, 1)[0];
+            if (removed && removed.id === editingPendingId) {
+                resetAddFormInputs();
+            }
             renderPendingListUI();
         });
 
@@ -403,14 +428,9 @@ function renderTimelineList(container, logs) {
     logs.forEach(log => {
         const item = document.createElement("div");
         item.className = "border border-gray-200 rounded-lg p-2 bg-white flex justify-between items-center text-xs text-gray-700 shadow-sm";
-        
-        const startMin = toMinutes(log.startTimeStr);
-        const endMin = toMinutes(log.endTimeStr);
-        const duration = endMin > startMin ? (endMin - startMin) : 0;
-
         item.innerHTML = `
             <div>
-                <span class="text-blue-600 font-mono font-bold mr-2">${log.startTimeStr} - ${log.endTimeStr} <span class="text-gray-500 font-normal">(${duration}分)</span></span>
+                <span class="text-blue-600 font-mono font-bold mr-2">${log.startTimeStr} - ${log.endTimeStr}</span>
                 <span class="font-medium">${escapeHtml(log.task)}</span>
             </div>
         `;
@@ -423,6 +443,7 @@ export function getPendingAddDataList() {
         throw new Error("申請リストにデータが追加されていません。「リストに追加」を実行してください。");
     }
     
+    // 送信のタイミングで重複チェックを実行
     const dates = [...new Set(pendingAdds.map(p => p.requestDate))];
     for (const dateStr of dates) {
         const simulatedLogs = getSimulatedLogsForDate(dateStr, pendingAdds);

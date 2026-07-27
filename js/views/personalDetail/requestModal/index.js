@@ -29,7 +29,6 @@ function convertTime(t) {
  * @returns {function} リスナー解除用関数
  */
 export function subscribeModalTimelineLogs(dateStr, callback) {
-    // 既存の監視があれば解除
     if (activeUnsubscribe) {
         activeUnsubscribe();
         activeUnsubscribe = null;
@@ -46,21 +45,27 @@ export function subscribeModalTimelineLogs(dateStr, callback) {
         const isFromCache = snapshot.metadata.fromCache;
         let lastChangeType = "";
 
-        // 🔥 docChanges() で差分（追加・修正・削除）のみローカルMapに適用
         snapshot.docChanges().forEach((change) => {
             const docId = change.doc.id;
             lastChangeType = change.type;
 
             if (change.type === "added" || change.type === "modified") {
                 const data = change.doc.data();
+
+                // 💡【修正】contribution（工数単体登録の件数）と count（タイマー等の件数）の両方に対応
+                const countVal = data.contribution !== undefined 
+                    ? data.contribution 
+                    : (data.count !== undefined ? data.count : 0);
+
                 modalLogsMap.set(docId, {
                     id: docId,
+                    type: data.type || "work", // 💡 "goal"(工数登録) か "work"(タイマー業務) かを保持
                     task: data.task || "不明",
                     startTimeStr: convertTime(data.startTime),
                     endTimeStr: convertTime(data.endTime),
                     goalId: data.goalId || null,
                     goalTitle: data.goalTitle || "",
-                    count: data.count !== undefined ? data.count : 0,
+                    count: countVal,
                     memo: data.memo || ""
                 });
             } else if (change.type === "removed") {

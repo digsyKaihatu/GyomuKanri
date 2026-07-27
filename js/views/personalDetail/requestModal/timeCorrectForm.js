@@ -299,15 +299,6 @@ function addCurrentToPendingList() {
         }
     };
 
-    // 🚨 【追加前重複判定】この修正を追加したと仮定して時間の重複・かぶりをチェック
-    const testPendingList = [...pendingCorrections, newItem];
-    const simulatedLogs = getSimulatedLogsForDate(dateVal, testPendingList);
-    const overlapError = checkTimeOverlap(simulatedLogs);
-
-    if (overlapError) {
-        throw new Error(overlapError); // 重複があった場合はアラートを出して追加を中止
-    }
-
     pendingCorrections.push(newItem);
     renderPendingListUI();
     resetCorrectionInputs();
@@ -517,6 +508,17 @@ export function getPendingTimeCorrectDataList() {
     if (pendingCorrections.length === 0) {
         throw new Error("申請リストにデータが追加されていません。「リストに追加」を実行してください。");
     }
+
+    // 【修正】送信のタイミングで重複チェックを実行
+    const dates = [...new Set(pendingCorrections.map(p => p.requestDate))];
+    for (const dateStr of dates) {
+        const simulatedLogs = getSimulatedLogsForDate(dateStr, pendingCorrections);
+        const overlapError = checkTimeOverlap(simulatedLogs);
+        if (overlapError) {
+            throw new Error(`[${dateStr}] ${overlapError}`);
+        }
+    }
+
     return pendingCorrections.map(item => ({
         requestDate: item.requestDate,
         targetLogId: item.targetLogId,

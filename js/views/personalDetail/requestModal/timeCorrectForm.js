@@ -3,9 +3,8 @@ import { allTaskObjects } from "../../../main.js";
 import { escapeHtml } from "../../../utils.js";
 import { subscribeModalTimelineLogs } from "./index.js";
 
-// 📝 一時保存データ & 現在選択中の日の元ログデータ
 let pendingCorrections = [];
-let currentTimelineLogs = []; // 現在表示中の日の元のタイムラインログ
+let currentTimelineLogs = [];
 
 export function renderTimeCorrectFormHTML(defaultDate) {
     return `
@@ -101,7 +100,6 @@ export function renderTimeCorrectFormHTML(defaultDate) {
                     <span id="simulated-total-work-time" class="text-blue-700 font-mono text-sm font-extrabold">0時間0分</span>
                 </div>
             </div>
-            <!-- 💡 高さを固定(h-[160px])にして内部スクロール(overflow-y-auto, custom-scrollbar)を強制適用 -->
             <div id="pending-list-container" class="border border-gray-200 rounded-xl bg-gray-50 p-3 h-[100px] overflow-y-auto custom-scrollbar space-y-2 text-xs">
                 <p class="text-center text-gray-400 py-4">追加された申請データはありません。</p>
             </div>
@@ -138,7 +136,6 @@ export function initTimeCorrectForm() {
         setupRealtimeTimeline(e.target.value);
     });
 
-    // 時間変更時のリアルタイム所要時間表示イベント
     if (startTimeInput && endTimeInput) {
         const handleTimeChange = () => updateCorrectDurationBadge();
         startTimeInput.addEventListener("input", handleTimeChange);
@@ -178,24 +175,21 @@ function updateCorrectDurationBadge() {
     if (diff > 0) {
         badge.textContent = `⏱️ ${diff}分`;
         badge.className = "text-[10px] font-bold text-blue-600 font-mono";
+    } else if (diff === 0) {
+        badge.textContent = "🗑️ 削除申請";
+        badge.className = "text-[10px] font-bold text-purple-600 font-mono";
     } else {
         badge.textContent = "⚠️ 不正な時間";
         badge.className = "text-[10px] font-bold text-red-500 font-mono";
     }
 }
 
-/**
- * ⏱️ 時刻文字列 (HH:MM) を分（数値）に変換
- */
 function toMinutes(timeStr) {
     if (!timeStr) return 0;
     const [h, m] = timeStr.split(":").map(Number);
     return h * 60 + m;
 }
 
-/**
- * 🔍 指定日のログ一覧に対し、カート（pendingCorrections）内の修正を反映させたシミュレーションログ配列を生成
- */
 function getSimulatedLogsForDate(dateStr, testPendingList = pendingCorrections) {
     return currentTimelineLogs.map(log => {
         const correction = testPendingList.find(p => p.targetLogId === log.id && p.requestDate === dateStr);
@@ -218,9 +212,6 @@ function getSimulatedLogsForDate(dateStr, testPendingList = pendingCorrections) 
     });
 }
 
-/**
- * ⚠️ 時間の重複・かぶりチェック
- */
 function checkTimeOverlap(simulatedLogs) {
     for (let i = 0; i < simulatedLogs.length; i++) {
         for (let j = i + 1; j < simulatedLogs.length; j++) {
@@ -240,9 +231,6 @@ function checkTimeOverlap(simulatedLogs) {
     return null;
 }
 
-/**
- * 🧮 申請適用後の合計稼働時間（休憩除く）を算出
- */
 function calculateSimulatedTotalWorkTime(dateStr) {
     const simulatedLogs = getSimulatedLogsForDate(dateStr);
     let totalMinutes = 0;
@@ -262,9 +250,6 @@ function calculateSimulatedTotalWorkTime(dateStr) {
     return `${h}時間${m}分`;
 }
 
-/**
- * 現在フォームに入力されている修正内容を検証し、キューに追加する
- */
 function addCurrentToPendingList() {
     const targetLogId = document.getElementById("req-correct-log-id").value;
     const beforeStart = document.getElementById("req-correct-before-start").value;
@@ -282,7 +267,7 @@ function addCurrentToPendingList() {
 
     if (!targetLogId) throw new Error("修正したいタイムラインログを選択してください。");
     if (!taskName || !startTime || !endTime) throw new Error("業務、開始時間、終了時間は必須です。");
-    if (startTime > endTime) throw new Error("終了時間は開始時間より後の時刻にしてください。");
+    if (startTime > endTime) throw new Error("終了時間は開始時間と同じ、またはそれ以降の時刻にしてください。");
 
     if (pendingCorrections.some(item => item.targetLogId === targetLogId)) {
         throw new Error("このログに対する修正はすでにリストに追加されています。");
@@ -340,9 +325,6 @@ function addCurrentToPendingList() {
     resetCorrectionInputs();
 }
 
-/**
- * 画面下部の一時保存リスト描画 & 合計稼働時間の更新
- */
 function renderPendingListUI() {
     const container = document.getElementById("pending-list-container");
     const countBadge = document.getElementById("pending-count-badge");
@@ -479,7 +461,6 @@ function renderTimelineList(container, logs) {
         item.className = "timeline-log-item border border-gray-200 rounded-lg p-2.5 bg-white hover:bg-blue-50 cursor-pointer transition flex flex-col gap-1 text-xs text-gray-700 shadow-sm";
         const goalBadge = log.goalTitle ? `<span class="bg-gray-100 border text-gray-500 px-1 rounded ml-1 scale-95 inline-block truncate max-w-[130px]">${escapeHtml(log.goalTitle)}</span>` : "";
         
-        // ⏱️ ログの所要時間計算
         const startMin = toMinutes(log.startTimeStr);
         const endMin = toMinutes(log.endTimeStr);
         const duration = endMin > startMin ? (endMin - startMin) : 0;
@@ -543,9 +524,6 @@ function resetCorrectionInputs() {
     updateCorrectDurationBadge();
 }
 
-/**
- * 📦 呼び出し元（親モーダルなど）が一括送信時にデータを取り出す関数
- */
 export function getPendingTimeCorrectDataList() {
     if (pendingCorrections.length === 0) {
         throw new Error("申請リストにデータが追加されていません。「リストに追加」を実行してください。");

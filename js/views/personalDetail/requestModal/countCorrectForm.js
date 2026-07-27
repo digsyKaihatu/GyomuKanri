@@ -1,4 +1,3 @@
-// js/views/personalDetail/requestModal/countCorrectForm.js
 import { escapeHtml } from "../../../utils.js";
 import { subscribeModalTimelineLogs } from "./index.js";
 
@@ -14,7 +13,7 @@ export function renderCountCorrectFormHTML(defaultDate) {
                 <div class="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 space-y-2">
                     <span class="font-bold block text-sm text-amber-900">🔢 工数件数の修正操作手順</span>
                     <p>① 「工数件数の修正をしたい日付」を選択します。</p>
-                    <p>② 「タイムライン履歴」から件数を修正したい過去ログをクリックして選択します。</p>
+                    <p>② 「タイムライン履歴」から件数を修正したい過去ログ（業務ログまたは工数登録）をクリックして選択します。</p>
                     <p>③ 右側で件数と理由を入力し、<b>「リストに追加」</b>を押します。</p>
                     <p>④ 最後に下部の<b>「申請を送る」</b>ボタンでまとめて送信してください。</p>
                 </div>
@@ -145,7 +144,7 @@ function addCurrentToPendingList() {
     const beforeCount = parseInt(document.getElementById("req-countcorrect-before-count").value, 10) || 0;
 
     if (!targetLogId) throw new Error("件数を修正したいログをタイムライン履歴から選択してください。");
-    if (countInput && countInput.disabled) throw new Error("選択された業務ログは工数が設定されていないため修正できません。");
+    if (countInput && countInput.disabled) throw new Error("選択されたログは編集できません。");
     if (isNaN(countVal) || countVal < 0) throw new Error("成果件数は0以上の有効な数値を入力してください。");
 
     if (pendingCountCorrections.some(item => item.targetLogId === targetLogId)) {
@@ -265,17 +264,18 @@ function renderTimelineList(container, logs) {
         item.className = "timeline-log-item border border-gray-200 rounded-lg p-2.5 bg-white hover:bg-blue-50 cursor-pointer transition flex items-center justify-between text-xs text-gray-700 shadow-sm";
         const goalBadge = log.goalTitle ? `<span class="bg-gray-100 border text-gray-500 px-1 rounded ml-1 scale-95 inline-block truncate max-w-[130px]">${escapeHtml(log.goalTitle)}</span>` : "";
         
-        // ⏱️ ログの所要時間計算
-        const startMin = toMinutes(log.startTimeStr);
-        const endMin = toMinutes(log.endTimeStr);
-        const duration = endMin > startMin ? (endMin - startMin) : 0;
+        // 💡【修正】工数単体登録(type === "goal" または endTimeStr なし)とタイマー稼働ログの表示ラベル分岐
+        const isGoalOnly = log.type === "goal" || !log.endTimeStr;
+        const timeLabel = isGoalOnly
+            ? `<span class="bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded font-mono font-bold mr-2">${log.startTimeStr} [工数登録]</span>`
+            : `<span class="text-blue-600 font-mono text-sm font-bold mr-2">${log.startTimeStr} - ${log.endTimeStr}</span>`;
 
         item.innerHTML = `
-            <div class="flex items-center">
-                <span class="text-blue-600 font-mono text-sm font-bold mr-2">${log.startTimeStr} - ${log.endTimeStr} <span class="text-gray-500 font-normal text-xs">(${duration}分)</span></span>
-                <span class="text-gray-800 font-medium">${escapeHtml(log.task)}${goalBadge}</span>
+            <div class="flex items-center truncate mr-2">
+                ${timeLabel}
+                <span class="text-gray-800 font-medium truncate">${escapeHtml(log.task)}${goalBadge}</span>
             </div>
-            <span class="bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded scale-95">現件数: ${log.count}</span>
+            <span class="bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded scale-95 shrink-0">現件数: ${log.count}</span>
         `;
 
         item.addEventListener("click", () => {
@@ -296,9 +296,11 @@ function renderTimelineList(container, logs) {
             const goalText = log.goalTitle ? ` (${log.goalTitle})` : "";
             if (displayInput) displayInput.value = `${log.task}${goalText}`;
             
+            // 💡【修正】工数名が登録されているログ、または単体工数登録(type: "goal")の場合は常に件数入力可能にする
+            const isEditable = Boolean(log.goalTitle || log.goalId || log.type === "goal");
             if (countInput) {
                 countInput.value = log.count;
-                if (log.goalTitle) {
+                if (isEditable) {
                     countInput.disabled = false;
                     countInput.placeholder = "0";
                 } else {
@@ -306,8 +308,8 @@ function renderTimelineList(container, logs) {
                     countInput.placeholder = "工数未設定のため入力不可";
                 }
             }
-            if (memoInput) memoInput.disabled = false;
-            if (addBtn) addBtn.disabled = !log.goalTitle;
+            if (memoInput) memoInput.disabled = !isEditable;
+            if (addBtn) addBtn.disabled = !isEditable;
         });
         container.appendChild(item);
     });

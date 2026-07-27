@@ -228,7 +228,7 @@ export function updateTaskDisplaysForSelection() {
 
     if (!selectedTaskName) return;
     
-    // ★追加: 業務が選択されたら、休憩中などで無効化されていた工数選択を有効に戻す
+    // 業務が選択されたら、工数選択を有効化
     goalSelect.disabled = false;
 
     // 「その他」の処理
@@ -236,7 +236,6 @@ export function updateTaskDisplaysForSelection() {
         if(otherTaskContainer) otherTaskContainer.classList.remove("hidden");
         return;
     } else if (selectedTaskName.startsWith("その他")) {
-        // DBから復元された値が "その他_XXX" の場合
         if(otherTaskContainer) {
              otherTaskContainer.classList.remove("hidden");
              if(otherTaskInput) otherTaskInput.value = selectedTaskName.replace("その他_", "");
@@ -252,13 +251,10 @@ export function updateTaskDisplaysForSelection() {
 
     // メモ表示
     if (selectedTask.memo && taskDescriptionDisplay) {
-    // 全体をエスケープして安全にしてから、URL部分だけをaタグ化する
-    const linkedHtml = linkify(escapeHtml(selectedTask.memo));
-    
-    // 元々「whitespace-pre-wrap」クラスがついているため、これで改行も自動で画面に反映されます
-    taskDescriptionDisplay.innerHTML = `<p class="text-sm p-3 bg-gray-100 rounded-lg whitespace-pre-wrap text-gray-600">${linkedHtml}</p>`;
-    taskDescriptionDisplay.classList.remove("hidden");
-}
+        const linkedHtml = linkify(escapeHtml(selectedTask.memo));
+        taskDescriptionDisplay.innerHTML = `<p class="text-sm p-3 bg-gray-100 rounded-lg whitespace-pre-wrap text-gray-600">${linkedHtml}</p>`;
+        taskDescriptionDisplay.classList.remove("hidden");
+    }
 
     // 工数（ゴール）表示
     const activeGoals = (selectedTask.goals || []).filter((g) => !g.isComplete);
@@ -266,12 +262,21 @@ export function updateTaskDisplaysForSelection() {
         selectedTask.goals.forEach((goal) => {
             if (!goal.isComplete) {
                 const option = document.createElement("option");
-                option.value = goal.id || goal.title; // IDがあればID、なければタイトル
+                option.value = goal.id || goal.title;
                 option.textContent = `${escapeHtml(goal.title)} (目標: ${goal.target})`;
                 goalSelect.appendChild(option);
             }
         });
         if(goalSelectContainer) goalSelectContainer.classList.remove("hidden");
+
+        // ★【追加】アクティブな工数が1つだけなら自動選択してUIを表示させる
+        if (activeGoals.length === 1) {
+            const singleGoal = activeGoals[0];
+            goalSelect.value = singleGoal.id || singleGoal.title;
+            
+            // 自動選択後に進捗入力欄やグラフを描画する関数をコール
+            handleGoalSelectionChange();
+        }
     }
 }
 

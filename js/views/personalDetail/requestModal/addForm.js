@@ -274,12 +274,6 @@ function addCurrentToPendingList() {
         }
     };
 
-    const testPendingList = [...pendingAdds, newItem];
-    const simulatedLogs = getSimulatedLogsForDate(dateVal, testPendingList);
-    const overlapError = checkTimeOverlap(simulatedLogs);
-
-    if (overlapError) throw new Error(overlapError);
-
     pendingAdds.push(newItem);
     renderPendingListUI();
 }
@@ -381,6 +375,17 @@ export function getPendingAddDataList() {
     if (pendingAdds.length === 0) {
         throw new Error("申請リストにデータが追加されていません。「リストに追加」を実行してください。");
     }
+    
+    // 【修正】送信のタイミングで重複チェックを実行
+    const dates = [...new Set(pendingAdds.map(p => p.requestDate))];
+    for (const dateStr of dates) {
+        const simulatedLogs = getSimulatedLogsForDate(dateStr, pendingAdds);
+        const overlapError = checkTimeOverlap(simulatedLogs);
+        if (overlapError) {
+            throw new Error(`[${dateStr}] ${overlapError}`);
+        }
+    }
+
     return pendingAdds.map(item => ({
         requestDate: item.requestDate,
         targetLogId: null,

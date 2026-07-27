@@ -66,7 +66,11 @@ export function renderTimeCorrectFormHTML(defaultDate) {
                         <input type="time" id="req-correct-start-time" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500" disabled>
                     </div>
                     <div>
-                        <label class="block text-xs font-bold text-gray-700">終了時間</label>
+                        <div class="flex justify-between items-center">
+                            <label class="block text-xs font-bold text-gray-700">終了時間</label>
+                            <!-- ⏱️ 入力所要時間バッジ -->
+                            <span id="req-correct-duration-badge" class="text-[10px] font-bold text-blue-600 font-mono"></span>
+                        </div>
                         <input type="time" id="req-correct-end-time" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500" disabled>
                     </div>
                 </div>
@@ -111,6 +115,8 @@ export function initTimeCorrectForm() {
 
     const taskSelect = document.getElementById("req-correct-task-select");
     const correctDateInput = document.getElementById("req-correct-date");
+    const startTimeInput = document.getElementById("req-correct-start-time");
+    const endTimeInput = document.getElementById("req-correct-end-time");
     const addBtn = document.getElementById("btn-add-correction-queue");
 
     if (!taskSelect || !correctDateInput) return;
@@ -132,6 +138,15 @@ export function initTimeCorrectForm() {
         setupRealtimeTimeline(e.target.value);
     });
 
+    // 時間変更時のリアルタイム所要時間表示イベント
+    if (startTimeInput && endTimeInput) {
+        const handleTimeChange = () => updateCorrectDurationBadge();
+        startTimeInput.addEventListener("input", handleTimeChange);
+        startTimeInput.addEventListener("change", handleTimeChange);
+        endTimeInput.addEventListener("input", handleTimeChange);
+        endTimeInput.addEventListener("change", handleTimeChange);
+    }
+
     if (addBtn) {
         addBtn.addEventListener("click", () => {
             try {
@@ -143,6 +158,30 @@ export function initTimeCorrectForm() {
     }
 
     setupRealtimeTimeline(correctDateInput.value);
+}
+
+function updateCorrectDurationBadge() {
+    const badge = document.getElementById("req-correct-duration-badge");
+    const startTime = document.getElementById("req-correct-start-time")?.value;
+    const endTime = document.getElementById("req-correct-end-time")?.value;
+
+    if (!badge) return;
+    if (!startTime || !endTime) {
+        badge.textContent = "";
+        return;
+    }
+
+    const startMin = toMinutes(startTime);
+    const endMin = toMinutes(endTime);
+    const diff = endMin - startMin;
+
+    if (diff > 0) {
+        badge.textContent = `⏱️ ${diff}分`;
+        badge.className = "text-[10px] font-bold text-blue-600 font-mono";
+    } else {
+        badge.textContent = "⚠️ 不正な時間";
+        badge.className = "text-[10px] font-bold text-red-500 font-mono";
+    }
 }
 
 /**
@@ -193,13 +232,12 @@ function checkTimeOverlap(simulatedLogs) {
             const startB = toMinutes(logB.startTimeStr);
             const endB = toMinutes(logB.endTimeStr);
 
-            // 重複の数学的判定条件: (startA < endB) かつ (startB < endA)
             if (startA < endB && startB < endA) {
                 return `「${logA.task} (${logA.startTimeStr}～${logA.endTimeStr})」と「${logB.task} (${logB.startTimeStr}～${logB.endTimeStr})」の時間がかぶっています！`;
             }
         }
     }
-    return null; // かぶりなし
+    return null;
 }
 
 /**
@@ -210,7 +248,6 @@ function calculateSimulatedTotalWorkTime(dateStr) {
     let totalMinutes = 0;
 
     simulatedLogs.forEach(log => {
-        // 「休憩」は稼働時間から除外
         if (log.task === "休憩") return;
 
         const start = toMinutes(log.startTimeStr);
@@ -247,7 +284,6 @@ function addCurrentToPendingList() {
     if (!taskName || !startTime || !endTime) throw new Error("業務、開始時間、終了時間は必須です。");
     if (startTime > endTime) throw new Error("終了時間は開始時間より後の時刻にしてください。");
 
-    // 重複追加の防止チェック
     if (pendingCorrections.some(item => item.targetLogId === targetLogId)) {
         throw new Error("このログに対する修正はすでにリストに追加されています。");
     }
@@ -317,7 +353,6 @@ function renderPendingListUI() {
 
     if (countBadge) countBadge.textContent = `${pendingCorrections.length}件`;
 
-    // ⏱️ 申請適用後の合計稼働時間を更新
     if (totalTimeEl && currentDateVal) {
         totalTimeEl.textContent = calculateSimulatedTotalWorkTime(currentDateVal);
     }
@@ -358,7 +393,6 @@ function renderPendingListUI() {
         container.appendChild(div);
     });
 
-    // 新しい要素が追加された際に最新（一番下）へ自動スクロール
     container.scrollTop = container.scrollHeight;
 }
 
@@ -418,7 +452,7 @@ function setupRealtimeTimeline(dateStr) {
     if (cacheBadge) cacheBadge.textContent = "☁️ 通信中...";
 
     subscribeModalTimelineLogs(dateStr, ({ logs, isCache, changeType }) => {
-        currentTimelineLogs = logs; // 最新の元のログを退避
+        currentTimelineLogs = logs;
 
         if (cacheBadge) {
             if (isCache) {
@@ -429,7 +463,7 @@ function setupRealtimeTimeline(dateStr) {
         }
 
         renderTimelineList(container, logs);
-        renderPendingListUI(); // 元ログが取得できたら稼働時間表示も計算更新
+        renderPendingListUI();
     });
 }
 
@@ -445,9 +479,14 @@ function renderTimelineList(container, logs) {
         item.className = "timeline-log-item border border-gray-200 rounded-lg p-2.5 bg-white hover:bg-blue-50 cursor-pointer transition flex flex-col gap-1 text-xs text-gray-700 shadow-sm";
         const goalBadge = log.goalTitle ? `<span class="bg-gray-100 border text-gray-500 px-1 rounded ml-1 scale-95 inline-block truncate max-w-[130px]">${escapeHtml(log.goalTitle)}</span>` : "";
         
+        // ⏱️ ログの所要時間計算
+        const startMin = toMinutes(log.startTimeStr);
+        const endMin = toMinutes(log.endTimeStr);
+        const duration = endMin > startMin ? (endMin - startMin) : 0;
+
         item.innerHTML = `
             <div class="flex justify-between items-center font-bold">
-                <span class="text-blue-600 font-mono text-sm">${log.startTimeStr} - ${log.endTimeStr}</span>
+                <span class="text-blue-600 font-mono text-sm">${log.startTimeStr} - ${log.endTimeStr} <span class="text-gray-500 font-normal text-xs">(${duration}分)</span></span>
                 <span class="text-gray-800">${escapeHtml(log.task)}${goalBadge}</span>
             </div>
             ${log.memo ? `<p class="text-gray-400 truncate italic mt-0.5 pl-1 border-l">💬 ${escapeHtml(log.memo)}</p>` : ""}
@@ -479,6 +518,7 @@ function renderTimelineList(container, logs) {
             if (addBtn) addBtn.disabled = false;
 
             updateCorrectGoalDropdown(log.task, log.goalId || log.goalTitle);
+            updateCorrectDurationBadge();
         });
 
         container.appendChild(item);
@@ -499,6 +539,8 @@ function resetCorrectionInputs() {
 
     const container = document.getElementById("req-correct-goal-container");
     if (container) container.classList.add("hidden");
+
+    updateCorrectDurationBadge();
 }
 
 /**
@@ -509,7 +551,6 @@ export function getPendingTimeCorrectDataList() {
         throw new Error("申請リストにデータが追加されていません。「リストに追加」を実行してください。");
     }
 
-    // 【修正】送信のタイミングで重複チェックを実行
     const dates = [...new Set(pendingCorrections.map(p => p.requestDate))];
     for (const dateStr of dates) {
         const simulatedLogs = getSimulatedLogsForDate(dateStr, pendingCorrections);

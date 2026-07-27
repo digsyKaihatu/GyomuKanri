@@ -58,7 +58,11 @@ export function renderAddFormHTML(defaultDate) {
                         <input type="time" id="req-add-start-time" value="12:00" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500">
                     </div>
                     <div>
-                        <label class="block text-xs font-bold text-gray-700">終了時間</label>
+                        <div class="flex justify-between items-center">
+                            <label class="block text-xs font-bold text-gray-700">終了時間</label>
+                            <!-- ⏱️ 入力所要時間バッジ -->
+                            <span id="req-add-duration-badge" class="text-[10px] font-bold text-emerald-600 font-mono"></span>
+                        </div>
                         <input type="time" id="req-add-end-time" value="12:45" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-emerald-500">
                     </div>
                     <div>
@@ -105,6 +109,8 @@ export function initAddForm() {
 
     const taskSelect = document.getElementById("req-add-task-select");
     const dateInput = document.getElementById("req-add-date");
+    const startTimeInput = document.getElementById("req-add-start-time");
+    const endTimeInput = document.getElementById("req-add-end-time");
     const addBtn = document.getElementById("btn-add-queue");
 
     if (!taskSelect || !dateInput) return;
@@ -121,6 +127,16 @@ export function initAddForm() {
     taskSelect.addEventListener("change", handleTaskChange);
     dateInput.addEventListener("change", (e) => setupRealtimeTimeline(e.target.value));
 
+    // 時間変更時のリアルタイム所要時間表示イベント
+    if (startTimeInput && endTimeInput) {
+        const handleTimeChange = () => updateAddDurationBadge();
+        startTimeInput.addEventListener("input", handleTimeChange);
+        startTimeInput.addEventListener("change", handleTimeChange);
+        endTimeInput.addEventListener("input", handleTimeChange);
+        endTimeInput.addEventListener("change", handleTimeChange);
+        updateAddDurationBadge();
+    }
+
     if (addBtn) {
         addBtn.addEventListener("click", () => {
             try {
@@ -132,6 +148,30 @@ export function initAddForm() {
     }
 
     setupRealtimeTimeline(dateInput.value);
+}
+
+function updateAddDurationBadge() {
+    const badge = document.getElementById("req-add-duration-badge");
+    const startTime = document.getElementById("req-add-start-time")?.value;
+    const endTime = document.getElementById("req-add-end-time")?.value;
+
+    if (!badge) return;
+    if (!startTime || !endTime) {
+        badge.textContent = "";
+        return;
+    }
+
+    const startMin = toMinutes(startTime);
+    const endMin = toMinutes(endTime);
+    const diff = endMin - startMin;
+
+    if (diff > 0) {
+        badge.textContent = `⏱️ ${diff}分`;
+        badge.className = "text-[10px] font-bold text-emerald-600 font-mono";
+    } else {
+        badge.textContent = "⚠️ 不正な時間";
+        badge.className = "text-[10px] font-bold text-red-500 font-mono";
+    }
 }
 
 function handleTaskChange(e) {
@@ -361,9 +401,15 @@ function renderTimelineList(container, logs) {
     logs.forEach(log => {
         const item = document.createElement("div");
         item.className = "border border-gray-200 rounded-lg p-2 bg-white flex justify-between items-center text-xs text-gray-700 shadow-sm";
+        
+        // ⏱️ ログの所要時間計算
+        const startMin = toMinutes(log.startTimeStr);
+        const endMin = toMinutes(log.endTimeStr);
+        const duration = endMin > startMin ? (endMin - startMin) : 0;
+
         item.innerHTML = `
             <div>
-                <span class="text-blue-600 font-mono font-bold mr-2">${log.startTimeStr} - ${log.endTimeStr}</span>
+                <span class="text-blue-600 font-mono font-bold mr-2">${log.startTimeStr} - ${log.endTimeStr} <span class="text-gray-500 font-normal">(${duration}分)</span></span>
                 <span class="font-medium">${escapeHtml(log.task)}</span>
             </div>
         `;
@@ -376,7 +422,6 @@ export function getPendingAddDataList() {
         throw new Error("申請リストにデータが追加されていません。「リストに追加」を実行してください。");
     }
     
-    // 【修正】送信のタイミングで重複チェックを実行
     const dates = [...new Set(pendingAdds.map(p => p.requestDate))];
     for (const dateStr of dates) {
         const simulatedLogs = getSimulatedLogsForDate(dateStr, pendingAdds);

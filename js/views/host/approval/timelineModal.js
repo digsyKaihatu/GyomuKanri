@@ -193,7 +193,7 @@ function render2ColumnTimelineUI(containerEl, logs, pendingRequestDocs) {
         const reqType = req.type;
         let targetLogId = req.targetLogId || d.targetLogId;
 
-        // 🚨【退勤忘れ補正】targetLogIdが無い場合、申告時刻より前の最後のログを自動特定
+        // 🚨 退勤忘れ補正: targetLogIdが無い場合、申告時刻より前の最後のログを自動特定
         if ((reqType === 'forget_checkout' || d.reasonCategory === '退勤忘れの修正') && !targetLogId) {
             const checkoutTimeStr = d.afterEndTime || d.checkoutTime || "23:59";
             const checkoutSec = parseTimeToSeconds(checkoutTimeStr) || 86400;
@@ -268,43 +268,23 @@ function render2ColumnTimelineUI(containerEl, logs, pendingRequestDocs) {
         return getSec(a) - getSec(b);
     });
 
-    // 想定合計時間の計算
-    let totalWorkDurationAfter = totalWorkDurationBefore;
-    pendingRequestDocs.forEach(docSnap => {
-        const req = docSnap.data();
-        const d = req.data || {};
-        const taskName = d.task || d.taskName || d.beforeTask || "";
-        if (taskName === '休憩') return;
+    // 💡【修正】想定合計時間を「補正後の仮タイムラインログ一覧」から直接合計計算する
+    const totalWorkDurationAfter = simulatedLogs.reduce((total, log) => {
+        if (log.task === '休憩' || log.type === 'goal') return total;
 
-        const startSec = parseTimeToSeconds(d.afterStartTime || d.startTime);
-        const endSec = parseTimeToSeconds(d.afterEndTime || d.endTime || d.checkoutTime);
-        let newSec = (startSec !== null && endSec !== null && endSec > startSec) ? (endSec - startSec) : null;
+        const startStr = log.simulatedStartTime || formatTime(log.startTime);
+        const endStr = log.simulatedEndTime || (log.endTime ? formatTime(log.endTime) : null);
 
-        if (req.type === 'add') {
-            if (newSec !== null) totalWorkDurationAfter += newSec;
-            else if (d.timeDifference) totalWorkDurationAfter += parseTimeDiffToSeconds(d.timeDifference);
-        } else if (req.type === 'time_correct' || req.type === 'update' || req.type === 'forget_checkout' || d.reasonCategory === '退勤忘れの修正') {
-            let targetId = req.targetLogId || d.targetLogId;
-            if (!targetId) {
-                const checkoutTimeStr = d.afterEndTime || d.checkoutTime || "23:59";
-                const checkoutSec = parseTimeToSeconds(checkoutTimeStr) || 86400;
-                const candidateLogs = logs.filter(l => {
-                    const sSec = parseTimeToSeconds(formatTime(l.startTime));
-                    return sSec !== null && sSec < checkoutSec && l.task !== '休憩' && l.type !== 'goal';
-                });
-                if (candidateLogs.length > 0) {
-                    candidateLogs.sort((a, b) => (parseTimeToSeconds(formatTime(b.startTime)) || 0) - (parseTimeToSeconds(formatTime(a.startTime)) || 0));
-                    targetId = candidateLogs[0].id;
-                }
-            }
-            const originalLog = logs.find(l => l.id === targetId);
-            const oldSec = originalLog ? (Number(originalLog.duration) || 0) : 0;
-            if (newSec !== null) totalWorkDurationAfter += (newSec - oldSec);
-            else if (d.timeDifference) totalWorkDurationAfter += parseTimeDiffToSeconds(d.timeDifference);
+        const startSec = parseTimeToSeconds(startStr);
+        const endSec = parseTimeToSeconds(endStr);
+
+        if (startSec !== null && endSec !== null && endSec >= startSec) {
+            return total + (endSec - startSec);
+        } else if (log.duration) {
+            return total + (Number(log.duration) || 0);
         }
-    });
-
-    totalWorkDurationAfter = Math.max(0, totalWorkDurationAfter);
+        return total;
+    }, 0);
 
     containerEl.innerHTML = `
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">

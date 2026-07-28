@@ -3,6 +3,7 @@ import { db } from "../../../main.js";
 import { collection, query, where, onSnapshot, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { escapeHtml, formatTime, formatDuration } from "../../../utils.js";
 import { handleApprove, handleRejectRequest, handleBulkApprove, handleBulkRejectRequest } from "./approvalActions.js";
+import { WORKER_URL } from "../../client/timerState.js"; // 💡 Worker URL のインポート
 
 let currentUnsubscribes = [];
 const summaryCache = new Map(); // dateStr -> パース済みの全ユーザーログ配列
@@ -148,24 +149,26 @@ async function setupTimelineData(targetUserId, dateStr) {
     );
 
     if (dateStr < todayStr) {
-        // 🌟 【過去日】 daily_summaries から 1 回取得（またはメモリキャッシュ利用）
+        // 🌟 【過去日】 Cloudflare CDN (Worker) から 1 回取得（またはメモリキャッシュ）
         let pastLogs = [];
         try {
             if (summaryCache.has(dateStr)) {
                 const allLogs = summaryCache.get(dateStr);
                 pastLogs = allLogs.filter(log => log.userId === targetUserId);
-                if (cacheBadge) cacheBadge.textContent = "⚡ daily_summaries メモリキャッシュ";
+                if (cacheBadge) cacheBadge.textContent = "⚡ ブラウザメモリキャッシュ";
             } else {
-                if (cacheBadge) cacheBadge.textContent = "📡 daily_summaries 取得中...";
-                const docRef = doc(db, "daily_summaries", dateStr);
-                const docSnap = await getDoc(docRef);
-
-                if (docSnap.exists() && docSnap.data().logsJson) {
-                    const allLogs = JSON.parse(docSnap.data().logsJson);
+                if (cacheBadge) cacheBadge.textContent = "📡 CDN (Edge) から取得中...";
+                
+                // 💡 Firestore 直接参照ではなく Worker (CDN) 経由で取得
+                const resp = await fetch(`${WORKER_URL}/get-daily-summary?date=${dateStr}`);
+                
+                if (resp.ok) {
+                    const resData = await resp.json();
+                    const allLogs = resData.logs || [];
                     summaryCache.set(dateStr, allLogs);
                     pastLogs = allLogs.filter(log => log.userId === targetUserId);
                 }
-                if (cacheBadge) cacheBadge.textContent = "📦 daily_summaries 読み込み完了";
+                if (cacheBadge) cacheBadge.textContent = "🚀 CDN 読み込み完了";
             }
         } catch (err) {
             console.error(`daily_summaries 読み込みエラー (${dateStr}):`, err);

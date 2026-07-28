@@ -14,7 +14,7 @@ export function renderCountCorrectFormHTML(defaultDate) {
                 <div class="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 space-y-2">
                     <span class="font-bold block text-sm text-amber-900">🔢 工数件数の修正操作手順</span>
                     <p>① 「工数件数の修正をしたい日付」を選択します。</p>
-                    <p>② 「タイムライン履歴」から件数を修正したい過去ログをクリックして選択します。</p>
+                    <p>② 「タイムライン履歴」から件数を修正したい工数ログをクリックして選択します。</p>
                     <p>③ 右側で件数と理由を入力し、<b>「リストに追加」</b>を押します。</p>
                     <p>④ 最後に下部の<b>「申請を送る」</b>ボタンでまとめて送信してください。</p>
                 </div>
@@ -28,7 +28,7 @@ export function renderCountCorrectFormHTML(defaultDate) {
                 </div>
                 <div class="flex flex-col flex-grow">
                     <div class="flex justify-between items-center mb-1">
-                        <label class="block text-sm font-bold text-gray-700">タイムライン履歴</label>
+                        <label class="block text-sm font-bold text-gray-700">当日の工数タイムライン履歴</label>
                         <span id="req-countcorrect-cache-badge" class="text-[10px] text-gray-400 font-mono"></span>
                     </div>
                     <div id="req-countcorrect-timeline-container" class="border border-gray-300 rounded-lg p-3 bg-gray-50 min-h-[220px] max-h-[320px] overflow-y-auto space-y-2 custom-scrollbar text-sm">
@@ -144,8 +144,8 @@ function addCurrentToPendingList() {
     const goalTitle = document.getElementById("req-countcorrect-goal-title").value || null;
     const beforeCount = parseInt(document.getElementById("req-countcorrect-before-count").value, 10) || 0;
 
-    if (!targetLogId) throw new Error("件数を修正したいログをタイムライン履歴から選択してください。");
-    if (countInput && countInput.disabled) throw new Error("選択された業務ログは工数が設定されていないため修正できません。");
+    if (!targetLogId) throw new Error("件数を修正したい工数ログをタイムライン履歴から選択してください。");
+    if (countInput && countInput.disabled) throw new Error("選択されたログは編集できません。");
     if (isNaN(countVal) || countVal < 0) throw new Error("成果件数は0以上の有効な数値を入力してください。");
 
     if (pendingCountCorrections.some(item => item.targetLogId === targetLogId)) {
@@ -254,23 +254,31 @@ function setupRealtimeTimeline(dateStr) {
 }
 
 function renderTimelineList(container, logs) {
-    if (logs.length === 0) {
-        container.innerHTML = '<p class="text-center text-gray-400 py-6 text-xs">この日の業務記録はありません。</p>';
+    // 💡 工数が登録されているログ（goalTitle/goalIdが存在する、またはtypeが"goal"のログ）のみ抽出
+    const goalLogs = logs.filter(log => Boolean(log.goalTitle || log.goalId || log.type === "goal"));
+
+    if (goalLogs.length === 0) {
+        container.innerHTML = '<p class="text-center text-gray-400 py-6 text-xs">この日に工数が登録された記録はありません。</p>';
         return;
     }
 
     container.innerHTML = "";
-    logs.forEach(log => {
+    goalLogs.forEach(log => {
         const item = document.createElement("div");
         item.className = "timeline-log-item border border-gray-200 rounded-lg p-2.5 bg-white hover:bg-blue-50 cursor-pointer transition flex items-center justify-between text-xs text-gray-700 shadow-sm";
         const goalBadge = log.goalTitle ? `<span class="bg-gray-100 border text-gray-500 px-1 rounded ml-1 scale-95 inline-block truncate max-w-[130px]">${escapeHtml(log.goalTitle)}</span>` : "";
         
+        const isGoalOnly = log.type === "goal" || !log.endTimeStr;
+        const timeLabel = isGoalOnly
+            ? `<span class="bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded font-mono font-bold mr-2">${log.startTimeStr} </span>`
+            : `<span class="text-blue-600 font-mono text-sm font-bold mr-2">${log.startTimeStr} - ${log.endTimeStr}</span>`;
+
         item.innerHTML = `
-            <div class="flex items-center">
-                <span class="text-blue-600 font-mono text-sm font-bold mr-2">${log.startTimeStr} - ${log.endTimeStr}</span>
-                <span class="text-gray-800 font-medium">${escapeHtml(log.task)}${goalBadge}</span>
+            <div class="flex items-center truncate mr-2">
+                ${timeLabel}
+                <span class="text-gray-800 font-medium truncate">${escapeHtml(log.task)}${goalBadge}</span>
             </div>
-            <span class="bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded scale-95">現件数: ${log.count}</span>
+            <span class="bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded scale-95 shrink-0">現件数: ${log.count}</span>
         `;
 
         item.addEventListener("click", () => {
@@ -293,16 +301,11 @@ function renderTimelineList(container, logs) {
             
             if (countInput) {
                 countInput.value = log.count;
-                if (log.goalTitle) {
-                    countInput.disabled = false;
-                    countInput.placeholder = "0";
-                } else {
-                    countInput.disabled = true;
-                    countInput.placeholder = "工数未設定のため入力不可";
-                }
+                countInput.disabled = false;
+                countInput.placeholder = "0";
             }
             if (memoInput) memoInput.disabled = false;
-            if (addBtn) addBtn.disabled = !log.goalTitle;
+            if (addBtn) addBtn.disabled = false;
         });
         container.appendChild(item);
     });

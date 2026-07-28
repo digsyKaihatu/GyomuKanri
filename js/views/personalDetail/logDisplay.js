@@ -2,6 +2,31 @@
 
 import { formatDuration, formatTime, escapeHtml } from "../../utils.js";
 
+/**
+ * 時間（Duration）から秒表示を取り除くヘルパー関数
+ * 例: "1時間20分30秒" -> "1時間20分" / "01:20:30" -> "01:20"
+ */
+function formatDurationNoSec(seconds) {
+    const formatted = formatDuration(seconds);
+    if (!formatted) return "";
+    return formatted
+        .replace(/\s*\d+秒/g, "")           // "30秒" や " 0秒" を削除
+        .replace(/(:\d{2}):\d{2}$/, "$1")   // "01:20:30" の ":30" を削除
+        || "0分";                          // 全て消えた場合は0分
+}
+
+/**
+ * 時刻（Time）から秒表示を取り除くヘルパー関数（タイムラインの開始・終了時刻用）
+ * 例: "10:00:00" -> "10:00"
+ */
+function formatTimeNoSec(time) {
+    const formatted = formatTime(time);
+    if (!formatted) return "";
+    return formatted
+        .replace(/\s*\d+秒/g, "")
+        .replace(/(:\d{2}):\d{2}$/, "$1");
+}
+
 export function clearDetails(detailsTitleEl, detailsContentEl) {
     if (detailsTitleEl) detailsTitleEl.textContent = "詳細";
     if (detailsContentEl) {
@@ -26,8 +51,9 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
         logsForDay.sort((a, b) => (a.startTime?.getTime() || 0) - (b.startTime?.getTime() || 0));
 
         logsForDay.forEach((log) => {
-            const startTimeStr = formatTime(log.startTime);
-            const endTimeStr = formatTime(log.endTime);
+            // 秒数をカットした時刻文字列を取得
+            const startTimeStr = formatTimeNoSec(log.startTime);
+            const endTimeStr = formatTimeNoSec(log.endTime);
 
             // ① 目標貢献（件数）の集計：typeに関わらず、件数(contribution)が入っていれば加算
             if (log.goalTitle && log.task && (log.contribution > 0 || log.type === "goal")) {
@@ -71,10 +97,10 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
                 ? `<span class="font-mono text-sm bg-green-200 text-green-900 px-2 py-1 rounded">${startTimeStr} (進捗のみ)</span>`
                 : `<span class="font-mono text-sm bg-gray-200 px-2 py-1 rounded">${startTimeStr} - ${endTimeStr}</span>`;
 
-            // 時間と件数のテキスト表記
+            // 時間と件数のテキスト表記 (秒数なしフォーマットを適用)
             let detailText = "";
             if (log.type !== "goal") {
-                detailText += `合計: ${formatDuration(log.duration || 0)}`;
+                detailText += `合計: ${formatDurationNoSec(log.duration || 0)}`;
                 if (log.contribution) detailText += ` / ${log.contribution}件`;
             } else {
                 detailText += `進捗: ${log.contribution}件`;
@@ -95,7 +121,7 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
             </li>`;
         });
 
-        // 🔥 1日の総稼働時間（休憩・進捗登録除く）を直接計算
+        // 1日の総稼働時間（休憩・進捗登録除く）を直接計算
         const totalWorkSeconds = logsForDay.reduce((total, log) => {
             if (log.task && log.task !== "休憩" && log.type !== "goal") {
                 return total + (Number(log.duration) || 0);
@@ -103,14 +129,14 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
             return total;
         }, 0);
 
-        // サマリー表示
+        // サマリー表示 (秒数なしフォーマットを適用)
         summaryHtml = `
             <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-3 pb-2 border-b border-gray-200 gap-1">
                 <h4 class="text-lg font-semibold text-gray-800">1日の合計 (休憩除く)</h4>
                 <div class="flex items-center gap-2">
                     <span class="text-xs text-gray-500 font-bold">総稼働時間:</span>
                     <span class="font-mono font-bold text-base text-indigo-700 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-200">
-                        ⏱️ ${formatDuration(totalWorkSeconds)}
+                        ⏱️ ${formatDurationNoSec(totalWorkSeconds)}
                     </span>
                 </div>
             </div>
@@ -121,7 +147,7 @@ export function showDailyLogs(date, selectedUserLogs, authLevel, currentUserForD
             Object.entries(dailyWorkSummary)
                 .sort(([, a], [, b]) => b - a)
                 .forEach(([taskKey, duration]) => {
-                    summaryHtml += `<li class="p-2 bg-gray-100 rounded-md flex justify-between"><strong>${escapeHtml(taskKey)}</strong> <span>${formatDuration(duration)}</span></li>`;
+                    summaryHtml += `<li class="p-2 bg-gray-100 rounded-md flex justify-between"><strong>${escapeHtml(taskKey)}</strong> <span>${formatDurationNoSec(duration)}</span></li>`;
                 });
             summaryHtml += "</ul>";
         } else {
@@ -201,13 +227,14 @@ export function showMonthlyLogs(currentCalendarDate, logsForMonth, detailsTitleE
             return total;
         }, 0);
 
+        // サマリー表示 (秒数なしフォーマットを適用)
         let contentHtml = `
             <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-3 pb-2 border-b border-gray-200 gap-1">
                 <h4 class="text-lg font-semibold text-gray-800">業務時間合計 (休憩除く)</h4>
                 <div class="flex items-center gap-2">
                     <span class="text-xs text-gray-500 font-bold">総稼働時間:</span>
                     <span class="font-mono font-bold text-base text-indigo-700 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-200">
-                        ⏱️ ${formatDuration(totalMonthlySeconds)}
+                        ⏱️ ${formatDurationNoSec(totalMonthlySeconds)}
                     </span>
                 </div>
             </div>
@@ -218,7 +245,7 @@ export function showMonthlyLogs(currentCalendarDate, logsForMonth, detailsTitleE
             Object.entries(monthlySummary)
                  .sort(([, a], [, b]) => b - a)
                  .forEach(([taskKey, duration]) => {
-                     contentHtml += `<li class="p-2 bg-gray-100 rounded-md flex justify-between"><strong>${escapeHtml(taskKey)}</strong> <span>${formatDuration(duration)}</span></li>`;
+                     contentHtml += `<li class="p-2 bg-gray-100 rounded-md flex justify-between"><strong>${escapeHtml(taskKey)}</strong> <span>${formatDurationNoSec(duration)}</span></li>`;
                  });
              contentHtml += "</ul>";
         } else {

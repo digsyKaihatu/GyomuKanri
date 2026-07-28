@@ -149,6 +149,11 @@ export async function initializeClientView({ tasks }) {
  * @param {string} source データのソース ('firestore' | 'd1')
  */
 async function syncStatus(data, source) {
+    // ★追加: 手動操作で処理中の場合は、自動同期をスキップして競合を防ぐ
+    if (State.getIsProcessing()) {
+        console.log("[syncStatus] 手動操作中のため、自動同期を一時スキップしました。");
+        return;
+    }
     if (!data || Object.keys(data).length === 0) return;
 
     // ★判定：Workerによって更新されたばかりかどうか

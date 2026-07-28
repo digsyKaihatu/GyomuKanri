@@ -191,7 +191,27 @@ function render2ColumnTimelineUI(containerEl, logs, pendingRequestDocs) {
         const req = reqDocSnap.data();
         const d = req.data || {};
         const reqType = req.type;
-        const targetLogId = req.targetLogId || d.targetLogId;
+        let targetLogId = req.targetLogId || d.targetLogId;
+
+        // 🚨 退勤忘れ補正: targetLogIdが無い場合、申告時刻より前の最後のログを自動特定
+        if ((reqType === 'forget_checkout' || d.reasonCategory === '退勤忘れの修正') && !targetLogId) {
+            const checkoutTimeStr = d.afterEndTime || d.checkoutTime || "23:59";
+            const checkoutSec = parseTimeToSeconds(checkoutTimeStr) || 86400;
+
+            const candidateLogs = simulatedLogs.filter(l => {
+                const sSec = parseTimeToSeconds(l.simulatedStartTime || formatTime(l.startTime));
+                return sSec !== null && sSec < checkoutSec && l.task !== '休憩' && l.type !== 'goal';
+            });
+
+            if (candidateLogs.length > 0) {
+                candidateLogs.sort((a, b) => {
+                    const sA = parseTimeToSeconds(a.simulatedStartTime || formatTime(a.startTime)) || 0;
+                    const sB = parseTimeToSeconds(b.simulatedStartTime || formatTime(b.startTime)) || 0;
+                    return sB - sA;
+                });
+                targetLogId = candidateLogs[0].id;
+            }
+        }
 
         const targetLog = simulatedLogs.find(l => l.id === targetLogId);
 
@@ -206,8 +226,10 @@ function render2ColumnTimelineUI(containerEl, logs, pendingRequestDocs) {
                 if (d.afterEndTime) targetLog.simulatedEndTime = d.afterEndTime;
             } else if (reqType === 'count_correct') {
                 if (d.count !== undefined) targetLog.contribution = d.count;
-            } else if (reqType === 'forget_checkout') {
-                if (d.afterEndTime || d.checkoutTime) targetLog.simulatedEndTime = d.afterEndTime || d.checkoutTime;
+            } else if (reqType === 'forget_checkout' || d.reasonCategory === '退勤忘れの修正') {
+                if (d.afterEndTime || d.checkoutTime) {
+                    targetLog.simulatedEndTime = d.afterEndTime || d.checkoutTime;
+                }
             }
         } else {
             standaloneRequests.push({ docSnap: reqDocSnap, reqData: req });
@@ -246,32 +268,24 @@ function render2ColumnTimelineUI(containerEl, logs, pendingRequestDocs) {
         return getSec(a) - getSec(b);
     });
 
-    // 想定合計時間の計算
-    let totalWorkDurationAfter = totalWorkDurationBefore;
-    pendingRequestDocs.forEach(docSnap => {
-        const req = docSnap.data();
-        const d = req.data || {};
-        const taskName = d.task || d.taskName || d.beforeTask || "";
-        if (taskName === '休憩') return;
+    // 💡【修正】想定合計時間を「補正後の仮タイムラインログ一覧」から直接合計計算する
+    const totalWorkDurationAfter = simulatedLogs.reduce((total, log) => {
+        if (log.task === '休憩' || log.type === 'goal') return total;
 
-        const startSec = parseTimeToSeconds(d.afterStartTime || d.startTime);
-        const endSec = parseTimeToSeconds(d.afterEndTime || d.endTime || d.checkoutTime);
-        let newSec = (startSec !== null && endSec !== null && endSec > startSec) ? (endSec - startSec) : null;
+        const startStr = log.simulatedStartTime || formatTime(log.startTime);
+        const endStr = log.simulatedEndTime || (log.endTime ? formatTime(log.endTime) : null);
 
-        if (req.type === 'add') {
-            if (newSec !== null) totalWorkDurationAfter += newSec;
-            else if (d.timeDifference) totalWorkDurationAfter += parseTimeDiffToSeconds(d.timeDifference);
-        } else if (req.type === 'time_correct' || req.type === 'update' || req.type === 'forget_checkout') {
-            const originalLog = logs.find(l => l.id === (req.targetLogId || d.targetLogId));
-            const oldSec = originalLog ? (Number(originalLog.duration) || 0) : 0;
-            if (newSec !== null) totalWorkDurationAfter += (newSec - oldSec);
-            else if (d.timeDifference) totalWorkDurationAfter += parseTimeDiffToSeconds(d.timeDifference);
+        const startSec = parseTimeToSeconds(startStr);
+        const endSec = parseTimeToSeconds(endStr);
+
+        if (startSec !== null && endSec !== null && endSec >= startSec) {
+            return total + (endSec - startSec);
+        } else if (log.duration) {
+            return total + (Number(log.duration) || 0);
         }
-    });
+        return total;
+    }, 0);
 
-    totalWorkDurationAfter = Math.max(0, totalWorkDurationAfter);
-
-    // 💡 右ヘッダーに一括承認・一括却下ボタンを追加
     containerEl.innerHTML = `
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <!-- 左カラム: 修正前タイムライン -->
@@ -319,7 +333,6 @@ function render2ColumnTimelineUI(containerEl, logs, pendingRequestDocs) {
 
     // --- イベントリスナーの紐付け ---
 
-    // 💡 一括承認・一括却下ボタンのイベント紐付け
     const bulkApproveBtn = containerEl.querySelector("#bulk-approve-btn");
     if (bulkApproveBtn) {
         bulkApproveBtn.addEventListener("click", () => handleBulkApprove(pendingRequestDocs));
@@ -330,7 +343,6 @@ function render2ColumnTimelineUI(containerEl, logs, pendingRequestDocs) {
         bulkRejectBtn.addEventListener("click", () => handleBulkRejectRequest(pendingRequestDocs));
     }
 
-    // 個別承認・却下ボタン
     containerEl.querySelectorAll(".approve-single-btn").forEach(btn => {
         btn.addEventListener("click", (e) => {
             const docId = e.currentTarget.dataset.docid;
@@ -347,7 +359,6 @@ function render2ColumnTimelineUI(containerEl, logs, pendingRequestDocs) {
         });
     });
 
-    // スクロール連動処理
     containerEl.querySelectorAll("[data-link-logid]").forEach(el => {
         el.addEventListener("click", (e) => {
             const logId = e.currentTarget.getAttribute("data-link-logid");
@@ -372,14 +383,13 @@ function renderOriginalTimelineListHtml(logs, targetedLogIds) {
 
     return logs.map(log => {
         const isGoalLog = log.type === 'goal';
-        const isTargeted = targetedLogIds && targetedLogIds.has(log.id); // 💡 このログが申請対象か判定
+        const isTargeted = targetedLogIds && targetedLogIds.has(log.id);
 
         let bgColor = log.task === '休憩' ? 'bg-yellow-50/60 border-yellow-200' : (isGoalLog ? 'bg-green-50/60 border-green-200' : 'bg-gray-50 border-gray-200');
         
         let extraAttributes = '';
         let badgeHtml = '';
         
-        // 💡 申請対象のログを目立たせる（背景を赤系にしてクリック可能に）
         if (isTargeted) {
             bgColor = 'bg-rose-50 border-rose-300 shadow-md cursor-pointer hover:bg-rose-100 hover:shadow-lg transition-all duration-200';
             extraAttributes = `data-link-logid="${log.id}" title="クリックで申請後のタイムラインへ移動"`;
@@ -429,7 +439,6 @@ function renderSimulatedTimelineListHtml(simulatedLogs) {
         const startStr = log.simulatedStartTime || formatTime(log.startTime);
         const endStr = log.simulatedEndTime || (log.endTime ? formatTime(log.endTime) : '---');
 
-        // 💡 仮タイムライン用の稼働時間を算出（補正後の時刻から自動計算）
         let durationStr = '';
         if (!isGoalLog) {
             const startSec = parseTimeToSeconds(startStr);
@@ -451,7 +460,6 @@ function renderSimulatedTimelineListHtml(simulatedLogs) {
             ? `<span class="text-[10px] text-gray-400">${startStr} (進捗)</span>` 
             : `<span class="font-mono text-xs text-indigo-700 bg-indigo-100/80 px-1.5 py-0.5 rounded font-bold">${startStr} - ${endStr}</span>`;
 
-        // 申請アクションエリア
         let actionAreaHtml = '';
         if (hasPending) {
             actionAreaHtml = log.pendingReqs.map(item => {
@@ -494,7 +502,6 @@ function renderSimulatedTimelineListHtml(simulatedLogs) {
             }).join('');
         }
 
-        // 💡 右端に `⏱ 00:21:29` のような稼働時間を追加表示
         return `
         <div id="simulated-log-${log.id}" class="p-2.5 rounded-lg border ${bgColor} flex flex-col gap-1 transition-all duration-300 relative hover:z-50">
             <div class="flex justify-between items-center gap-2">

@@ -33,6 +33,7 @@ export const getActiveReservations = () => state.activeReservations;
 export const getLastBreakNotificationTime = () => state.lastBreakNotificationTime;
 export const getLastEncouragementTime = () => state.lastEncouragementTime;
 export const getIsWorking = () => !!state.currentTask && !!state.startTime;
+export const getIsProcessing = () => state.isProcessing;
 
 // セッター
 export const setTimerInterval = (v) => { state.timerInterval = v; };
@@ -46,6 +47,7 @@ export const setHasContributed = (v) => { state.hasContributedToCurrentGoal = v;
 export const setActiveReservations = (v) => { state.activeReservations = v; };
 export const setLastBreakNotificationTime = (v) => { state.lastBreakNotificationTime = v; };
 export const setLastEncouragementTime = (v) => { state.lastEncouragementTime = v; };
+export const setIsProcessing = (v) => { state.isProcessing = v; };
 
 export function isReservationNotified(id) {
     return notifiedReservationIds.has(id);

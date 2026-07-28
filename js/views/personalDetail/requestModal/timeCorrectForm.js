@@ -3,9 +3,9 @@ import { allTaskObjects } from "../../../main.js";
 import { escapeHtml } from "../../../utils.js";
 import { subscribeModalTimelineLogs } from "./index.js";
 
-// 📝 一時保存データ & 現在選択中の日の元ログデータ
 let pendingCorrections = [];
-let currentTimelineLogs = []; // 現在表示中の日の元のタイムラインログ
+let currentTimelineLogs = []; 
+let editingPendingId = null; // ✏️ 現在編集中のリストアイテムID
 
 export function renderTimeCorrectFormHTML(defaultDate) {
     return `
@@ -17,6 +17,8 @@ export function renderTimeCorrectFormHTML(defaultDate) {
                     <span class="font-bold block text-sm text-blue-900">⏱️ 時間・業務の訂正操作手順</span>
                     <p>① 日付を選択し、「タイムライン履歴」から修正したいログをクリックします。</p>
                     <p>② 右側のフォームで正しい内容に上書きし、<b>「リストに追加」</b>を押します。</p>
+                    <p>💡 <b>開始と終了を同じ時間にすると「削除申請」になります。</b></p>
+                    <p>💡 <b>リストのアイテムをクリックすると再編集できます。</b></p>
                     <p>③ 複数件ある場合は①〜②を繰り返し、最後に下部の<b>「まとめて申請を送信」</b>を実行してください。</p>
                 </div>
             </div>
@@ -71,12 +73,18 @@ export function renderTimeCorrectFormHTML(defaultDate) {
                     </div>
                 </div>
 
+                <!-- ⏱️ 計算時間・削除判定のプレビュー表示エリア -->
+                <div id="req-correct-time-preview" class="text-xs font-bold px-2 py-1 bg-blue-50 border border-blue-200 text-blue-800 rounded-lg flex items-center justify-between">
+                    <span>⏱️ 変更後の所要時間:</span>
+                    <span id="req-correct-duration-badge" class="font-mono text-sm font-extrabold">-</span>
+                </div>
+
                 <div class="flex flex-col flex-grow">
                     <label class="block text-xs font-bold text-gray-700">訂正理由・メモ (任意)</label>
                     <textarea id="req-correct-memo" class="mt-1 block w-full border border-gray-300 rounded-lg p-2 text-sm bg-white resize-none min-h-[50px] focus:ring-2 focus:ring-emerald-500" placeholder="申請理由など" disabled></textarea>
                 </div>
 
-                <!-- ➕ リスト追加ボタン -->
+                <!-- ➕ リスト追加／更新ボタン -->
                 <button type="button" id="btn-add-correction-queue" class="w-full py-2 px-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white font-bold rounded-lg transition text-sm shadow-sm flex items-center justify-center gap-1" disabled>
                     <span>➕ 申請リストに追加</span>
                 </button>
@@ -97,7 +105,6 @@ export function renderTimeCorrectFormHTML(defaultDate) {
                     <span id="simulated-total-work-time" class="text-blue-700 font-mono text-sm font-extrabold">0時間0分</span>
                 </div>
             </div>
-            <!-- 💡 高さを固定(h-[160px])にして内部スクロール(overflow-y-auto, custom-scrollbar)を強制適用 -->
             <div id="pending-list-container" class="border border-gray-200 rounded-xl bg-gray-50 p-3 h-[100px] overflow-y-auto custom-scrollbar space-y-2 text-xs">
                 <p class="text-center text-gray-400 py-4">追加された申請データはありません。</p>
             </div>
@@ -108,9 +115,12 @@ export function renderTimeCorrectFormHTML(defaultDate) {
 export function initTimeCorrectForm() {
     pendingCorrections = [];
     currentTimelineLogs = [];
+    editingPendingId = null;
 
     const taskSelect = document.getElementById("req-correct-task-select");
     const correctDateInput = document.getElementById("req-correct-date");
+    const startTimeInput = document.getElementById("req-correct-start-time");
+    const endTimeInput = document.getElementById("req-correct-end-time");
     const addBtn = document.getElementById("btn-add-correction-queue");
 
     if (!taskSelect || !correctDateInput) return;
@@ -132,6 +142,10 @@ export function initTimeCorrectForm() {
         setupRealtimeTimeline(e.target.value);
     });
 
+    // 時間変更時のリアルタイム計算イベント
+    if (startTimeInput) startTimeInput.addEventListener("input", updateFormTimePreview);
+    if (endTimeInput) endTimeInput.addEventListener("input", updateFormTimePreview);
+
     if (addBtn) {
         addBtn.addEventListener("click", () => {
             try {
@@ -146,21 +160,48 @@ export function initTimeCorrectForm() {
 }
 
 /**
- * ⏱️ 時刻文字列 (HH:MM) を分（数値）に変換
+ * ⏱️ フォームの開始・終了時間のリアルタイムプレビュー計算
  */
+function updateFormTimePreview() {
+    const startVal = document.getElementById("req-correct-start-time")?.value;
+    const endVal = document.getElementById("req-correct-end-time")?.value;
+    const badge = document.getElementById("req-correct-duration-badge");
+    const container = document.getElementById("req-correct-time-preview");
+
+    if (!badge || !startVal || !endVal) {
+        if (badge) badge.textContent = "-";
+        return;
+    }
+
+    const startMin = toMinutes(startVal);
+    const endMin = toMinutes(endVal);
+
+    if (startMin === endMin) {
+        badge.textContent = "🗑️ 削除申請";
+        container.className = "text-xs font-bold px-2 py-1 bg-red-50 border border-red-200 text-red-700 rounded-lg flex items-center justify-between";
+    } else if (endMin < startMin) {
+        badge.textContent = "⚠️ 時刻エラー (終了時刻が先)";
+        container.className = "text-xs font-bold px-2 py-1 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg flex items-center justify-between";
+    } else {
+        const diff = endMin - startMin;
+        badge.textContent = `${diff}分`;
+        container.className = "text-xs font-bold px-2 py-1 bg-blue-50 border border-blue-200 text-blue-800 rounded-lg flex items-center justify-between";
+    }
+}
+
 function toMinutes(timeStr) {
     if (!timeStr) return 0;
     const [h, m] = timeStr.split(":").map(Number);
     return h * 60 + m;
 }
 
-/**
- * 🔍 指定日のログ一覧に対し、カート（pendingCorrections）内の修正を反映させたシミュレーションログ配列を生成
- */
 function getSimulatedLogsForDate(dateStr, testPendingList = pendingCorrections) {
     return currentTimelineLogs.map(log => {
         const correction = testPendingList.find(p => p.targetLogId === log.id && p.requestDate === dateStr);
         if (correction) {
+            if (correction.data.timeDifference === "削除申請") {
+                return null; // 削除対象ログはシミュレーションから除外
+            }
             return {
                 id: log.id,
                 task: correction.data.task,
@@ -176,12 +217,9 @@ function getSimulatedLogsForDate(dateStr, testPendingList = pendingCorrections) 
             endTimeStr: log.endTimeStr,
             isCorrected: false
         };
-    });
+    }).filter(Boolean);
 }
 
-/**
- * ⚠️ 時間の重複・かぶりチェック
- */
 function checkTimeOverlap(simulatedLogs) {
     for (let i = 0; i < simulatedLogs.length; i++) {
         for (let j = i + 1; j < simulatedLogs.length; j++) {
@@ -193,24 +231,19 @@ function checkTimeOverlap(simulatedLogs) {
             const startB = toMinutes(logB.startTimeStr);
             const endB = toMinutes(logB.endTimeStr);
 
-            // 重複の数学的判定条件: (startA < endB) かつ (startB < endA)
             if (startA < endB && startB < endA) {
                 return `「${logA.task} (${logA.startTimeStr}～${logA.endTimeStr})」と「${logB.task} (${logB.startTimeStr}～${logB.endTimeStr})」の時間がかぶっています！`;
             }
         }
     }
-    return null; // かぶりなし
+    return null;
 }
 
-/**
- * 🧮 申請適用後の合計稼働時間（休憩除く）を算出
- */
 function calculateSimulatedTotalWorkTime(dateStr) {
     const simulatedLogs = getSimulatedLogsForDate(dateStr);
     let totalMinutes = 0;
 
     simulatedLogs.forEach(log => {
-        // 「休憩」は稼働時間から除外
         if (log.task === "休憩") return;
 
         const start = toMinutes(log.startTimeStr);
@@ -225,9 +258,6 @@ function calculateSimulatedTotalWorkTime(dateStr) {
     return `${h}時間${m}分`;
 }
 
-/**
- * 現在フォームに入力されている修正内容を検証し、キューに追加する
- */
 function addCurrentToPendingList() {
     const targetLogId = document.getElementById("req-correct-log-id").value;
     const beforeStart = document.getElementById("req-correct-before-start").value;
@@ -245,10 +275,9 @@ function addCurrentToPendingList() {
 
     if (!targetLogId) throw new Error("修正したいタイムラインログを選択してください。");
     if (!taskName || !startTime || !endTime) throw new Error("業務、開始時間、終了時間は必須です。");
-    if (startTime >= endTime) throw new Error("終了時間は開始時間より後の時刻にしてください。");
+    if (startTime > endTime) throw new Error("終了時間は開始時間より後の時刻にするか、同じ時刻（削除申請）にしてください。");
 
-    // 重複追加の防止チェック
-    if (pendingCorrections.some(item => item.targetLogId === targetLogId)) {
+    if (!editingPendingId && pendingCorrections.some(item => item.targetLogId === targetLogId)) {
         throw new Error("このログに対する修正はすでにリストに追加されています。");
     }
 
@@ -261,12 +290,19 @@ function addCurrentToPendingList() {
         }
     }
 
+    const isDelete = (startTime === endTime);
     let timeDifference = "変更なし";
-    if (beforeStart && beforeEnd && startTime && endTime) {
+    let durationText = "";
+
+    if (isDelete) {
+        timeDifference = "削除申請";
+        durationText = "削除申請";
+    } else if (beforeStart && beforeEnd && startTime && endTime) {
         const diffBefore = toMinutes(beforeEnd) - toMinutes(beforeStart);
         const diffAfter = toMinutes(endTime) - toMinutes(startTime);
         const diffMin = diffAfter - diffBefore;
-        
+        durationText = `${diffAfter}分`;
+
         if (diffMin === 0) {
             timeDifference = "±0分";
         } else {
@@ -278,44 +314,45 @@ function addCurrentToPendingList() {
         }
     }
 
-    const newItem = {
-        id: `pending-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-        requestDate: dateVal,
-        targetLogId: targetLogId,
-        data: {
-            applicationType: "変更",
-            reasonCategory: "時間・業務の訂正",
-            beforeTask: beforeTask, 
-            beforeGoalTitle: beforeGoalTitle,
-            task: taskName,
-            goalId: goalId,
-            goalTitle: goalTitle,
-            beforeStartTime: beforeStart,
-            beforeEndTime: beforeEnd,
-            afterStartTime: startTime,
-            afterEndTime: endTime,
-            timeDifference: timeDifference,
-            memo: memoVal
-        }
+    const updatedData = {
+        applicationType: isDelete ? "削除" : "変更",
+        reasonCategory: isDelete ? "記録の削除" : "時間・業務の訂正",
+        beforeTask: beforeTask, 
+        beforeGoalTitle: beforeGoalTitle,
+        task: taskName,
+        goalId: goalId,
+        goalTitle: goalTitle,
+        beforeStartTime: beforeStart,
+        beforeEndTime: beforeEnd,
+        afterStartTime: startTime,
+        afterEndTime: endTime,
+        timeDifference: timeDifference,
+        durationText: durationText,
+        memo: memoVal
     };
 
-    // 🚨 【追加前重複判定】この修正を追加したと仮定して時間の重複・かぶりをチェック
-    const testPendingList = [...pendingCorrections, newItem];
-    const simulatedLogs = getSimulatedLogsForDate(dateVal, testPendingList);
-    const overlapError = checkTimeOverlap(simulatedLogs);
-
-    if (overlapError) {
-        throw new Error(overlapError); // 重複があった場合はアラートを出して追加を中止
+    if (editingPendingId) {
+        const item = pendingCorrections.find(p => p.id === editingPendingId);
+        if (item) {
+            item.requestDate = dateVal;
+            item.targetLogId = targetLogId;
+            item.data = updatedData;
+        }
+        editingPendingId = null;
+    } else {
+        const newItem = {
+            id: `pending-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+            requestDate: dateVal,
+            targetLogId: targetLogId,
+            data: updatedData
+        };
+        pendingCorrections.push(newItem);
     }
 
-    pendingCorrections.push(newItem);
     renderPendingListUI();
     resetCorrectionInputs();
 }
 
-/**
- * 画面下部の一時保存リスト描画 & 合計稼働時間の更新
- */
 function renderPendingListUI() {
     const container = document.getElementById("pending-list-container");
     const countBadge = document.getElementById("pending-count-badge");
@@ -326,7 +363,6 @@ function renderPendingListUI() {
 
     if (countBadge) countBadge.textContent = `${pendingCorrections.length}件`;
 
-    // ⏱️ 申請適用後の合計稼働時間を更新
     if (totalTimeEl && currentDateVal) {
         totalTimeEl.textContent = calculateSimulatedTotalWorkTime(currentDateVal);
     }
@@ -339,9 +375,16 @@ function renderPendingListUI() {
     container.innerHTML = "";
     pendingCorrections.forEach((item, index) => {
         const div = document.createElement("div");
-        div.className = "flex justify-between items-center bg-white p-2.5 rounded-lg border border-gray-200 shadow-sm gap-3";
+        const isEditing = item.id === editingPendingId;
+        const activeClasses = isEditing ? "bg-amber-50 border-amber-400 ring-2 ring-amber-200" : "bg-white border-gray-200 hover:border-blue-300";
+
+        div.className = `flex justify-between items-center p-2.5 rounded-lg border shadow-sm gap-3 cursor-pointer transition ${activeClasses}`;
         
         const d = item.data;
+        const timeBadgeHtml = d.timeDifference === "削除申請" 
+            ? `<span class="bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold">🗑️ 削除申請</span>` 
+            : `<span class="font-bold text-emerald-600">${d.timeDifference} (${d.durationText})</span>`;
+
         div.innerHTML = `
             <div class="flex-grow min-w-0 grid grid-cols-12 gap-2 items-center">
                 <span class="col-span-2 font-mono text-gray-500 font-bold whitespace-nowrap">${item.requestDate}</span>
@@ -350,7 +393,7 @@ function renderPendingListUI() {
                     <span class="shrink-0">➔</span>
                     <span class="font-bold text-blue-600 truncate">${d.afterStartTime}-${d.afterEndTime} (${escapeHtml(d.task)})</span>
                 </div>
-                <div class="col-span-3 text-emerald-600 font-bold text-right whitespace-nowrap">${d.timeDifference}</div>
+                <div class="col-span-3 text-right whitespace-nowrap">${timeBadgeHtml}</div>
                 <div class="col-span-2 text-gray-400 truncate">${escapeHtml(d.memo || "メモなし")}</div>
             </div>
             <button type="button" class="btn-remove-pending text-red-500 hover:text-red-700 font-bold px-2 py-1 rounded hover:bg-red-50 text-xs whitespace-nowrap shrink-0" data-index="${index}">
@@ -358,16 +401,56 @@ function renderPendingListUI() {
             </button>
         `;
 
+        div.addEventListener("click", (e) => {
+            if (e.target.closest(".btn-remove-pending")) return;
+
+            editingPendingId = item.id;
+
+            document.getElementById("req-correct-log-id").value = item.targetLogId;
+            document.getElementById("req-correct-before-start").value = d.beforeStartTime;
+            document.getElementById("req-correct-before-end").value = d.beforeEndTime;
+            document.getElementById("req-correct-before-task").value = d.beforeTask; 
+            document.getElementById("req-correct-before-goal-title").value = d.beforeGoalTitle || "";
+
+            document.getElementById("req-correct-date").value = item.requestDate;
+            const taskSelect = document.getElementById("req-correct-task-select");
+            const startTimeInput = document.getElementById("req-correct-start-time");
+            const endTimeInput = document.getElementById("req-correct-end-time");
+            const memoInput = document.getElementById("req-correct-memo");
+            const addBtn = document.getElementById("btn-add-correction-queue");
+
+            if (taskSelect) taskSelect.value = d.task;
+            if (startTimeInput) startTimeInput.value = d.afterStartTime;
+            if (endTimeInput) endTimeInput.value = d.afterEndTime;
+            if (memoInput) memoInput.value = d.memo || "";
+
+            [taskSelect, startTimeInput, endTimeInput, memoInput].forEach(el => { if (el) el.disabled = false; });
+            
+            updateCorrectGoalDropdown(d.task, d.goalId || d.goalTitle);
+
+            if (addBtn) {
+                addBtn.disabled = false;
+                addBtn.innerHTML = "<span>✏️ 申請リストの項目を更新</span>";
+                addBtn.className = "w-full py-2 px-4 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg transition text-sm shadow-sm flex items-center justify-center gap-1";
+            }
+
+            updateFormTimePreview();
+            renderPendingListUI();
+        });
+
         div.querySelector(".btn-remove-pending").addEventListener("click", (e) => {
+            e.stopPropagation();
             const idx = parseInt(e.currentTarget.getAttribute("data-index"), 10);
-            pendingCorrections.splice(idx, 1);
+            const removed = pendingCorrections.splice(idx, 1)[0];
+            if (removed && removed.id === editingPendingId) {
+                resetCorrectionInputs();
+            }
             renderPendingListUI();
         });
 
         container.appendChild(div);
     });
 
-    // 新しい要素が追加された際に最新（一番下）へ自動スクロール
     container.scrollTop = container.scrollHeight;
 }
 
@@ -427,7 +510,7 @@ function setupRealtimeTimeline(dateStr) {
     if (cacheBadge) cacheBadge.textContent = "☁️ 通信中...";
 
     subscribeModalTimelineLogs(dateStr, ({ logs, isCache, changeType }) => {
-        currentTimelineLogs = logs; // 最新の元のログを退避
+        currentTimelineLogs = logs;
 
         if (cacheBadge) {
             if (isCache) {
@@ -438,7 +521,7 @@ function setupRealtimeTimeline(dateStr) {
         }
 
         renderTimelineList(container, logs);
-        renderPendingListUI(); // 元ログが取得できたら稼働時間表示も計算更新
+        renderPendingListUI();
     });
 }
 
@@ -453,10 +536,11 @@ function renderTimelineList(container, logs) {
         const item = document.createElement("div");
         item.className = "timeline-log-item border border-gray-200 rounded-lg p-2.5 bg-white hover:bg-blue-50 cursor-pointer transition flex flex-col gap-1 text-xs text-gray-700 shadow-sm";
         const goalBadge = log.goalTitle ? `<span class="bg-gray-100 border text-gray-500 px-1 rounded ml-1 scale-95 inline-block truncate max-w-[130px]">${escapeHtml(log.goalTitle)}</span>` : "";
-        
+        const durationMin = toMinutes(log.endTimeStr) - toMinutes(log.startTimeStr);
+
         item.innerHTML = `
             <div class="flex justify-between items-center font-bold">
-                <span class="text-blue-600 font-mono text-sm">${log.startTimeStr} - ${log.endTimeStr}</span>
+                <span class="text-blue-600 font-mono text-sm">${log.startTimeStr} - ${log.endTimeStr} (${durationMin}分)</span>
                 <span class="text-gray-800">${escapeHtml(log.task)}${goalBadge}</span>
             </div>
             ${log.memo ? `<p class="text-gray-400 truncate italic mt-0.5 pl-1 border-l">💬 ${escapeHtml(log.memo)}</p>` : ""}
@@ -485,9 +569,15 @@ function renderTimelineList(container, logs) {
             if (memoInput) memoInput.value = log.memo || "";
 
             [taskSelect, startTimeInput, endTimeInput, memoInput].forEach(el => { if (el) el.disabled = false; });
-            if (addBtn) addBtn.disabled = false;
+            
+            if (addBtn) {
+                addBtn.disabled = false;
+                addBtn.innerHTML = "<span>➕ 申請リストに追加</span>";
+                addBtn.className = "w-full py-2 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg transition text-sm shadow-sm flex items-center justify-center gap-1";
+            }
 
             updateCorrectGoalDropdown(log.task, log.goalId || log.goalTitle);
+            updateFormTimePreview();
         });
 
         container.appendChild(item);
@@ -495,6 +585,7 @@ function renderTimelineList(container, logs) {
 }
 
 function resetCorrectionInputs() {
+    editingPendingId = null;
     const fields = ["req-correct-log-id", "req-correct-before-start", "req-correct-before-end", "req-correct-before-task", "req-correct-before-goal-title", "req-correct-task-select", "req-correct-goal-select", "req-correct-start-time", "req-correct-end-time", "req-correct-memo"];
     fields.forEach(id => {
         const el = document.getElementById(id);
@@ -503,20 +594,35 @@ function resetCorrectionInputs() {
             if (!id.startsWith("req-correct-before-") && id !== "req-correct-log-id") el.disabled = true; 
         }
     });
+    
     const addBtn = document.getElementById("btn-add-correction-queue");
-    if (addBtn) addBtn.disabled = true;
+    if (addBtn) {
+        addBtn.disabled = true;
+        addBtn.innerHTML = "<span>➕ 申請リストに追加</span>";
+        addBtn.className = "w-full py-2 px-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white font-bold rounded-lg transition text-sm shadow-sm flex items-center justify-center gap-1";
+    }
 
     const container = document.getElementById("req-correct-goal-container");
     if (container) container.classList.add("hidden");
+
+    updateFormTimePreview();
 }
 
-/**
- * 📦 呼び出し元（親モーダルなど）が一括送信時にデータを取り出す関数
- */
 export function getPendingTimeCorrectDataList() {
     if (pendingCorrections.length === 0) {
         throw new Error("申請リストにデータが追加されていません。「リストに追加」を実行してください。");
     }
+
+    // 送信のタイミングで重複チェックを実行
+    const dates = [...new Set(pendingCorrections.map(p => p.requestDate))];
+    for (const dateStr of dates) {
+        const simulatedLogs = getSimulatedLogsForDate(dateStr, pendingCorrections);
+        const overlapError = checkTimeOverlap(simulatedLogs);
+        if (overlapError) {
+            throw new Error(`[${dateStr}] ${overlapError}`);
+        }
+    }
+
     return pendingCorrections.map(item => ({
         requestDate: item.requestDate,
         targetLogId: item.targetLogId,

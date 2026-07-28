@@ -3,7 +3,7 @@
 import { db } from "./firebase.js"; 
 import { doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { fixCheckoutModal } from "./components/modal/index.js"; 
-import { WORKER_URL } from "./views/client/timerState.js"; // 💡 Worker URL をインポート
+import { WORKER_URL } from "./views/client/timerState.js"; // 💡 Worker URL のインポート
 
 export function formatDuration(seconds) {
     if (isNaN(seconds) || seconds < 0) return "00:00:00";
@@ -134,14 +134,42 @@ export function escapeHtml(unsafe) {
 }
 
 /**
- * テキスト内のURLをリンクに変換し、さらに #文字# を赤色で少し大きく装飾する関数
- * 画像URLやチャットツールの画像添付URLの場合は <img> タグのみを生成し、中央揃えで表示します。
- * ※セキュリティのため、必ず先に escapeHtml を通した文字列を渡してください。
- */
+ * 🌟 Google Chat等の期限付き画像をブラウザ側でBlob化し、Worker CDNへ保存して永久URLを取得する関数
+ */
+export async function convertAndUploadToCDN(googleImageUrl) {
+    try {
+        // 1. ブラウザ自身の権限・クッキーを使って画像データを取得
+        const resp = await fetch(googleImageUrl);
+        if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`);
+        
+        const blob = await resp.blob();
+        const contentType = blob.type || "image/png";
+
+        // 2. Worker の /upload-image へ POST 送信
+        const uploadResp = await fetch(`${WORKER_URL}/upload-image`, {
+            method: "POST",
+            headers: { "Content-Type": contentType },
+            body: blob
+        });
+
+        if (!uploadResp.ok) throw new Error("Worker upload failed");
+
+        const result = await uploadResp.json();
+        if (result.success && result.cdnUrl) {
+            return result.cdnUrl; // 🚀 永久CDN URLを返す
+        }
+    } catch (err) {
+        console.warn("CDN image auto-save skipped/failed:", err);
+    }
+    return googleImageUrl; // 失敗時は元のURLをフォールバック
+}
+
+/**
+ * テキスト内のURLをリンク・画像に変換する処理
+ */
 export function linkify(escapedText) {
     if (!escapedText) return "";
     
-    // 0. 【自動修復】
     let healedText = escapedText;
     const healRegex = /(https?:\/\/[^\s<>#"]+)[\s\n]+([a-zA-Z0-9%=\?&\-\+_\/;]{15,})/gi;
     
@@ -151,7 +179,6 @@ export function linkify(escapedText) {
         healedText = healedText.replace(healRegex, "$1$2");
     } while (healedText !== previousText);
     
-    // 1. URLの検知と置換
     const urlRegex = /(\n*)(https?:\/\/[^\s\n<>"]+)/g;
     let processedText = healedText.replace(urlRegex, (match, beforeLines, url) => {
         
@@ -159,15 +186,35 @@ export function linkify(escapedText) {
         const isImageContentType = /content_type=image/i.test(url);
         
         if (hasImageExtension || isImageContentType) {
-            // 🌟 修正: 画像URLを Worker (CDNプロキシ) 経由に変換する
-            const proxiedUrl = `${WORKER_URL}/proxy-image?url=${encodeURIComponent(url)}`;
-            return `<div class="my-2 flex justify-center"><img src="${proxiedUrl}" alt="貼り付けられた画像" class="max-w-full sm:max-w-xs md:max-w-md h-auto rounded-lg shadow-md border border-gray-200" /></div>`;
+            // 💡 Google系の画像URLかどうかを判定
+            const isGoogleImage = /googleusercontent\.com|chat\.google\.com|drive\.google\.com/i.test(url);
+
+            if (isGoogleImage && !url.includes("/cdn-image/")) {
+                // 🌟 Google画像の場合は、読み込み時に自動でCDN化して書き換える
+                const imgId = "cdn-img-" + Math.random().toString(36).substring(2, 9);
+                
+                // 非同期でCDNにアップロードし、完了したら src を CDN URL に書き換える
+                setTimeout(async () => {
+                    const cdnUrl = await convertAndUploadToCDN(url);
+                    const imgEl = document.getElementById(imgId);
+                    if (imgEl && cdnUrl !== url) {
+                        imgEl.src = cdnUrl;
+                    }
+                }, 10);
+
+                return `<div class="my-2 flex justify-center">
+                    <img id="${imgId}" src="${url}" alt="貼り付けられた画像" class="max-w-full sm:max-w-xs md:max-w-md h-auto rounded-lg shadow-md border border-gray-200" />
+                </div>`;
+            }
+
+            return `<div class="my-2 flex justify-center">
+                <img src="${url}" alt="貼り付けられた画像" class="max-w-full sm:max-w-xs md:max-w-md h-auto rounded-lg shadow-md border border-gray-200" />
+            </div>`;
         }
         
         return `${beforeLines}<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline break-all">${url}</a>`;
     });
 
-    // 2. #（文字）# の装飾処理
     const decorRegex = /#([^#\n]+)#/g;
     processedText = processedText.replace(decorRegex, (match, p1) => {
         return `<span class="text-red-600 text-base font-bold">${p1}</span>`;

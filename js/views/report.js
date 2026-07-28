@@ -161,9 +161,9 @@ function handleReaggregateClick() {
 
             if (response.ok) {
                 alert(`${selectedDate} のサマリーを再生成・更新しました！`);
-                modal.classList.add("hidden");
-                // 再描画（Worker側でCDNキャッシュが自動破棄されるため、最新データが読み込まれます）
-                await fetchAndRenderForCurrentMonth();
+    modal.classList.add("hidden");
+    // 🌟 true を渡して強制フレッシュ描画
+    await fetchAndRenderForCurrentMonth(true);
             } else {
                 const errData = await response.json().catch(() => ({}));
                 if (errorEl) errorEl.textContent = errData.error || "サーバーエラーが発生しました";
@@ -182,14 +182,13 @@ function handleReaggregateClick() {
 
 // --- データ取得・描画ロジック (CDN 統合版) ---
 
-async function fetchAndRenderForCurrentMonth() {
+async function fetchAndRenderForCurrentMonth(forceRefresh = false) {
     const { start, end } = getMonthDateRange(currentReportDate);
     const todayStr = getTodayJSTDateString();
 
     if (reportTitleEl) reportTitleEl.textContent = "データを読み込み中...";
 
     try {
-        // 対象月の日付リスト (start 〜 end) を作成
         const dateList = [];
         let curr = new Date(start);
         const endDate = new Date(end);
@@ -204,10 +203,11 @@ async function fetchAndRenderForCurrentMonth() {
         const pastDates = dateList.filter(d => d < todayStr);
         const includesToday = dateList.includes(todayStr);
 
-        // 🌟 1. 過去日のログを Cloudflare CDN (Worker) から一括並列取得
+        // 🌟 過去日のログ取得 (forceRefresh が true の場合はタイムスタンプを付けて CDN キャッシュをバイパス)
         const pastPromises = pastDates.map(async (dateStr) => {
             try {
-                const resp = await fetch(`${WORKER_URL}/get-daily-summary?date=${dateStr}`);
+                const cacheBuster = forceRefresh ? `&_t=${Date.now()}` : "";
+                const resp = await fetch(`${WORKER_URL}/get-daily-summary?date=${dateStr}${cacheBuster}`);
                 if (resp.ok) {
                     const data = await resp.json();
                     return data.logs || [];
@@ -218,7 +218,6 @@ async function fetchAndRenderForCurrentMonth() {
             return [];
         });
 
-        // 🌟 2. 今日の日付が含まれている場合は、Firestore の work_logs から最新のリアルタイムデータを取得
         let todayPromise = Promise.resolve([]);
         if (includesToday) {
             todayPromise = (async () => {
@@ -236,7 +235,6 @@ async function fetchAndRenderForCurrentMonth() {
             })();
         }
 
-        // 3. 全日付のデータを統合
         const [pastResults, todayLogs] = await Promise.all([
             Promise.all(pastPromises),
             todayPromise

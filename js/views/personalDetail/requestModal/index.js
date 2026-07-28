@@ -1,6 +1,6 @@
 // js/views/personalDetail/requestModal/index.js
 import { db, userId, userName } from "../../../main.js";
-import { collection, query, where, onSnapshot, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { collection, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // ⚡ 各フォームから一括データ取得用の関数をインポート
 import { renderAddFormHTML, initAddForm, getPendingAddDataList } from "./addForm.js";
@@ -8,11 +8,13 @@ import { renderTimeCorrectFormHTML, initTimeCorrectForm, getPendingTimeCorrectDa
 import { renderCountCorrectFormHTML, initCountCorrectForm, getPendingCountCorrectDataList } from "./countCorrectForm.js";
 import { renderForgetCheckoutFormHTML, initForgetCheckoutForm, getForgetCheckoutFormData } from "./forgetCheckoutForm.js";
 
+// 🌟 logData.js からキャッシュ取得関数をインポート
+import { getCachedLogsForDate } from "../logData.js";
+
 // -------------------------------------------------------------
-// モーダル共通 リアルタイム差分監視（docChanges管理）
+// モーダル共通 リアルタイム差分監視（今回はメモリキャッシュを利用）
 // -------------------------------------------------------------
-let activeUnsubscribe = null;
-const modalLogsMap = new Map(); // docId -> logData
+let activeUnsubscribe = null; // 他関数との互換性のために一応残す
 
 function convertTime(t) {
     if (!t) return "";
@@ -23,69 +25,43 @@ function convertTime(t) {
 }
 
 /**
- * onSnapshot + docChanges() によるリアルタイム差分購読関数
+ * キャッシュからデータを取得し、即座に画面へ反映する関数
  * @param {string} dateStr 対象日付 (YYYY-MM-DD)
  * @param {function} callback データ変更時に実行する描画用コールバック
- * @returns {function} リスナー解除用関数
+ * @returns {function} リスナー解除用関数（今回はダミー）
  */
 export function subscribeModalTimelineLogs(dateStr, callback) {
-    if (activeUnsubscribe) {
-        activeUnsubscribe();
-        activeUnsubscribe = null;
-    }
-    modalLogsMap.clear();
+    // 1. キャッシュから対象日のログを取得
+    // ※ 申請モーダルは「自分」の記録を修正する前提なので、userName を使用します
+    const targetDayLogs = getCachedLogsForDate(userName, dateStr);
 
-    const q = query(
-        collection(db, "work_logs"),
-        where("userId", "==", userId),
-        where("date", "==", dateStr)
-    );
+    // 2. モーダル用のフォーマットに変換
+    const formattedLogs = targetDayLogs.map(log => {
+        const countVal = log.contribution !== undefined 
+            ? log.contribution 
+            : (log.count !== undefined ? log.count : 0);
 
-    activeUnsubscribe = onSnapshot(q, (snapshot) => {
-        const isFromCache = snapshot.metadata.fromCache;
-        let lastChangeType = "";
-
-        snapshot.docChanges().forEach((change) => {
-            const docId = change.doc.id;
-            lastChangeType = change.type;
-
-            if (change.type === "added" || change.type === "modified") {
-                const data = change.doc.data();
-
-                // 💡【修正】contribution（工数単体登録の件数）と count（タイマー等の件数）の両方に対応
-                const countVal = data.contribution !== undefined 
-                    ? data.contribution 
-                    : (data.count !== undefined ? data.count : 0);
-
-                modalLogsMap.set(docId, {
-                    id: docId,
-                    type: data.type || "work", // 💡 "goal"(工数登録) か "work"(タイマー業務) かを保持
-                    task: data.task || "不明",
-                    startTimeStr: convertTime(data.startTime),
-                    endTimeStr: convertTime(data.endTime),
-                    goalId: data.goalId || null,
-                    goalTitle: data.goalTitle || "",
-                    count: countVal,
-                    memo: data.memo || ""
-                });
-            } else if (change.type === "removed") {
-                modalLogsMap.delete(docId);
-            }
-        });
-
-        const sortedLogs = Array.from(modalLogsMap.values()).sort((a, b) => 
-            a.startTimeStr.localeCompare(b.startTimeStr)
-        );
-
-        callback({ logs: sortedLogs, isCache: isFromCache, changeType: lastChangeType });
+        return {
+            id: log.id,
+            type: log.type || "work",
+            task: log.task || "不明",
+            startTimeStr: convertTime(log.startTime),
+            endTimeStr: convertTime(log.endTime),
+            goalId: log.goalId || null,
+            goalTitle: log.goalTitle || "",
+            count: countVal,
+            memo: log.memo || ""
+        };
     });
 
-    return () => {
-        if (activeUnsubscribe) {
-            activeUnsubscribe();
-            activeUnsubscribe = null;
-        }
-    };
+    // 3. 時間順にソート
+    formattedLogs.sort((a, b) => a.startTimeStr.localeCompare(b.startTimeStr));
+
+    // 4. 即座にコールバックを返す（通信待ち時間ゼロ！）
+    callback({ logs: formattedLogs, isCache: true, changeType: "メモリキャッシュ" });
+
+    // リスナー解除関数は不要になったので空の関数を返す
+    return () => {};
 }
 
 function createUnifiedRequestModalHTML() {

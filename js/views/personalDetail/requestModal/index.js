@@ -1,6 +1,6 @@
 // js/views/personalDetail/requestModal/index.js
 import { db, userId, userName } from "../../../main.js";
-import { collection, query, where, onSnapshot, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { collection, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // ⚡ 各フォームから一括データ取得用の関数をインポート
 import { renderAddFormHTML, initAddForm, getPendingAddDataList } from "./addForm.js";
@@ -8,84 +8,120 @@ import { renderTimeCorrectFormHTML, initTimeCorrectForm, getPendingTimeCorrectDa
 import { renderCountCorrectFormHTML, initCountCorrectForm, getPendingCountCorrectDataList } from "./countCorrectForm.js";
 import { renderForgetCheckoutFormHTML, initForgetCheckoutForm, getForgetCheckoutFormData } from "./forgetCheckoutForm.js";
 
+// 🌟 logData.js からキャッシュ取得関数をインポート
+import { getCachedLogsForDate } from "../logData.js";
+import { WORKER_URL } from "../../client/timerState.js"; // 💡 Worker URL のインポート
+
 // -------------------------------------------------------------
-// モーダル共通 リアルタイム差分監視（docChanges管理）
+// モーダル共通 リアルタイム差分監視（CDN + メモリキャッシュ対応版）
 // -------------------------------------------------------------
 let activeUnsubscribe = null;
-const modalLogsMap = new Map(); // docId -> logData
+
+/**
+ * 日本時間 (JST) の今日の日付文字列 (YYYY-MM-DD) を取得
+ */
+function getTodayJSTDateString() {
+    const now = new Date();
+    const jstOffset = 9 * 60;
+    const jstTime = new Date(now.getTime() + (jstOffset + now.getTimezoneOffset()) * 60000);
+    const yyyy = jstTime.getFullYear();
+    const mm = String(jstTime.getMonth() + 1).padStart(2, '0');
+    const dd = String(jstTime.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+}
 
 function convertTime(t) {
     if (!t) return "";
     if (typeof t === "string" && t.includes(":") && t.length <= 5) return t;
+    if (typeof t === "string" && t.includes("T")) {
+        const d = new Date(t);
+        if (!isNaN(d.getTime())) {
+            return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+        }
+    }
     const d = t.toDate ? t.toDate() : new Date(t);
     if (isNaN(d.getTime())) return "";
     return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 /**
- * onSnapshot + docChanges() によるリアルタイム差分購読関数
+ * 日付（過去か今日か）に応じてデータ取得ソースを自動切り替えする関数
  * @param {string} dateStr 対象日付 (YYYY-MM-DD)
- * @param {function} callback データ変更時に実行する描画用コールバック
- * @returns {function} リスナー解除用関数
+ * @param {function} callback データ描画用コールバック
  */
-export function subscribeModalTimelineLogs(dateStr, callback) {
-    if (activeUnsubscribe) {
-        activeUnsubscribe();
-        activeUnsubscribe = null;
-    }
-    modalLogsMap.clear();
+export async function subscribeModalTimelineLogs(dateStr, callback) {
+    const todayStr = getTodayJSTDateString();
 
-    const q = query(
-        collection(db, "work_logs"),
-        where("userId", "==", userId),
-        where("date", "==", dateStr)
-    );
+    // 🌟 1. 昨日以前（過去日）の場合は Cloudflare CDN から超高速取得
+    if (dateStr < todayStr) {
+        try {
+            // 🌟 修正: &v=20260729 を付与してWorkerのキャッシュキーと統一し、古い空キャッシュを回避
+            const resp = await fetch(`${WORKER_URL}/get-daily-summary?date=${dateStr}&v=20260729`);
+            if (resp.ok) {
+                const resData = await resp.json();
+                const allLogs = resData.logs || [];
 
-    activeUnsubscribe = onSnapshot(q, (snapshot) => {
-        const isFromCache = snapshot.metadata.fromCache;
-        let lastChangeType = "";
+                // 自分のログ（userName または userId が一致するもの）のみ抽出
+                const targetDayLogs = allLogs.filter(log => 
+                    (log.userName && log.userName === userName) || 
+                    (log.userId && log.userId === userId)
+                );
 
-        snapshot.docChanges().forEach((change) => {
-            const docId = change.doc.id;
-            lastChangeType = change.type;
+                const formattedLogs = targetDayLogs.map(log => {
+                    const countVal = log.contribution !== undefined 
+                        ? log.contribution 
+                        : (log.count !== undefined ? log.count : 0);
 
-            if (change.type === "added" || change.type === "modified") {
-                const data = change.doc.data();
-
-                // 💡【修正】contribution（工数単体登録の件数）と count（タイマー等の件数）の両方に対応
-                const countVal = data.contribution !== undefined 
-                    ? data.contribution 
-                    : (data.count !== undefined ? data.count : 0);
-
-                modalLogsMap.set(docId, {
-                    id: docId,
-                    type: data.type || "work", // 💡 "goal"(工数登録) か "work"(タイマー業務) かを保持
-                    task: data.task || "不明",
-                    startTimeStr: convertTime(data.startTime),
-                    endTimeStr: convertTime(data.endTime),
-                    goalId: data.goalId || null,
-                    goalTitle: data.goalTitle || "",
-                    count: countVal,
-                    memo: data.memo || ""
+                    return {
+                        id: log.id,
+                        type: log.type || "work",
+                        task: log.task || "不明",
+                        startTimeStr: convertTime(log.startTime),
+                        endTimeStr: convertTime(log.endTime),
+                        goalId: log.goalId || null,
+                        goalTitle: log.goalTitle || "",
+                        count: countVal,
+                        memo: log.memo || ""
+                    };
                 });
-            } else if (change.type === "removed") {
-                modalLogsMap.delete(docId);
+
+                formattedLogs.sort((a, b) => a.startTimeStr.localeCompare(b.startTimeStr));
+
+                // ⚡ CDN キャッシュから即座にコールバック実行 (Firestore Read 0)
+                callback({ logs: formattedLogs, isCache: true, changeType: "Cloudflare CDN" });
+                return () => {};
             }
-        });
+        } catch (e) {
+            console.error(`RequestModal CDN fetch error (${dateStr}):`, e);
+        }
+    }
 
-        const sortedLogs = Array.from(modalLogsMap.values()).sort((a, b) => 
-            a.startTimeStr.localeCompare(b.startTimeStr)
-        );
+    // 🌟 2. 今日の日付、または CDN 取得失敗時のフォールバック: メモリキャッシュから取得
+    const targetDayLogs = getCachedLogsForDate(userName, dateStr);
 
-        callback({ logs: sortedLogs, isCache: isFromCache, changeType: lastChangeType });
+    const formattedLogs = targetDayLogs.map(log => {
+        const countVal = log.contribution !== undefined 
+            ? log.contribution 
+            : (log.count !== undefined ? log.count : 0);
+
+        return {
+            id: log.id,
+            type: log.type || "work",
+            task: log.task || "不明",
+            startTimeStr: convertTime(log.startTime),
+            endTimeStr: convertTime(log.endTime),
+            goalId: log.goalId || null,
+            goalTitle: log.goalTitle || "",
+            count: countVal,
+            memo: log.memo || ""
+        };
     });
 
-    return () => {
-        if (activeUnsubscribe) {
-            activeUnsubscribe();
-            activeUnsubscribe = null;
-        }
-    };
+    formattedLogs.sort((a, b) => a.startTimeStr.localeCompare(b.startTimeStr));
+
+    callback({ logs: formattedLogs, isCache: true, changeType: "メモリキャッシュ" });
+
+    return () => {};
 }
 
 function createUnifiedRequestModalHTML() {
@@ -226,9 +262,6 @@ async function handleRequestSubmit() {
     }
 
     try {
-        // -------------------------------------------------------------
-        // 📦 リスト（複数件一括送信）対応の申請タイプ処理
-        // -------------------------------------------------------------
         if (type === "time_correct" || type === "add" || type === "count_correct") {
             let requestsList = [];
             
@@ -240,7 +273,6 @@ async function handleRequestSubmit() {
                 requestsList = getPendingCountCorrectDataList();
             }
 
-            // 📋 確認ダイアログテキスト表示の分岐
             const summaryText = requestsList.map((req, idx) => {
                 const d = req.data;
                 if (type === "time_correct") {
@@ -262,7 +294,6 @@ async function handleRequestSubmit() {
             sendBtn.disabled = true;
             sendBtn.textContent = "送信中...";
 
-            // 📦 申請データを1件ずつ個別にFirestoreへ保存
             for (const payload of requestsList) {
                 await addDoc(collection(db, "work_log_requests"), {
                     userId: userId,
@@ -284,9 +315,6 @@ async function handleRequestSubmit() {
             return;
         }
 
-        // -------------------------------------------------------------
-        // 📝 その他の申請タイプ（退勤忘れなど・単一送信）
-        // -------------------------------------------------------------
         let payload = null;
         if (type === "forget_checkout") { 
             payload = getForgetCheckoutFormData(); 

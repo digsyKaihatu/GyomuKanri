@@ -5,8 +5,22 @@ import { addDoc, collection, doc, setDoc, Timestamp, runTransaction, query, wher
 import { getJSTDateString, linkify } from "../../utils.js";
 import { setHasContributed } from "./timer.js";
 import { createLineChart, destroyCharts } from "../../components/chart.js";
+import { WORKER_URL } from "./timerState.js"; // 💡 Worker URL のインポート
 
 let clientLineChartInstance = null;
+
+/**
+ * 日本時間 (JST) の今日の日付文字列 (YYYY-MM-DD) を取得
+ */
+function getTodayJSTDateString() {
+    const now = new Date();
+    const jstOffset = 9 * 60;
+    const jstTime = new Date(now.getTime() + (jstOffset + now.getTimezoneOffset()) * 60000);
+    const yyyy = jstTime.getFullYear();
+    const mm = String(jstTime.getMonth() + 1).padStart(2, '0');
+    const dd = String(jstTime.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+}
 
 // 直近7日間の日付（YYYY-MM-DD）の配列を取得するヘルパー関数
 function getLast7Days() {
@@ -34,20 +48,58 @@ async function renderClientProgressChart(taskName, finalGoalId) {
 
     try {
         const dateList = getLast7Days();
-        const startDate = dateList[0];
+        const todayStr = getTodayJSTDateString();
 
-        // 軽量クエリ: 直近7日分のみ取得
-        const q = query(
-            collection(db, "work_logs"),
-            where("goalId", "==", finalGoalId),
-            where("date", ">=", startDate)
-        );
-        const snapshot = await getDocs(q);
+        const pastDates = dateList.filter(d => d < todayStr);
+        const includesToday = dateList.includes(todayStr);
 
+        // 🌟 1. 過去6日分のデータを Cloudflare CDN (Worker) から並列取得
+        const pastPromises = pastDates.map(async (dateStr) => {
+            try {
+                const resp = await fetch(`${WORKER_URL}/get-daily-summary?date=${dateStr}`);
+                if (resp.ok) {
+                    const data = await resp.json();
+                    const logs = data.logs || [];
+                    // 該当する goalId のログのみ抽出
+                    return logs.filter(l => l.goalId === finalGoalId);
+                }
+            } catch (e) {
+                console.error(`Client progress CDN fetch error (${dateStr}):`, e);
+            }
+            return [];
+        });
+
+        // 🌟 2. 本日分のみ Firestore の work_logs から最新データを取得
+        let todayPromise = Promise.resolve([]);
+        if (includesToday) {
+            todayPromise = (async () => {
+                try {
+                    const qToday = query(
+                        collection(db, "work_logs"),
+                        where("goalId", "==", finalGoalId),
+                        where("date", "==", todayStr)
+                    );
+                    const snap = await getDocs(qToday);
+                    return snap.docs.map(d => d.data());
+                } catch (e) {
+                    console.error("Client progress today fetch error:", e);
+                    return [];
+                }
+            })();
+        }
+
+        // 3. 過去データと本日分データを統合
+        const [pastResults, todayLogs] = await Promise.all([
+            Promise.all(pastPromises),
+            todayPromise
+        ]);
+
+        const allRelevantLogs = [...pastResults.flat(), ...todayLogs];
+
+        // 集計用マップの構築
         const userMap = {};
 
-        snapshot.forEach(docSnap => {
-            const data = docSnap.data();
+        allRelevantLogs.forEach(data => {
             if (dateList.includes(data.date)) {
                 const uId = data.userId || "unknown";
                 const uName = data.userName || "不明なユーザー";
@@ -59,10 +111,12 @@ async function renderClientProgressChart(taskName, finalGoalId) {
                     };
                     dateList.forEach(d => userMap[uId].counts[d] = 0);
                 }
-                userMap[uId].counts[data.date] += (data.contribution || 0);
+                const contributionVal = Number(data.contribution) || Number(data.count) || 0;
+                userMap[uId].counts[data.date] += contributionVal;
             }
         });
 
+        // 自分が含まれていない場合は初期化
         if (!userMap[userId]) {
             userMap[userId] = {
                 name: userName,
@@ -161,7 +215,6 @@ export async function handleUpdateGoalProgress(taskName, goalId, inputElement) {
 
         updateGlobalTaskObjects(newTaskList);
 
-        // 画面の数値・バー・パーセンテージを即時更新
         const valEl = document.getElementById("ui-current-val");
         const barEl = document.getElementById("ui-current-bar");
         const pctEl = document.getElementById("ui-current-percent");
@@ -184,7 +237,7 @@ export async function handleUpdateGoalProgress(taskName, goalId, inputElement) {
         if (error.message === "TASK_NOT_FOUND" || error.message === "GOAL_NOT_FOUND") {
             alert("対象の業務または工数が削除されているため、更新できませんでした。");
         } else {
-            alert("【不具合発生のお知らせ】\n現在、業務管理アプリで一時的な不具合が発生しています。\n\nお手数ですが、以下の時間帯に再度「件数入力」または「申請」をお願いいたします。\n\n■ 16時より前 ➔ 本日の16時以降に\n■ 16時以降   ➔ 明日の16時以降に");
+            alert("【不具合発生のお知らせ】\n現在、業務管理アプリで一時的な不具合が発生しています。\n\nお手数ですが、以下の時間帯に再度「件数入力」または「申請」をお願いいたします。\n\n■ 16時より前 ➔ 本日の16時以降に\n■ 16時以降    ➔ 明日の16時以降に");
         }
     }
 }
@@ -228,7 +281,6 @@ export function renderSingleGoalDisplay(task, goalId) {
         deadlineHtml += `</div>`;
     }
 
-    // ★ 現在/目標値、パーセンテージ、プログレスバーを完全復活
     container.innerHTML = `
         <div class="border-b pb-4 mb-4">
             <h3 class="text-sm font-bold text-gray-700 mb-2">${escapeHtml(goal.title)}</h3>

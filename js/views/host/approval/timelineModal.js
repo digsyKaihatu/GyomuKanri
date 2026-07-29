@@ -1,10 +1,23 @@
 // js/views/host/approval/timelineModal.js
 import { db } from "../../../main.js";
-import { collection, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { collection, query, where, onSnapshot, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { escapeHtml, formatTime, formatDuration } from "../../../utils.js";
 import { handleApprove, handleRejectRequest, handleBulkApprove, handleBulkRejectRequest } from "./approvalActions.js";
+import { WORKER_URL } from "../../client/timerState.js"; // 💡 Worker URL のインポート
 
 let currentUnsubscribes = [];
+const summaryCache = new Map(); // dateStr -> パース済みの全ユーザーログ配列
+
+/**
+ * daily_summaries のメモリキャッシュをクリアする関数 (承認・却下時等に呼び出し用)
+ */
+export function invalidateSummaryCache(dateStr) {
+    if (dateStr) {
+        summaryCache.delete(dateStr);
+    } else {
+        summaryCache.clear();
+    }
+}
 
 function parseTimeToSeconds(timeStr) {
     if (!timeStr || typeof timeStr !== 'string' || timeStr === '変更なし') return null;
@@ -32,6 +45,39 @@ function parseTimeDiffToSeconds(diffStr) {
     }
     
     return sign * minutes * 60;
+}
+
+/**
+ * 日本時間 (JST) の今日の日付文字列 (YYYY-MM-DD) を取得
+ */
+function getTodayJSTDateString() {
+    const now = new Date();
+    const jstOffset = 9 * 60;
+    const jstTime = new Date(now.getTime() + (jstOffset + now.getTimezoneOffset()) * 60000);
+    const yyyy = jstTime.getFullYear();
+    const mm = String(jstTime.getMonth() + 1).padStart(2, '0');
+    const dd = String(jstTime.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+}
+
+/**
+ * Timestamp / Date / ISO文字列 / 時刻文字列 を安全に HH:MM フォーマットへ変換
+ */
+function formatLogTime(t) {
+    if (!t) return '---';
+    if (t.toDate && typeof t.toDate === 'function') {
+        return formatTime(t.toDate());
+    }
+    if (typeof t === 'string') {
+        if (t.includes('T')) {
+            const d = new Date(t);
+            return isNaN(d.getTime()) ? '---' : formatTime(d);
+        }
+        if (t.includes(':') && t.length <= 8) {
+            return t.substring(0, 5);
+        }
+    }
+    return formatTime(t) || '---';
 }
 
 export function showTimelineModal(targetUserId, targetUserName, dateStr) {
@@ -75,7 +121,7 @@ export function showTimelineModal(targetUserId, targetUserName, dateStr) {
         if (e.target === document.getElementById("approval-timeline-modal")) closeTimelineModal(); 
     };
 
-    setupTimelineSnapshotWithDocChanges(targetUserId, dateStr);
+    setupTimelineData(targetUserId, dateStr);
 }
 
 function closeTimelineModal() {
@@ -84,19 +130,89 @@ function closeTimelineModal() {
     document.getElementById("approval-timeline-modal")?.remove();
 }
 
-function setupTimelineSnapshotWithDocChanges(targetUserId, dateStr) {
+/**
+ * 日付（過去か今日か）に応じてデータ取得ソースを最適化切り替え
+ */
+async function setupTimelineData(targetUserId, dateStr) {
+    const todayStr = getTodayJSTDateString();
     const modalBodyEl = document.getElementById("timeline-modal-body");
     const cacheBadge = document.getElementById("timeline-cache-badge");
 
-    const logsMap = new Map();
     const requestsMap = new Map();
+
+    // 申請データのリアルタイム監視（過去日でも未承認申請が存在する可能性があるため）
+    const qRequests = query(
+        collection(db, "work_log_requests"),
+        where("userId", "==", targetUserId),
+        where("requestDate", "==", dateStr),
+        where("status", "==", "pending")
+    );
+
+    if (dateStr < todayStr) {
+    // 🌟 【過去日】 Cloudflare CDN (Worker) から 1 回取得（またはメモリキャッシュ）
+    let pastLogs = [];
+    try {
+        if (summaryCache.has(dateStr)) {
+            const allLogs = summaryCache.get(dateStr);
+            pastLogs = allLogs.filter(log => log.userId === targetUserId);
+            if (cacheBadge) cacheBadge.textContent = "⚡ ブラウザメモリキャッシュ";
+        } else {
+            if (cacheBadge) cacheBadge.textContent = "📡 CDN (Edge) から取得中...";
+            
+            // 🌟 修正: &v=20260729 を付与して Worker のキャッシュキーと統一
+            const resp = await fetch(`${WORKER_URL}/get-daily-summary?date=${dateStr}&v=20260729`);
+            
+            if (resp.ok) {
+                const resData = await resp.json();
+                const allLogs = resData.logs || [];
+                summaryCache.set(dateStr, allLogs);
+                pastLogs = allLogs.filter(log => log.userId === targetUserId);
+            }
+            if (cacheBadge) cacheBadge.textContent = "🚀 CDN 読み込み完了";
+        }
+    } catch (err) {
+        console.error(`daily_summaries 読み込みエラー (${dateStr}):`, err);
+    }
+
+        // 申請データの監視と合わせて描画
+        const unsubRequests = onSnapshot(qRequests, (snapshot) => {
+            snapshot.docChanges().forEach((change) => {
+                const docId = change.doc.id;
+                if (change.type === "added" || change.type === "modified") {
+                    requestsMap.set(docId, change.doc);
+                } else if (change.type === "removed") {
+                    requestsMap.delete(docId);
+                }
+            });
+
+            const sortedLogs = [...pastLogs].sort((a, b) => {
+                const tA = parseTimeToSeconds(formatLogTime(a.startTime)) || 0;
+                const tB = parseTimeToSeconds(formatLogTime(b.startTime)) || 0;
+                return tA - tB;
+            });
+
+            render2ColumnTimelineUI(modalBodyEl, sortedLogs, Array.from(requestsMap.values()));
+        });
+
+        currentUnsubscribes.push(unsubRequests);
+
+    } else {
+        // 🌟 【今日】 work_logs コレクションからリアルタイム監視 (onSnapshot)
+        setupTodayTimelineSnapshot(targetUserId, dateStr, requestsMap, qRequests);
+    }
+}
+
+function setupTodayTimelineSnapshot(targetUserId, dateStr, requestsMap, qRequests) {
+    const modalBodyEl = document.getElementById("timeline-modal-body");
+    const cacheBadge = document.getElementById("timeline-cache-badge");
+    const logsMap = new Map();
 
     const render = (isFromCache, changeType) => {
         if (cacheBadge) {
             if (isFromCache) {
-                cacheBadge.textContent = "⚡ キャッシュ表示中";
+                cacheBadge.textContent = "⚡ Firestoreキャッシュ表示中";
             } else {
-                cacheBadge.textContent = changeType ? `✨ 差分適用 (${changeType})` : "☁️ Firestore同期済";
+                cacheBadge.textContent = changeType ? `✨ 差分適用 (${changeType})` : "☁️ Firestoreリアルタイム同期済";
             }
         }
 
@@ -107,7 +223,6 @@ function setupTimelineSnapshotWithDocChanges(targetUserId, dateStr) {
         });
 
         const requestsList = Array.from(requestsMap.values());
-
         render2ColumnTimelineUI(modalBodyEl, sortedLogs, requestsList);
     };
 
@@ -137,13 +252,6 @@ function setupTimelineSnapshotWithDocChanges(targetUserId, dateStr) {
     });
 
     // 2. 申請データのリアルタイム監視
-    const qRequests = query(
-        collection(db, "work_log_requests"),
-        where("userId", "==", targetUserId),
-        where("requestDate", "==", dateStr),
-        where("status", "==", "pending")
-    );
-
     const unsubRequests = onSnapshot(qRequests, (snapshot) => {
         const isFromCache = snapshot.metadata.fromCache;
         let lastChangeType = "";
@@ -199,14 +307,14 @@ function render2ColumnTimelineUI(containerEl, logs, pendingRequestDocs) {
             const checkoutSec = parseTimeToSeconds(checkoutTimeStr) || 86400;
 
             const candidateLogs = simulatedLogs.filter(l => {
-                const sSec = parseTimeToSeconds(l.simulatedStartTime || formatTime(l.startTime));
+                const sSec = parseTimeToSeconds(l.simulatedStartTime || formatLogTime(l.startTime));
                 return sSec !== null && sSec < checkoutSec && l.task !== '休憩' && l.type !== 'goal';
             });
 
             if (candidateLogs.length > 0) {
                 candidateLogs.sort((a, b) => {
-                    const sA = parseTimeToSeconds(a.simulatedStartTime || formatTime(a.startTime)) || 0;
-                    const sB = parseTimeToSeconds(b.simulatedStartTime || formatTime(b.startTime)) || 0;
+                    const sA = parseTimeToSeconds(a.simulatedStartTime || formatLogTime(a.startTime)) || 0;
+                    const sB = parseTimeToSeconds(b.simulatedStartTime || formatLogTime(b.startTime)) || 0;
                     return sB - sA;
                 });
                 targetLogId = candidateLogs[0].id;
@@ -259,7 +367,7 @@ function render2ColumnTimelineUI(containerEl, logs, pendingRequestDocs) {
                 if (sec !== null) return sec;
             }
             if (log.startTime) {
-                const timeStr = formatTime(log.startTime);
+                const timeStr = formatLogTime(log.startTime);
                 const sec = parseTimeToSeconds(timeStr);
                 if (sec !== null) return sec;
             }
@@ -268,12 +376,12 @@ function render2ColumnTimelineUI(containerEl, logs, pendingRequestDocs) {
         return getSec(a) - getSec(b);
     });
 
-    // 💡【修正】想定合計時間を「補正後の仮タイムラインログ一覧」から直接合計計算する
+    // 想定合計時間を「補正後の仮タイムラインログ一覧」から直接計算
     const totalWorkDurationAfter = simulatedLogs.reduce((total, log) => {
         if (log.task === '休憩' || log.type === 'goal') return total;
 
-        const startStr = log.simulatedStartTime || formatTime(log.startTime);
-        const endStr = log.simulatedEndTime || (log.endTime ? formatTime(log.endTime) : null);
+        const startStr = log.simulatedStartTime || formatLogTime(log.startTime);
+        const endStr = log.simulatedEndTime || (log.endTime ? formatLogTime(log.endTime) : null);
 
         const startSec = parseTimeToSeconds(startStr);
         const endSec = parseTimeToSeconds(endStr);
@@ -396,8 +504,8 @@ function renderOriginalTimelineListHtml(logs, targetedLogIds) {
             badgeHtml = `<div class="absolute -top-2 -right-2 bg-rose-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-sm animate-pulse z-10">📝 変更申請あり</div>`;
         }
 
-        const startStr = formatTime(log.startTime);
-        const endStr = log.endTime ? formatTime(log.endTime) : '---';
+        const startStr = formatLogTime(log.startTime);
+        const endStr = log.endTime ? formatLogTime(log.endTime) : '---';
         const durationStr = log.duration ? formatDuration(log.duration) : '';
 
         let mainContent = `<span class="font-bold text-gray-800 text-xs">${escapeHtml(log.task)}</span>`;
@@ -436,8 +544,8 @@ function renderSimulatedTimelineListHtml(simulatedLogs) {
         let bgColor = log.task === '休憩' ? 'bg-yellow-50 border-yellow-200' : (isGoalLog ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200');
         if (hasPending) bgColor = 'bg-indigo-50/70 border-indigo-300 shadow-sm';
 
-        const startStr = log.simulatedStartTime || formatTime(log.startTime);
-        const endStr = log.simulatedEndTime || (log.endTime ? formatTime(log.endTime) : '---');
+        const startStr = log.simulatedStartTime || formatLogTime(log.startTime);
+        const endStr = log.simulatedEndTime || (log.endTime ? formatLogTime(log.endTime) : '---');
 
         let durationStr = '';
         if (!isGoalLog) {

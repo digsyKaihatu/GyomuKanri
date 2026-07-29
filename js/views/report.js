@@ -1,10 +1,11 @@
 // js/views/report.js
 import { db } from "../firebase.js"; 
 import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { handleGoBack, getAllTaskObjects } from "../main.js"; // ★ getAllTaskObjects を追加
+import { handleGoBack, getAllTaskObjects } from "../main.js";
 import { renderUnifiedCalendar } from "../components/calendar.js";
 import { renderChart, destroyCharts } from "../components/chart.js";
 import { formatHoursMinutes, getMonthDateRange, escapeHtml } from "../utils.js";
+import { WORKER_URL } from "./client/timerState.js"; // 💡 Worker URL のインポート
 
 let currentReportDate = new Date();
 let activeReportCharts = [];
@@ -13,8 +14,20 @@ let currentMonthLogs = [];
 
 // DOM要素 (遅延初期化)
 let reportCalendarEl, reportMonthYearEl, reportPrevMonthBtn, reportNextMonthBtn, reportTitleEl, reportChartsContainer, backButton;
-// ★追加：動的生成する再取得UI用の変数
 let reaggregateBtn;
+
+/**
+ * 日本時間 (JST) の今日の日付文字列 (YYYY-MM-DD) を取得
+ */
+function getTodayJSTDateString() {
+    const now = new Date();
+    const jstOffset = 9 * 60;
+    const jstTime = new Date(now.getTime() + (jstOffset + now.getTimezoneOffset()) * 60000);
+    const yyyy = jstTime.getFullYear();
+    const mm = String(jstTime.getMonth() + 1).padStart(2, '0');
+    const dd = String(jstTime.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+}
 
 function initializeDOMElements() {
     reportCalendarEl = document.getElementById("report-calendar");
@@ -25,30 +38,23 @@ function initializeDOMElements() {
     reportChartsContainer = document.getElementById("report-charts-container");
     backButton = document.getElementById("back-to-host-from-report");
 
-    // ★修正：HTMLファイルを直接触らず、戻るボタンの左隣に「デザイン統一された再取得ボタン」を動的生成して差し込む
     if (backButton && !document.getElementById("report-reaggregate-btn")) {
-        // 横並びにするためのレイアウト用ラッパーdivを作成
         const btnWrapper = document.createElement("div");
         btnWrapper.className = "flex items-center gap-2";
 
-        // 再取得ボタン要素を生成
         reaggregateBtn = document.createElement("button");
         reaggregateBtn.id = "report-reaggregate-btn";
         reaggregateBtn.className = "bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition text-sm whitespace-nowrap";
         reaggregateBtn.textContent = "データを再取得";
 
-        // 戻るボタンの直前にラッパーを挿入
         backButton.parentNode.insertBefore(btnWrapper, backButton);
 
-        // ラッパーの中に [再取得ボタン] -> [戻るボタン(移動)] の順で配置
         btnWrapper.appendChild(reaggregateBtn);
-        btnWrapper.appendChild(backButton); // appendChildすることで元の親要素からラッパー内へ綺麗に移動します
+        btnWrapper.appendChild(backButton);
     } else {
-        // すでに生成済みの場合は要素を再取得
         reaggregateBtn = document.getElementById("report-reaggregate-btn");
     }
 
-    // ★追加：画像イメージ通りのきれいなカレンダー選択モーダルUIを最下部に自動で1つ埋め込む処理
     if (!document.getElementById("report-reaggregate-modal")) {
         const modalHtml = `
         <div id="report-reaggregate-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50 p-4">
@@ -84,11 +90,10 @@ export async function initializeReportView() {
 }
 
 export function cleanupReportView() {
-    // Remove event listeners to prevent memory leaks
     reportPrevMonthBtn?.removeEventListener("click", handlePrevMonthClick);
     reportNextMonthBtn?.removeEventListener("click", handleNextMonthClick);
     backButton?.removeEventListener("click", handleGoBack);
-    reaggregateBtn?.removeEventListener("click", handleReaggregateClick); // ★追加
+    reaggregateBtn?.removeEventListener("click", handleReaggregateClick);
 
     destroyCharts(activeReportCharts);
     activeReportCharts = [];
@@ -96,7 +101,6 @@ export function cleanupReportView() {
     currentMonthLogs = [];
     if (reportChartsContainer) reportChartsContainer.innerHTML = "";
     
-    // 生成したモーダルポップアップがあれば裏画面遷移時に閉じる
     const modal = document.getElementById("report-reaggregate-modal");
     if (modal) modal.classList.add("hidden");
 }
@@ -108,10 +112,9 @@ export function setupReportEventListeners() {
     reportPrevMonthBtn?.addEventListener("click", handlePrevMonthClick);
     reportNextMonthBtn?.addEventListener("click", handleNextMonthClick);
     backButton?.addEventListener("click", handleGoBack);
-    reaggregateBtn?.addEventListener("click", handleReaggregateClick); // ★追加
+    reaggregateBtn?.addEventListener("click", handleReaggregateClick);
 }
 
-// ★修正：ボタンを押した後に prompt ではなく、カレンダー付きの特製ポップアップを起動する処理
 function handleReaggregateClick() {
     const modal = document.getElementById("report-reaggregate-modal");
     const dateInput = document.getElementById("reaggregate-modal-date-input");
@@ -121,27 +124,19 @@ function handleReaggregateClick() {
 
     if (!modal || !dateInput) return;
 
-    // ポップアップを開いたときのデフォルト初期日付（現在選択中の日、無ければ今日）
     let defaultDate = selectedReportDateStr;
     if (!defaultDate) {
-        const now = new Date();
-        const yyyy = now.getFullYear();
-        const mm = String(now.getMonth() + 1).padStart(2, '0');
-        const dd = String(now.getDate()).padStart(2, '0');
-        defaultDate = `${yyyy}-${mm}-${dd}`;
+        defaultDate = getTodayJSTDateString();
     }
     dateInput.value = defaultDate;
     if (errorEl) errorEl.textContent = "";
 
-    // モーダルをふわっと表示させる
     modal.classList.remove("hidden");
 
-    // キャンセルボタンを押した時
     cancelBtn.onclick = () => {
         modal.classList.add("hidden");
     };
 
-    // 再取得（実行）ボタンを押した時
     confirmBtn.onclick = async () => {
         const selectedDate = dateInput.value.trim();
         if (!selectedDate) {
@@ -158,9 +153,6 @@ function handleReaggregateClick() {
         if (errorEl) errorEl.textContent = "";
 
         try {
-            // client/timerState.js から Worker の本番接続先URL (WORKER_URL) を安全に動的インポート
-            const { WORKER_URL } = await import("./client/timerState.js");
-            
             const response = await fetch(`${WORKER_URL}/reaggregate-date`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -169,9 +161,9 @@ function handleReaggregateClick() {
 
             if (response.ok) {
                 alert(`${selectedDate} のサマリーを再生成・更新しました！`);
-                modal.classList.add("hidden"); // ポップアップを閉じる
-                // 現在画面に表示している月（カレンダーやグラフ）を即座にリフレッシュリロード
-                await fetchAndRenderForCurrentMonth();
+    modal.classList.add("hidden");
+    // 🌟 true を渡して強制フレッシュ描画
+    await fetchAndRenderForCurrentMonth(true);
             } else {
                 const errData = await response.json().catch(() => ({}));
                 if (errorEl) errorEl.textContent = errData.error || "サーバーエラーが発生しました";
@@ -188,35 +180,75 @@ function handleReaggregateClick() {
     };
 }
 
-// --- データ取得・描画ロジック ---
+// --- データ取得・描画ロジック (CDN 統合版) ---
 
-async function fetchAndRenderForCurrentMonth() {
+async function fetchAndRenderForCurrentMonth(forceRefresh = false) {
     const { start, end } = getMonthDateRange(currentReportDate);
+    const todayStr = getTodayJSTDateString();
 
-    if(reportTitleEl) reportTitleEl.textContent = "データを読み込み中...";
+    if (reportTitleEl) reportTitleEl.textContent = "データを読み込み中...";
 
     try {
-        // 【修正】重い work_logs ではなく、夜間マージ済みの daily_summaries から軽量取得
-        const q = query(
-            collection(db, "daily_summaries"),
-            where("date", ">=", start),
-            where("date", "<=", end)
-        );
-        const snapshot = await getDocs(q);
-        
-        // 【修正】各ドキュメントに凝縮されている JSON 文字列をパースして平坦な1つの配列に展開
-        currentMonthLogs = snapshot.docs.flatMap(doc => {
-            const data = doc.data();
-            return data.logsJson ? JSON.parse(data.logsJson) : [];
-        });
-        
+        const dateList = [];
+        let curr = new Date(start);
+        const endDate = new Date(end);
+        while (curr <= endDate) {
+            const yyyy = curr.getFullYear();
+            const mm = String(curr.getMonth() + 1).padStart(2, '0');
+            const dd = String(curr.getDate()).padStart(2, '0');
+            dateList.push(`${yyyy}-${mm}-${dd}`);
+            curr.setDate(curr.getDate() + 1);
+        }
+
+        const pastDates = dateList.filter(d => d < todayStr);
+        const includesToday = dateList.includes(todayStr);
+
+        // 🌟 過去日のログ取得 (forceRefresh が true の場合はタイムスタンプを付けて CDN キャッシュをバイパス)
+        const pastPromises = pastDates.map(async (dateStr) => {
+    try {
+        const cacheBuster = forceRefresh ? `&_t=${Date.now()}` : "";
+        // 🌟 URLの末尾に &v=20260729 を追加して古いCDNキャッシュを強制迂回する
+        const resp = await fetch(`${WORKER_URL}/get-daily-summary?date=${dateStr}&v=20260729${cacheBuster}`);
+        if (resp.ok) {
+            const data = await resp.json();
+            return data.logs || [];
+        }
+    } catch (e) {
+        console.error(`Report CDN fetch error (${dateStr}):`, e);
+    }
+    return [];
+});
+
+        let todayPromise = Promise.resolve([]);
+        if (includesToday) {
+            todayPromise = (async () => {
+                try {
+                    const qToday = query(
+                        collection(db, "work_logs"),
+                        where("date", "==", todayStr)
+                    );
+                    const snap = await getDocs(qToday);
+                    return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                } catch (e) {
+                    console.error("Report today fetch error:", e);
+                    return [];
+                }
+            })();
+        }
+
+        const [pastResults, todayLogs] = await Promise.all([
+            Promise.all(pastPromises),
+            todayPromise
+        ]);
+
+        currentMonthLogs = [...pastResults.flat(), ...todayLogs];
+
         renderReportCalendar();        
         renderReportChartsForMonth(); 
 
     } catch (error) {
-        // eslint-disable-next-line no-console
         console.error("Error fetching report logs:", error);
-        if(reportChartsContainer) reportChartsContainer.innerHTML = `<p class="text-red-500 text-center">データの取得中にエラーが発生しました。</p>`;
+        if (reportChartsContainer) reportChartsContainer.innerHTML = `<p class="text-red-500 text-center">データの取得中にエラーが発生しました。</p>`;
     }
 }
 
@@ -280,7 +312,7 @@ function renderReportCharts(logs) {
     reportChartsContainer.innerHTML = "";
 
     // 1. 集計処理
-    const userStats = new Map(); // userId -> { name, tasks: Map<taskName, duration> }
+    const userStats = new Map();
     const grandTotalTasks = new Map();
     let grandTotalDuration = 0;
 
@@ -294,7 +326,7 @@ function renderReportCharts(logs) {
 
         const userName = log.userName;
         const goalTitle = log.goalTitle || "未分類";
-        const goalId = log.goalId || null; // ★ 追加: goalIdを取得
+        const goalId = log.goalId || null;
         const goalDeadline = log.goalDeadline || log.effortDeadline || log.deadline || "";
 
         if (!userStats.has(userId)) {
@@ -315,7 +347,6 @@ function renderReportCharts(logs) {
         tStat.users.set(userName, (tStat.users.get(userName) || 0) + (log.duration || 0));
 
         if (!tStat.goals.has(goalTitle)) {
-            // ★ goalId もセットで保存する
             tStat.goals.set(goalTitle, { duration: 0, users: new Map(), deadline: goalDeadline, goalId: goalId });
         }
         const gStat = tStat.goals.get(goalTitle);
@@ -335,8 +366,6 @@ function renderReportCharts(logs) {
     }
 
     // 2. レイアウトの作成
-
-    // A. 全体合計用コンテナ
     const totalSectionTitle = document.createElement("h3");
     totalSectionTitle.className = "text-xl font-bold text-gray-700 mb-4 text-center border-b pb-2";
     totalSectionTitle.textContent = "全従業員 合計";
@@ -348,7 +377,6 @@ function renderReportCharts(logs) {
 
     createChartCard(totalWrapper, "全従業員", grandTotalTasks, grandTotalDuration, true, taskStats);
 
-    // B. 個別従業員用コンテナ
     if (userStats.size > 0) {
         const employeeSectionTitle = document.createElement("h3");
         employeeSectionTitle.className = "text-xl font-bold text-gray-700 mb-4 border-b pb-2";
@@ -376,19 +404,9 @@ function renderReportCharts(logs) {
     }
 }
 
-/**
- * チャートと詳細リストを含むカードの中身を生成するヘルパー関数
- * @param {HTMLElement} parentElement 追加先の要素
- * @param {string} title タイトル
- * @param {Map} tasksMap タスクデータ
- * @param {number} totalDuration 合計時間
- * @param {boolean} isLarge 全体表示かどうか
- * @param {Map} taskStatsMap 内訳表示用の全ユーザーデータ (省略可)
- */
 function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge, taskStatsMap = null) {
-    const allTasks = getAllTaskObjects(); // ★ 追加: 業務マスターを取得
+    const allTasks = getAllTaskObjects();
 
-    // 1. ヘッダー
     const header = document.createElement("div");
     header.className = "flex justify-between items-center mb-4 border-b pb-2";
     
@@ -404,33 +422,27 @@ function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge,
     header.appendChild(timeEl);
     parentElement.appendChild(header);
 
-    // 2. チャート描画エリア
     const canvasContainer = document.createElement("div");
     canvasContainer.className = isLarge ? "relative h-80 w-full" : "relative h-64 w-full";
     const canvas = document.createElement("canvas");
     canvasContainer.appendChild(canvas);
     parentElement.appendChild(canvasContainer);
 
-    // データを整形でソート（降順）
     const sortedTasks = Array.from(tasksMap.entries()).sort((a, b) => b[1] - a[1]);
     const labels = sortedTasks.map(t => t[0]);
     const dataPoints = sortedTasks.map(t => Math.round(t[1] / 3600 * 10) / 10); 
 
-    // ★非同期の Promise として受け取る
     const chartPromise = renderChart(canvas, labels, dataPoints, title);
 
-    // 3. 詳細リスト用のコンテナを先に生成して親要素へ追加しておく
     const listContainer = document.createElement("div");
     listContainer.className = "mt-4 text-sm text-gray-600 max-h-96 overflow-y-auto custom-scrollbar";
     parentElement.appendChild(listContainer);
 
-    // ★グラフのレンダリングが完了（Resolve）した後にリストの中身を生成する
     chartPromise.then((chartInstance) => {
         if (chartInstance) {
             activeReportCharts.push(chartInstance);
         }
 
-        // グラフ描画に使われたランダムカラーの配列を確実に取得
         const backgroundColors = chartInstance?.data?.datasets[0]?.backgroundColor || [];
 
         const ul = document.createElement("ul");
@@ -444,7 +456,6 @@ function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge,
             const cursorClass = taskStatsMap ? "cursor-pointer" : "";
             li.className = `flex flex-col px-2 py-1 hover:bg-gray-50 rounded border-b border-gray-100 last:border-0 ${cursorClass}`;
             
-            // 業務名の行
             const rowDiv = document.createElement("div");
             rowDiv.className = "flex justify-between items-center w-full";
             rowDiv.innerHTML = `
@@ -460,17 +471,14 @@ function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge,
             `;
             li.appendChild(rowDiv);
 
-            // 内訳表示用のコンテナを追加
             if (taskStatsMap) {
                 const breakdownDiv = document.createElement("div");
                 breakdownDiv.className = "hidden pl-6 mt-2 pb-2 text-xs text-gray-600 border-l-2 border-gray-200 ml-1.5 space-y-1 bg-gray-50 rounded-r";
                 
-                // クリックイベントの設定
                 li.addEventListener("click", (e) => {
                     e.stopPropagation();
                     
                     if (breakdownDiv.classList.contains("hidden")) {
-                        // 表示: データがまだなければ生成
                         if (breakdownDiv.innerHTML === "") {
                             const tStat = taskStatsMap.get(taskName);
                             if (!tStat) {
@@ -478,7 +486,6 @@ function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge,
                             } else {
                                 let html = "";
                                 
-                                // ① 従業員ごとのタスク合計表示
                                 const usersSorted = Array.from(tStat.users.entries()).sort((a, b) => b[1] - a[1]);
                                 usersSorted.forEach(([uName, dur]) => {
                                     html += `
@@ -488,18 +495,13 @@ function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge,
                                         </div>`;
                                 });
 
-                                // ② 工数ごとの合計（さらにクリックで従業員ごとの時間を展開）
                                 const goalsSorted = Array.from(tStat.goals.entries()).sort((a, b) => b[1].duration - a[1].duration);
                                 goalsSorted.forEach(([gTitle, gStat]) => {
-                                    
-                                    // ★ 納期を業務マスターから確実に見つけ出すロジック
                                     let deadlineHtml = "";
                                     let deadlineStr = gStat.deadline;
 
-                                    // ログに納期データがない場合、マスターから検索
                                     if (!deadlineStr) {
                                         const taskObj = allTasks.find(t => t.name === taskName);
-                                        // goalIdで探すか、タイトルに含まれているかで探す
                                         const goalObj = taskObj?.goals?.find(g => g.id === gStat.goalId) 
                                                      || taskObj?.goals?.find(g => gTitle.includes(g.title));
                                         
@@ -544,7 +546,6 @@ function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge,
 
                                 breakdownDiv.innerHTML = html;
 
-                                // 工数の開閉イベントを設定
                                 const goalToggles = breakdownDiv.querySelectorAll('.goal-toggle');
                                 goalToggles.forEach(toggle => {
                                     toggle.addEventListener('click', (e2) => {
@@ -567,7 +568,6 @@ function createChartCard(parentElement, title, tasksMap, totalDuration, isLarge,
                         const icon = rowDiv.querySelector(".toggle-icon");
                         if(icon) icon.textContent = "▲";
                     } else {
-                        // 非表示
                         breakdownDiv.classList.add("hidden");
                         const icon = rowDiv.querySelector(".toggle-icon");
                         if(icon) icon.textContent = "▼";

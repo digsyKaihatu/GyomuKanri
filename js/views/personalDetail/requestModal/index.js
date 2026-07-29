@@ -55,7 +55,8 @@ export async function subscribeModalTimelineLogs(dateStr, callback) {
     // 🌟 1. 昨日以前（過去日）の場合は Cloudflare CDN から超高速取得
     if (dateStr < todayStr) {
         try {
-            const resp = await fetch(`${WORKER_URL}/get-daily-summary?date=${dateStr}`);
+            // 🌟 修正: &v=20260729 を付与してWorkerのキャッシュキーと統一し、古い空キャッシュを回避
+            const resp = await fetch(`${WORKER_URL}/get-daily-summary?date=${dateStr}&v=20260729`);
             if (resp.ok) {
                 const resData = await resp.json();
                 const allLogs = resData.logs || [];

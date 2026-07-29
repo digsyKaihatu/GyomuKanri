@@ -205,18 +205,19 @@ async function fetchAndRenderForCurrentMonth(forceRefresh = false) {
 
         // 🌟 過去日のログ取得 (forceRefresh が true の場合はタイムスタンプを付けて CDN キャッシュをバイパス)
         const pastPromises = pastDates.map(async (dateStr) => {
-            try {
-                const cacheBuster = forceRefresh ? `&_t=${Date.now()}` : "";
-                const resp = await fetch(`${WORKER_URL}/get-daily-summary?date=${dateStr}${cacheBuster}`);
-                if (resp.ok) {
-                    const data = await resp.json();
-                    return data.logs || [];
-                }
-            } catch (e) {
-                console.error(`Report CDN fetch error (${dateStr}):`, e);
-            }
-            return [];
-        });
+    try {
+        const cacheBuster = forceRefresh ? `&_t=${Date.now()}` : "";
+        // 🌟 URLの末尾に &v=20260729 を追加して古いCDNキャッシュを強制迂回する
+        const resp = await fetch(`${WORKER_URL}/get-daily-summary?date=${dateStr}&v=20260729${cacheBuster}`);
+        if (resp.ok) {
+            const data = await resp.json();
+            return data.logs || [];
+        }
+    } catch (e) {
+        console.error(`Report CDN fetch error (${dateStr}):`, e);
+    }
+    return [];
+});
 
         let todayPromise = Promise.resolve([]);
         if (includesToday) {

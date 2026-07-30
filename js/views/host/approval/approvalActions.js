@@ -37,7 +37,7 @@ export async function handleApprove(reqDoc, fallbackTargetLogId = null) {
         document.getElementById("close-timeline-modal")?.click();
 
         if (typeof window.refreshApprovalList === "function") {
-            window.refreshApprovalList();
+            // window.refreshApprovalList();
         }
 
     } catch (error) {
@@ -76,7 +76,7 @@ export async function handleRejectRequest(reqDoc) {
         document.getElementById("close-timeline-modal")?.click();
 
         if (typeof window.refreshApprovalList === "function") {
-            window.refreshApprovalList();
+            // window.refreshApprovalList();
         }
     } catch (error) {
         console.error("Reject error:", error);
@@ -171,6 +171,6 @@ export async function handleBulkRejectRequest(reqDocs) {
     document.getElementById("close-timeline-modal")?.click();
 
     if (typeof window.refreshApprovalList === "function") {
-        window.refreshApprovalList();
+        // window.refreshApprovalList();
     }
 }

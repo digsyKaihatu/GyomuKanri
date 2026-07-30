@@ -1,8 +1,8 @@
 // js/views/personalDetail/requestModal/addForm.js
-import { allTaskObjects } from "../../../main.js";
+import { allTaskObjects, userDisplayPreferences } from "../../../main.js";
 import { escapeHtml } from "../../../utils.js";
 import { subscribeModalTimelineLogs } from "./index.js";
-import { allTaskObjects, userDisplayPreferences } from "../../../main.js";
+
 
 let pendingAdds = [];
 let currentTimelineLogs = [];

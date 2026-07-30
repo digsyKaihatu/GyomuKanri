@@ -2,21 +2,23 @@
 import { userId as currentAdminId, userName as currentAdminName } from "../../../main.js";
 import { WORKER_URL } from "../../client/timerState.js";
 
-export async function handleApprove(reqDoc) {
+export async function handleApprove(reqDoc, fallbackTargetLogId = null) {
     if (!confirm("この申請を承認して、実際の勤務ログへ反映させますか？")) return;
 
     try {
-        // 💡 Firestore の DocumentSnapshot かオブジェクト形式かに合わせてデータ取得
         const requestData = typeof reqDoc.data === "function" ? reqDoc.data() : (reqDoc.data || reqDoc);
+
+        // 🌟 退勤忘れ等で targetLogId が無ければ、フロント側で特定した ID をセット
+        if (!requestData.targetLogId && !requestData.data?.targetLogId && fallbackTargetLogId) {
+            requestData.targetLogId = fallbackTargetLogId;
+        }
 
         const response = await fetch(`${WORKER_URL}/approve-request`, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 requestId: reqDoc.id,
-                requestData: requestData, // 💡 パラメータに申請データを追加
+                requestData: requestData,
                 adminId: currentAdminId,
                 adminName: currentAdminName
             })

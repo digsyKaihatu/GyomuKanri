@@ -1,5 +1,5 @@
 // js/views/personalDetail/requestModal/timeCorrectForm.js
-import { allTaskObjects } from "../../../main.js";
+import { allTaskObjects, userDisplayPreferences } from "../../../main.js";
 import { escapeHtml } from "../../../utils.js";
 import { subscribeModalTimelineLogs } from "./index.js";
 
@@ -126,7 +126,14 @@ export function initTimeCorrectForm() {
     if (!taskSelect || !correctDateInput) return;
 
     taskSelect.innerHTML = '<option value="">業務を選択...</option>';
-    const sortedTasks = [...allTaskObjects].sort((a, b) => a.name.localeCompare(b.name, "ja"));
+
+    // ★ 非表示に設定されている業務を取得
+    const hiddenTasks = userDisplayPreferences?.hiddenTasks || [];
+
+    // ★ 非表示業務を除外してソート
+    const filteredTasks = allTaskObjects.filter(task => !hiddenTasks.includes(task.name));
+    const sortedTasks = [...filteredTasks].sort((a, b) => a.name.localeCompare(b.name, "ja"));
+
     sortedTasks.forEach(task => {
         const opt = document.createElement("option");
         opt.value = task.name;
@@ -563,7 +570,18 @@ function renderTimelineList(container, logs) {
             document.getElementById("req-correct-before-task").value = log.task; 
             document.getElementById("req-correct-before-goal-title").value = log.goalTitle || "";
 
-            if (taskSelect) taskSelect.value = log.task;
+            // ★ 過去ログの業務が非表示に設定されていて選択肢に存在しない場合、一時的に選択肢を追加する
+            if (taskSelect && log.task) {
+                const exists = Array.from(taskSelect.options).some(opt => opt.value === log.task);
+                if (!exists) {
+                    const opt = document.createElement("option");
+                    opt.value = log.task;
+                    opt.textContent = `${log.task} (非表示設定中)`;
+                    taskSelect.appendChild(opt);
+                }
+                taskSelect.value = log.task;
+            }
+
             if (startTimeInput) startTimeInput.value = log.startTimeStr;
             if (endTimeInput) endTimeInput.value = log.endTimeStr;
             if (memoInput) memoInput.value = log.memo || "";

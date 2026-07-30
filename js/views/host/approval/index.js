@@ -1,14 +1,13 @@
 // js/views/host/approval/index.js
 import { db, showView, VIEWS } from "../../../main.js";
-import { collection, query, where, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { collection, query, where, orderBy, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { renderApprovalList } from "./approvalList.js";
 import { openApprovalLogModal } from "./logModal.js";
 import { handleCSVExportClick } from "./csvExport.js";
 
-let unsubscribe = null;
 const handleBackClick = () => showView(VIEWS.HOST);
 
-export function initializeApprovalView() {
+export async function initializeApprovalView() {
     const container = document.getElementById(VIEWS.APPROVAL);
     if (!container) return; 
 
@@ -23,13 +22,15 @@ export function initializeApprovalView() {
         orderBy("createdAt", "asc")
     );
 
-    unsubscribe = onSnapshot(q, (snapshot) => {
-        renderApprovalList(snapshot.docs);
-    });
+    try {
+        const querySnapshot = await getDocs(q);
+        renderApprovalList(querySnapshot.docs);
+    } catch (error) {
+        console.error("承認待ちデータの取得に失敗しました:", error);
+    }
 }
 
 export function cleanupApprovalView() {
-    if (unsubscribe) unsubscribe();
     const backBtn = document.getElementById("back-from-approval");
     backBtn?.removeEventListener("click", handleBackClick);
 }

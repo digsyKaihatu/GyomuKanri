@@ -2,6 +2,7 @@
 import { allTaskObjects } from "../../../main.js";
 import { escapeHtml } from "../../../utils.js";
 import { subscribeModalTimelineLogs } from "./index.js";
+import { allTaskObjects, userDisplayPreferences } from "../../../main.js";
 
 let pendingAdds = [];
 let currentTimelineLogs = [];
@@ -122,7 +123,14 @@ export function initAddForm() {
     if (!taskSelect || !dateInput) return;
 
     taskSelect.innerHTML = '<option value="">業務を選択...</option>';
-    const sortedTasks = [...allTaskObjects].sort((a, b) => a.name.localeCompare(b.name, "ja"));
+
+    // ★ 非表示に設定されている業務を取得
+    const hiddenTasks = userDisplayPreferences?.hiddenTasks || [];
+
+    // ★ 非表示業務を除外してソート
+    const filteredTasks = allTaskObjects.filter(task => !hiddenTasks.includes(task.name));
+    const sortedTasks = [...filteredTasks].sort((a, b) => a.name.localeCompare(b.name, "ja"));
+
     sortedTasks.forEach(task => {
         const opt = document.createElement("option");
         opt.value = task.name;

@@ -6,13 +6,15 @@ export async function handleApprove(reqDoc) {
     if (!confirm("この申請を承認して、実際の勤務ログへ反映させますか？")) return;
 
     try {
+        // 💡 画面ですでに持っている申請データを取得
+        const requestData = reqDoc.data();
+
         const response = await fetch(`${WORKER_URL}/approve-request`, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 requestId: reqDoc.id,
+                requestData: requestData, // 💡 パラメータに追加送信
                 adminId: currentAdminId,
                 adminName: currentAdminName
             })

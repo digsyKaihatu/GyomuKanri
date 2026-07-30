@@ -1,21 +1,30 @@
 // js/views/host/approval/timelineModal.js
 import { db } from "../../../main.js";
-import { collection, query, where, onSnapshot, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+// 💡 onSnapshot を削除し getDocs を追加
+import { collection, query, where, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { escapeHtml, formatTime, formatDuration } from "../../../utils.js";
 import { handleApprove, handleRejectRequest, handleBulkApprove, handleBulkRejectRequest } from "./approvalActions.js";
 import { WORKER_URL } from "../../client/timerState.js"; // 💡 Worker URL のインポート
 
 let currentUnsubscribes = [];
-const summaryCache = new Map(); // dateStr -> パース済みの全ユーザーログ配列
+const summaryCache = new Map(); // dateStr -> パース済みの全ユーザーログ配列(過去日用)
+
+// 💡 今日のログ用の短期メモリキャッシュを追加
+const todayLogsCache = new Map(); // key: `${userId}_${dateStr}`, value: { data, timestamp }
+const CACHE_TTL = 30000; // 30秒間有効
 
 /**
- * daily_summaries のメモリキャッシュをクリアする関数 (承認・却下時等に呼び出し用)
+ * キャッシュをクリアする関数 (承認・却下時等に呼び出し用)
  */
 export function invalidateSummaryCache(dateStr) {
     if (dateStr) {
         summaryCache.delete(dateStr);
+        // 今日のキャッシュも関連するものをクリア
+        const keys = Array.from(todayLogsCache.keys()).filter(k => k.endsWith(`_${dateStr}`));
+        keys.forEach(k => todayLogsCache.delete(k));
     } else {
         summaryCache.clear();
+        todayLogsCache.clear();
     }
 }
 
@@ -80,7 +89,8 @@ function formatLogTime(t) {
     return formatTime(t) || '---';
 }
 
-export function showTimelineModal(targetUserId, targetUserName, dateStr) {
+// 💡 第4引数 (pendingRequestDocs) を受け取るように修正
+export function showTimelineModal(targetUserId, targetUserName, dateStr, pendingRequestDocs = []) {
     closeTimelineModal();
 
     const modalHtml = `
@@ -121,7 +131,8 @@ export function showTimelineModal(targetUserId, targetUserName, dateStr) {
         if (e.target === document.getElementById("approval-timeline-modal")) closeTimelineModal(); 
     };
 
-    setupTimelineData(targetUserId, dateStr);
+    // 💡 取得済みの申請データを渡す
+    setupTimelineData(targetUserId, dateStr, pendingRequestDocs);
 }
 
 function closeTimelineModal() {
@@ -131,146 +142,74 @@ function closeTimelineModal() {
 }
 
 /**
- * 日付（過去か今日か）に応じてデータ取得ソースを最適化切り替え
+ * 日付（過去か今日か）に応じてデータ取得ソースを最適化切り替え（onSnapshot を廃止）
  */
-async function setupTimelineData(targetUserId, dateStr) {
+async function setupTimelineData(targetUserId, dateStr, pendingRequestDocs) {
     const todayStr = getTodayJSTDateString();
     const modalBodyEl = document.getElementById("timeline-modal-body");
     const cacheBadge = document.getElementById("timeline-cache-badge");
 
-    const requestsMap = new Map();
+    let logs = [];
 
-    // 申請データのリアルタイム監視（過去日でも未承認申請が存在する可能性があるため）
-    const qRequests = query(
-        collection(db, "work_log_requests"),
-        where("userId", "==", targetUserId),
-        where("requestDate", "==", dateStr),
-        where("status", "==", "pending")
-    );
-
-    if (dateStr < todayStr) {
-    // 🌟 【過去日】 Cloudflare CDN (Worker) から 1 回取得（またはメモリキャッシュ）
-    let pastLogs = [];
     try {
-        if (summaryCache.has(dateStr)) {
-            const allLogs = summaryCache.get(dateStr);
-            pastLogs = allLogs.filter(log => log.userId === targetUserId);
-            if (cacheBadge) cacheBadge.textContent = "⚡ ブラウザメモリキャッシュ";
-        } else {
-            if (cacheBadge) cacheBadge.textContent = "📡 CDN (Edge) から取得中...";
-            
-            // 🌟 修正: &v=20260729 を付与して Worker のキャッシュキーと統一
-            const resp = await fetch(`${WORKER_URL}/get-daily-summary?date=${dateStr}&v=20260729`);
-            
-            if (resp.ok) {
-                const resData = await resp.json();
-                const allLogs = resData.logs || [];
-                summaryCache.set(dateStr, allLogs);
-                pastLogs = allLogs.filter(log => log.userId === targetUserId);
-            }
-            if (cacheBadge) cacheBadge.textContent = "🚀 CDN 読み込み完了";
-        }
-    } catch (err) {
-        console.error(`daily_summaries 読み込みエラー (${dateStr}):`, err);
-    }
-
-        // 申請データの監視と合わせて描画
-        const unsubRequests = onSnapshot(qRequests, (snapshot) => {
-            snapshot.docChanges().forEach((change) => {
-                const docId = change.doc.id;
-                if (change.type === "added" || change.type === "modified") {
-                    requestsMap.set(docId, change.doc);
-                } else if (change.type === "removed") {
-                    requestsMap.delete(docId);
-                }
-            });
-
-            const sortedLogs = [...pastLogs].sort((a, b) => {
-                const tA = parseTimeToSeconds(formatLogTime(a.startTime)) || 0;
-                const tB = parseTimeToSeconds(formatLogTime(b.startTime)) || 0;
-                return tA - tB;
-            });
-
-            render2ColumnTimelineUI(modalBodyEl, sortedLogs, Array.from(requestsMap.values()));
-        });
-
-        currentUnsubscribes.push(unsubRequests);
-
-    } else {
-        // 🌟 【今日】 work_logs コレクションからリアルタイム監視 (onSnapshot)
-        setupTodayTimelineSnapshot(targetUserId, dateStr, requestsMap, qRequests);
-    }
-}
-
-function setupTodayTimelineSnapshot(targetUserId, dateStr, requestsMap, qRequests) {
-    const modalBodyEl = document.getElementById("timeline-modal-body");
-    const cacheBadge = document.getElementById("timeline-cache-badge");
-    const logsMap = new Map();
-
-    const render = (isFromCache, changeType) => {
-        if (cacheBadge) {
-            if (isFromCache) {
-                cacheBadge.textContent = "⚡ Firestoreキャッシュ表示中";
+        if (dateStr < todayStr) {
+            // 🌟 【過去日】 Cloudflare CDN (Worker) から 1 回取得（またはメモリキャッシュ）
+            if (summaryCache.has(dateStr)) {
+                const allLogs = summaryCache.get(dateStr);
+                logs = allLogs.filter(log => log.userId === targetUserId);
+                if (cacheBadge) cacheBadge.textContent = "⚡ ブラウザメモリキャッシュ";
             } else {
-                cacheBadge.textContent = changeType ? `✨ 差分適用 (${changeType})` : "☁️ Firestoreリアルタイム同期済";
+                if (cacheBadge) cacheBadge.textContent = "📡 CDN (Edge) から取得中...";
+                
+                const resp = await fetch(`${WORKER_URL}/get-daily-summary?date=${dateStr}&v=20260729`);
+                if (resp.ok) {
+                    const resData = await resp.json();
+                    const allLogs = resData.logs || [];
+                    summaryCache.set(dateStr, allLogs);
+                    logs = allLogs.filter(log => log.userId === targetUserId);
+                }
+                if (cacheBadge) cacheBadge.textContent = "🚀 CDN 読み込み完了";
+            }
+        } else {
+            // 🌟 【今日】 キャッシュ(30秒以内) または Firestoreから1回取得(getDocs)
+            const cacheKey = `${targetUserId}_${dateStr}`;
+            const cached = todayLogsCache.get(cacheKey);
+            
+            if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
+                logs = cached.data;
+                if (cacheBadge) cacheBadge.textContent = "⚡ キャッシュ利用 (30秒以内)";
+            } else {
+                if (cacheBadge) cacheBadge.textContent = "📡 Firestoreから取得中...";
+                
+                const qLogs = query(
+                    collection(db, "work_logs"), 
+                    where("userId", "==", targetUserId), 
+                    where("date", "==", dateStr)
+                );
+                
+                const snapshot = await getDocs(qLogs);
+                logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                
+                // キャッシュに保存
+                todayLogsCache.set(cacheKey, { data: logs, timestamp: Date.now() });
+                
+                if (cacheBadge) cacheBadge.textContent = "☁️ Firestoreから取得完了";
             }
         }
 
-        const sortedLogs = Array.from(logsMap.values()).sort((a, b) => {
-            const tA = a.startTime?.toMillis ? a.startTime.toMillis() : new Date(a.startTime).getTime();
-            const tB = b.startTime?.toMillis ? b.startTime.toMillis() : new Date(b.startTime).getTime();
+        // 時間順にソートして描画
+        const sortedLogs = [...logs].sort((a, b) => {
+            const tA = parseTimeToSeconds(formatLogTime(a.startTime)) || 0;
+            const tB = parseTimeToSeconds(formatLogTime(b.startTime)) || 0;
             return tA - tB;
         });
 
-        const requestsList = Array.from(requestsMap.values());
-        render2ColumnTimelineUI(modalBodyEl, sortedLogs, requestsList);
-    };
+        render2ColumnTimelineUI(modalBodyEl, sortedLogs, pendingRequestDocs);
 
-    // 1. 勤務ログのリアルタイム監視
-    const qLogs = query(
-        collection(db, "work_logs"), 
-        where("userId", "==", targetUserId), 
-        where("date", "==", dateStr)
-    );
-
-    const unsubLogs = onSnapshot(qLogs, (snapshot) => {
-        const isFromCache = snapshot.metadata.fromCache;
-        let lastChangeType = "";
-
-        snapshot.docChanges().forEach((change) => {
-            const docId = change.doc.id;
-            lastChangeType = change.type;
-
-            if (change.type === "added" || change.type === "modified") {
-                logsMap.set(docId, { id: docId, ...change.doc.data() });
-            } else if (change.type === "removed") {
-                logsMap.delete(docId);
-            }
-        });
-
-        render(isFromCache, lastChangeType);
-    });
-
-    // 2. 申請データのリアルタイム監視
-    const unsubRequests = onSnapshot(qRequests, (snapshot) => {
-        const isFromCache = snapshot.metadata.fromCache;
-        let lastChangeType = "";
-
-        snapshot.docChanges().forEach((change) => {
-            const docId = change.doc.id;
-            lastChangeType = change.type;
-
-            if (change.type === "added" || change.type === "modified") {
-                requestsMap.set(docId, change.doc);
-            } else if (change.type === "removed") {
-                requestsMap.delete(docId);
-            }
-        });
-
-        render(isFromCache, lastChangeType);
-    });
-
-    currentUnsubscribes.push(unsubLogs, unsubRequests);
+    } catch (error) {
+        console.error("Timeline load error:", error);
+        modalBodyEl.innerHTML = `<p class="text-center text-red-500 py-8 text-xs">データの読み込みに失敗しました。</p>`;
+    }
 }
 
 /**

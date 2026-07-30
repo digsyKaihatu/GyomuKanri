@@ -90,41 +90,44 @@ export async function handleBulkApprove(reqDocs) {
     
     if (!confirm(`表示中の未承認申請（計 ${reqDocs.length} 件）をすべて一括承認して、勤務記録へ反映させますか？`)) return;
 
-    let successCount = 0;
-    let failCount = 0;
-
-    for (const reqDoc of reqDocs) {
-        try {
+    try {
+        // 💡 全件の申請データを配列として抽出
+        const requestsPayload = reqDocs.map(reqDoc => {
             const requestData = typeof reqDoc.data === "function" ? reqDoc.data() : (reqDoc.data || reqDoc);
+            return {
+                requestId: reqDoc.id,
+                requestData: requestData
+            };
+        });
 
-            const response = await fetch(`${WORKER_URL}/approve-request`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    requestId: reqDoc.id,
-                    requestData: requestData, // 💡 一括承認時にも requestData を追加
-                    adminId: currentAdminId,
-                    adminName: currentAdminName
-                })
-            });
-            if (response.ok) successCount++;
-            else failCount++;
-        } catch (error) {
-            console.error("Bulk approval error:", error);
-            failCount++;
+        // 💡 一括承認専用APIを1本だけ叩く
+        const response = await fetch(`${WORKER_URL}/bulk-approve-requests`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                requests: requestsPayload, // 配列で一気に送信
+                adminId: currentAdminId,
+                adminName: currentAdminName
+            })
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.error || result.message || "一括承認処理に失敗しました。");
         }
-    }
 
-    if (failCount === 0) {
-        alert(`${successCount} 件の申請を一括承認しました。`);
-    } else {
-        alert(`一括承認処理が完了しました。\n成功: ${successCount} 件 / 失敗: ${failCount} 件`);
-    }
+        alert(`${result.count || reqDocs.length} 件の申請を一括承認しました。`);
 
-    document.getElementById("close-timeline-modal")?.click();
+        document.getElementById("close-timeline-modal")?.click();
 
-    if (typeof window.refreshApprovalList === "function") {
-        window.refreshApprovalList();
+        if (typeof window.refreshApprovalList === "function") {
+            window.refreshApprovalList();
+        }
+
+    } catch (error) {
+        console.error("Bulk approval error:", error);
+        alert(`一括承認処理中にエラーが発生しました:\n${error.message}`);
     }
 }
 

@@ -60,7 +60,8 @@ export function renderApprovalList(docs) {
         `;
 
         card.querySelector(".view-timeline-btn").addEventListener("click", () => {
-            showTimelineModal(group.userId, group.userName, group.requestDate);
+            // 💡 修正箇所1: 第4引数に group.docs (親で取得済みの申請データ配列) を渡す
+            showTimelineModal(group.userId, group.userName, group.requestDate, group.docs);
         });
 
         listEl.appendChild(card);

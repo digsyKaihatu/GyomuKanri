@@ -391,12 +391,15 @@ function render2ColumnTimelineUI(containerEl, logs, pendingRequestDocs) {
     }
 
     containerEl.querySelectorAll(".approve-single-btn").forEach(btn => {
-        btn.addEventListener("click", (e) => {
-            const docId = e.currentTarget.dataset.docid;
-            const reqDocSnap = pendingRequestDocs.find(d => d.id === docId);
-            if (reqDocSnap) handleApprove(reqDocSnap);
-        });
+    btn.addEventListener("click", (e) => {
+        const docId = e.currentTarget.dataset.docid;
+        const reqDocSnap = pendingRequestDocs.find(d => d.id === docId);
+        
+        // 🌟 モーダル描画時に特定した targetLogId を第2引数として渡す
+        const targetLogId = e.currentTarget.dataset.targetlogid || null;
+        if (reqDocSnap) handleApprove(reqDocSnap, targetLogId);
     });
+});
 
     containerEl.querySelectorAll(".reject-single-btn").forEach(btn => {
         btn.addEventListener("click", (e) => {

@@ -1,8 +1,8 @@
 // js/views/host/host.js
 
 import { db, showView, VIEWS } from "../../main.js"; 
-// ★修正1: getDoc をインポートに追加
-import { doc, setDoc, onSnapshot, collection, query, where, getDocs, addDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+// ★修正: getCountFromServer をインポートに追加
+import { doc, setDoc, onSnapshot, collection, query, where, getDocs, addDoc, getDoc, getCountFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { openMessageModal, showHelpModal } from "../../components/modal/index.js"; 
 import { openExportExcelModal } from "../../excelExport.js"; 
 
@@ -59,7 +59,7 @@ function injectTomuraLocationUI() {
     }
 }
 
-// --- 修正版: 承認ボタン ---
+// --- 承認ボタンの注入 ---
 function injectApprovalButton() {
     // ボタンが既に存在していたら何もしない
     if (document.getElementById("view-approval-btn")) return;
@@ -70,7 +70,7 @@ function injectApprovalButton() {
         // ボタンが入っている親リスト（space-y-3 の div）を取得
         const buttonList = referenceBtn.parentElement;
 
-        // ボタン要素を作成（余計な div コンテナは作らない）
+        // ボタン要素を作成
         const btn = document.createElement("button");
         btn.id = "view-approval-btn";
         
@@ -89,55 +89,59 @@ function injectApprovalButton() {
     }
 }
 
-let approvalListenerUnsubscribe = null;
+// --- ★修正: getCountFromServer を用いた件数取得処理 ---
+let approvalPollingInterval = null;
+let lastApprovalCount = 0;
+
+export async function fetchApprovalCount() {
+    const btn = document.getElementById("view-approval-btn");
+    const badge = document.getElementById("approval-badge");
+    if (!btn || !badge) return;
+
+    try {
+        const q = query(collection(db, "work_log_requests"), where("status", "==", "pending"));
+        
+        // サーバーからドキュメント本文を取得せず、件数のみを取得（コスト節約）
+        const snapshot = await getCountFromServer(q);
+        const count = snapshot.data().count;
+
+        if (count > 0) {
+            // 件数が増加した場合に通知を送信
+            if (Notification.permission === "granted" && count > lastApprovalCount) {
+                new Notification("業務報告の承認依頼", {
+                    body: `${count}件の承認待ちがあります。`,
+                    icon: "/path/to/icon.png"
+                });
+            }
+
+            badge.textContent = `${count}件`;
+            badge.classList.remove("hidden");
+            btn.classList.add("animate-pulse");
+        } else {
+            badge.classList.add("hidden");
+            btn.classList.remove("animate-pulse");
+        }
+
+        lastApprovalCount = count;
+    } catch (error) {
+        console.error("承認件数の取得エラー:", error);
+    }
+}
 
 function startListeningForApprovals() {
-    if (approvalListenerUnsubscribe) return;
-    const btn = document.getElementById("view-approval-btn");
-    if (!btn) return;
+    if (approvalPollingInterval) clearInterval(approvalPollingInterval);
 
-    const q = query(collection(db, "work_log_requests"), where("status", "==", "pending"));
-    approvalListenerUnsubscribe = onSnapshot(q, (snap) => {
-        const badge = document.getElementById("approval-badge");
-        if (badge) {
-            if (snap.size > 0) {
+    // 初回取得
+    fetchApprovalCount();
 
-                // ▼▼▼ ここから追加 ▼▼▼
-            // 前回の件数と比較して増えている場合、または初回読み込みでない場合に通知を出す制御が必要ですが、
-            // まずは「通知が出るか」を確認するため、シンプルに通知を出します。
-            
-            if (Notification.permission === "granted") {
-                // ドキュメントの変更内容を確認（追加された場合のみ通知するなど）
-                const changes = snap.docChanges();
-                const isNewConfig = changes.some(change => change.type === 'added');
-
-                // 「ページを開いた瞬間」に通知爆撃を防ぐため、
-                // 必要であれば「初回読み込み時は通知しない」フラグなどを入れるのが一般的です
-                // ここでは「データ変更があった時」に通知を出します
-                if (isNewConfig) { 
-                    new Notification("業務報告の承認依頼", {
-                        body: `${snap.size}件の承認待ちがあります。`,
-                        icon: "/path/to/icon.png" // 任意: アイコン画像のパス
-                    });
-                }
-            }
-            // ▲▲▲ ここまで追加 ▲▲▲
-                
-                badge.textContent = `${snap.size}件`;
-                badge.classList.remove("hidden");
-                btn.classList.add("animate-pulse");
-            } else {
-                badge.classList.add("hidden");
-                btn.classList.remove("animate-pulse");
-            }
-        }
-    });
+    // 定期取得（30秒間隔）
+    approvalPollingInterval = setInterval(fetchApprovalCount, 30000);
 }
 
 function stopListeningForApprovals() {
-    if (approvalListenerUnsubscribe) {
-        approvalListenerUnsubscribe();
-        approvalListenerUnsubscribe = null;
+    if (approvalPollingInterval) {
+        clearInterval(approvalPollingInterval);
+        approvalPollingInterval = null;
     }
 }
 
@@ -146,7 +150,6 @@ export function initializeHostView() {
     
     injectTomuraLocationUI();
     injectApprovalButton();
-    // injectMessageFeature(); // ← ★この行をコメントアウト（または削除）
 
     startListeningForStatusUpdates(); 
     startListeningForUsers();      
@@ -159,13 +162,9 @@ export function cleanupHostView() {
     stopListeningForStatusUpdates(); 
     stopListeningForUsers();      
     stopListeningForApprovals();
-    // It's good practice to also remove event listeners, but since they are added to elements
-    // that are part of the view and will be hidden/inactive, it's not strictly necessary
-    // unless you see memory leak issues. For now, we'll keep it simple.
 }
 
 export function setupHostEventListeners() {
-
     backButton?.addEventListener("click", () => showView(VIEWS.MODE_SELECTION));
     viewProgressButton?.addEventListener("click", () => {
         window.isProgressViewReadOnly = false; 
@@ -175,7 +174,7 @@ export function setupHostEventListeners() {
     exportExcelButton?.addEventListener("click", openExportExcelModal); 
     deleteAllLogsButton?.addEventListener("click", handleDeleteAllLogs); 
 
-tomuraStatusRadios.forEach((radio) => {
+    tomuraStatusRadios.forEach((radio) => {
         radio.addEventListener("change", handleTomuraStatusChange);
     });
     
@@ -186,9 +185,7 @@ tomuraStatusRadios.forEach((radio) => {
     helpButton?.addEventListener('click', () => showHelpModal('host'));
 }
 
-// handleTomuraStatusChange と handleTomuraLocationChange を以下のように統合・修正
 async function updateTomuraStatusOnD1(newData) {
-    // 現在のデータを一度取得するか、UIの状態から構築して送信
     try {
         await fetch(`${WORKER_URL}/update-tomura-status`, {
             method: 'POST',
@@ -200,25 +197,20 @@ async function updateTomuraStatusOnD1(newData) {
     }
 }
 
-// 既存のラジオボタンイベント内で呼び出す
 async function handleTomuraStatusChange(event) {
     const status = event.target.value;
     const location = document.querySelector('input[name="tomura-location"]:checked')?.value || "出社";
     await updateTomuraStatusOnD1({ status, location });
 }
 
-
-// ★修正2: updateUI 関数を追加（これが不足していました）
 function updateUI(data) {
     if (!data) return;
 
-    // ステータスのラジオボタン更新
     if (data.status) {
         const radio = document.querySelector(`input[name="tomura-status"][value="${data.status}"]`);
         if (radio) radio.checked = true;
     }
 
-    // 場所のラジオボタン更新
     if (data.location) {
         const radio = document.querySelector(`input[name="tomura-location"][value="${data.location}"]`);
         if (radio) radio.checked = true;
@@ -228,7 +220,6 @@ function updateUI(data) {
 let tomuraPollingInterval = null;
 let lastTomuraDataCache = null;
 
-// ★修正: 読み込み処理を独立させ、強制取得オプションを追加
 async function fetchTomuraStatus(force = false) {
     if (document.hidden && !force) return;
 
@@ -237,13 +228,10 @@ async function fetchTomuraStatus(force = false) {
         if (resp.ok) {
             let data = await resp.json();
             
-            // ▼ ここから追加：日付チェック ▼
             const todayStr = new Date().toISOString().split("T")[0];
             if (data.date && data.date !== todayStr) {
-                // 日付が今日でなければデフォルト値にする
                 data = { status: "声掛けNG", location: "出社" };
             }
-            // ▲ ここまで ▲
 
             const dataStr = JSON.stringify(data);
 
@@ -260,39 +248,31 @@ async function fetchTomuraStatus(force = false) {
 async function listenForTomuraStatus() {
     if (tomuraPollingInterval) clearInterval(tomuraPollingInterval);
 
-    // 初回実行
     fetchTomuraStatus();
-
-    // 定期実行
     tomuraPollingInterval = setInterval(fetchTomuraStatus, 30000);
 }
 
-// 【節約対策4】タブがアクティブになった瞬間に即座に最新を確認する
+// タブ表示切り替え時の制御
 document.addEventListener("visibilitychange", () => {
     const isHostViewActive = document.getElementById(VIEWS.HOST)?.classList.contains('active-view');
     if (!isHostViewActive) return;
 
     if (document.hidden) {
-        // 非アクティブになったら、一部のリアルタイム系リスナーを停止
         stopListeningForUsers();
-        // ★修正: 承認通知はバックグラウンドでも受け取りたいため、stopListeningForApprovals() は呼ばない
     } else {
-        // アクティブになったら、ポーリングとリアルタイムリスナーを再開
-        fetchTomuraStatus(); // ★修正: listenの再呼び出しではなく、単発のfetchに
+        fetchTomuraStatus();
+        fetchApprovalCount(); // ★画面復帰時に承認件数も即座に再取得
         startListeningForUsers();
         startListeningForApprovals();
     }
 });
 
-// ★追加: 外部からの強制取得トリガー
-// これにより、FCMプッシュ通知などを受けた際に、タブが非アクティブでも情報を更新できる
 document.addEventListener('force-fetch-status', () => {
     fetchTomuraStatus(true);
 });
-// --- メッセージ機能の実装 ---
 
+// --- メッセージ機能の実装 ---
 function injectMessageFeature() {
-    // 古いモーダルがあれば削除して作り直す
     const existingModal = document.getElementById("message-modal");
     if (existingModal) {
         existingModal.remove();
@@ -346,26 +326,17 @@ function injectMessageFeature() {
     </div>`;
     document.body.insertAdjacentHTML('beforeend', modalHtml);
 
-    // 送信ボタンの注入
-    const approvalContainer = document.getElementById("view-approval-container");
     const approvalBtn = document.getElementById("view-approval-btn");
     const referenceBtn = document.getElementById("view-report-btn");
     
-if (referenceBtn && !document.getElementById("open-message-modal-btn")) {
-        
-        // 親のリスト（space-y-3 が設定されている場所）を取得
+    if (referenceBtn && !document.getElementById("open-message-modal-btn")) {
         const buttonList = referenceBtn.parentElement; 
 
-        // ★修正点1: 枠を作らず、直接ボタン要素を作成
         const msgBtn = document.createElement("button");
         msgBtn.id = "open-message-modal-btn";
-
-        // ★修正点2: "mt-6" や "mb-4" を削除し、他のボタンと同じクラスにする
         msgBtn.className = "w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg transition shadow-sm flex items-center justify-center gap-2";
-
         msgBtn.innerHTML = `📢 メッセージを作成・送信する`;
 
-        // 承認ボタンがあればその「手前」に、なければ「最後」に追加
         if (approvalBtn) {
             buttonList.insertBefore(msgBtn, approvalBtn);
         } else {
@@ -377,7 +348,6 @@ if (referenceBtn && !document.getElementById("open-message-modal-btn")) {
 }
 
 async function handleOpenMessageModal() {
-
     if (typeof openMessageModal !== 'function') {
         alert("エラー: モーダル機能が読み込めていません。");
         return;
@@ -433,8 +403,6 @@ async function executeSendMessage(targetIds, title, bodyContent) {
         return;
     }
 
-
-
     const confirmMsg = `${targetIds.length}名にメッセージを送信しますか？`;
     if (!confirm(confirmMsg)) return;
 
@@ -458,7 +426,6 @@ async function executeSendMessage(targetIds, title, bodyContent) {
 
         const sendPromises = targetIds.map(async (uid) => {
             try {
-
                 const response = await fetch(sendMessageUrl, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -497,5 +464,3 @@ async function executeSendMessage(targetIds, title, bodyContent) {
         alert("処理中に予期せぬエラーが発生しました。");
     }
 }
-
-

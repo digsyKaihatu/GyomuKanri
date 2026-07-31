@@ -1,18 +1,24 @@
 // js/views/host/approval/approvalActions.js
 import { userId as currentAdminId, userName as currentAdminName } from "../../../main.js";
-import { WORKER_URL } from "../../client/timerState.js"; // 💡既存のWorkerURLの定義元からインポート
+import { WORKER_URL } from "../../client/timerState.js";
 
-export async function handleApprove(reqDoc) {
+export async function handleApprove(reqDoc, fallbackTargetLogId = null) {
     if (!confirm("この申請を承認して、実際の勤務ログへ反映させますか？")) return;
 
     try {
+        const requestData = typeof reqDoc.data === "function" ? reqDoc.data() : (reqDoc.data || reqDoc);
+
+        // 🌟 退勤忘れ等で targetLogId が無ければ、フロント側で特定した ID をセット
+        if (!requestData.targetLogId && !requestData.data?.targetLogId && fallbackTargetLogId) {
+            requestData.targetLogId = fallbackTargetLogId;
+        }
+
         const response = await fetch(`${WORKER_URL}/approve-request`, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 requestId: reqDoc.id,
+                requestData: requestData,
                 adminId: currentAdminId,
                 adminName: currentAdminName
             })
@@ -26,9 +32,12 @@ export async function handleApprove(reqDoc) {
         }
 
         alert("申請を承認し、勤務記録への書き込みを完了しました。");
-        
+
+        // モーダルが開いていれば自動閉鎖
+        document.getElementById("close-timeline-modal")?.click();
+
         if (typeof window.refreshApprovalList === "function") {
-            window.refreshApprovalList();
+            // window.refreshApprovalList();
         }
 
     } catch (error) {
@@ -37,12 +46,10 @@ export async function handleApprove(reqDoc) {
     }
 }
 
-// 💡 却下理由の入力を追加した却下処理
+// 却下処理 (却下時は Read/Write の対象データ変更がないため既存のままで OK)
 export async function handleRejectRequest(reqDoc) {
-    // 1. confirm の代わりに prompt を使用して、理由入力を促す
     const reason = prompt("この申請を却下しますか？\n却下理由を入力してください（空欄のままでも却下可能です。キャンセルで中断します）:");
 
-    // prompt で「キャンセル」が押された場合は null が返るので処理を終了する
     if (reason === null) return; 
 
     try {
@@ -53,7 +60,7 @@ export async function handleRejectRequest(reqDoc) {
                 requestId: reqDoc.id,
                 adminId: currentAdminId,
                 adminName: currentAdminName,
-                rejectReason: reason.trim() // 💡 却下理由を追加（前後の不要な空白を削除）
+                rejectReason: reason.trim()
             })
         });
 
@@ -66,9 +73,10 @@ export async function handleRejectRequest(reqDoc) {
 
         alert("申請を却下しました。申請履歴にログが保持されます。");
 
-        // 💡 承認時と同様、却下後にリストを最新状態にするために追加
+        document.getElementById("close-timeline-modal")?.click();
+
         if (typeof window.refreshApprovalList === "function") {
-            window.refreshApprovalList();
+            // window.refreshApprovalList();
         }
     } catch (error) {
         console.error("Reject error:", error);
@@ -76,52 +84,60 @@ export async function handleRejectRequest(reqDoc) {
     }
 }
 
-// 💡 一括承認処理を追加
+// 一括承認処理
 export async function handleBulkApprove(reqDocs) {
     if (!reqDocs || reqDocs.length === 0) return;
     
     if (!confirm(`表示中の未承認申請（計 ${reqDocs.length} 件）をすべて一括承認して、勤務記録へ反映させますか？`)) return;
 
-    let successCount = 0;
-    let failCount = 0;
+    try {
+        // 💡 全件の申請データを配列として抽出
+        const requestsPayload = reqDocs.map(reqDoc => {
+            const requestData = typeof reqDoc.data === "function" ? reqDoc.data() : (reqDoc.data || reqDoc);
+            return {
+                requestId: reqDoc.id,
+                requestData: requestData
+            };
+        });
 
-    for (const reqDoc of reqDocs) {
-        try {
-            const response = await fetch(`${WORKER_URL}/approve-request`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    requestId: reqDoc.id,
-                    adminId: currentAdminId,
-                    adminName: currentAdminName
-                })
-            });
-            if (response.ok) successCount++;
-            else failCount++;
-        } catch (error) {
-            console.error("Bulk approval error:", error);
-            failCount++;
+        // 💡 一括承認専用APIを1本だけ叩く
+        const response = await fetch(`${WORKER_URL}/bulk-approve-requests`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                requests: requestsPayload, // 配列で一気に送信
+                adminId: currentAdminId,
+                adminName: currentAdminName
+            })
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.error || result.message || "一括承認処理に失敗しました。");
         }
-    }
 
-    if (failCount === 0) {
-        alert(`${successCount} 件の申請を一括承認しました。`);
-    } else {
-        alert(`一括承認処理が完了しました。\n成功: ${successCount} 件 / 失敗: ${failCount} 件`);
-    }
+        alert(`${result.count || reqDocs.length} 件の申請を一括承認しました。`);
 
-    if (typeof window.refreshApprovalList === "function") {
-        window.refreshApprovalList();
+        document.getElementById("close-timeline-modal")?.click();
+
+        if (typeof window.refreshApprovalList === "function") {
+            window.refreshApprovalList();
+        }
+
+    } catch (error) {
+        console.error("Bulk approval error:", error);
+        alert(`一括承認処理中にエラーが発生しました:\n${error.message}`);
     }
 }
 
-// 💡 一括却下処理を追加（却下理由の入力対応）
+// 一括却下処理
 export async function handleBulkRejectRequest(reqDocs) {
     if (!reqDocs || reqDocs.length === 0) return;
 
     const reason = prompt(`表示中の未承認申請（計 ${reqDocs.length} 件）を一括却下しますか？\n却下理由を入力してください（空欄のままでも却下可能です。キャンセルで中断します）:`);
 
-    if (reason === null) return; // キャンセルされた場合
+    if (reason === null) return;
 
     let successCount = 0;
     let failCount = 0;
@@ -152,7 +168,9 @@ export async function handleBulkRejectRequest(reqDocs) {
         alert(`一括却下処理が完了しました。\n成功: ${successCount} 件 / 失敗: ${failCount} 件`);
     }
 
+    document.getElementById("close-timeline-modal")?.click();
+
     if (typeof window.refreshApprovalList === "function") {
-        window.refreshApprovalList();
+        // window.refreshApprovalList();
     }
 }

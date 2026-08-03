@@ -138,18 +138,35 @@ export function escapeHtml(unsafe) {
 export function linkify(escapedText) {
     if (!escapedText) return "";
     
+    // 1. URLの途切れ修復 (# も修復対象に含める)
     let healedText = escapedText;
-    const healRegex = /(https?:\/\/[^\s<>#"]+)[\s\n]+([a-zA-Z0-9%=\?&\-\+_\/;]{15,})/gi;
+    const healRegex = /(https?:\/\/[^\s<>"]+)[\s\n]+([a-zA-Z0-9%=\?&\-\+_\/;#]{15,})/gi;
     
     let previousText;
     do {
         previousText = healedText;
         healedText = healedText.replace(healRegex, "$1$2");
     } while (healedText !== previousText);
-    
+
+    // 2. URLを抽出して一時的なプレースホルダーに退避させる
+    const urls = [];
     const urlRegex = /(\n*)(https?:\/\/[^\s\n<>"]+)/g;
-    let processedText = healedText.replace(urlRegex, (match, beforeLines, url) => {
-        
+    
+    let textWithPlaceholders = healedText.replace(urlRegex, (match, beforeLines, url) => {
+        const index = urls.length;
+        urls.push({ beforeLines, url });
+        return `${beforeLines}___URL_PLACEHOLDER_${index}___`;
+    });
+
+    // 3. テキスト装飾 (#...#) を実行（URLは退避済みなので安全）
+    const decorRegex = /#([^#\n]+)#/g;
+    let processedText = textWithPlaceholders.replace(decorRegex, (match, p1) => {
+        return `<span class="text-red-600 text-base font-bold">${p1}</span>`;
+    });
+
+    // 4. プレースホルダーを実際の HTML タグ（画像または <a> タグ）に復元
+    processedText = processedText.replace(/___URL_PLACEHOLDER_(\d+)___/g, (match, index) => {
+        const { url } = urls[Number(index)];
         const hasImageExtension = /\.(jpeg|jpg|gif|png|webp|svg)(\?.*)?$/i.test(url);
         const isImageContentType = /content_type=image/i.test(url);
         
@@ -159,12 +176,7 @@ export function linkify(escapedText) {
             </div>`;
         }
         
-        return `${beforeLines}<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline break-all">${url}</a>`;
-    });
-
-    const decorRegex = /#([^#\n]+)#/g;
-    processedText = processedText.replace(decorRegex, (match, p1) => {
-        return `<span class="text-red-600 text-base font-bold">${p1}</span>`;
+        return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline break-all">${url}</a>`;
     });
 
     return processedText;

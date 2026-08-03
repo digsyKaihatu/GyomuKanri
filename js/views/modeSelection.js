@@ -70,7 +70,7 @@ export function cleanupModeSelectionView() {
  */
 const handleClientBtnClick = () => handleModeSelect(VIEWS.CLIENT);
 const handleHostBtnClick = () => handleModeSelect(VIEWS.HOST);
-const handleSettingsBtnClick = () => showView(VIEWS.TASK_SETTINGS);
+const handleSettingsBtnClick = () => handleModeSelect(VIEWS.TASK_SETTINGS);
 const handleLogoutBtnClick = () => {
     if(confirm("ログアウトしますか？")) {
          location.reload();
@@ -135,21 +135,22 @@ async function handleSaveWordOfTheDay() {
  * モード選択時の処理
  */
 async function handleModeSelect(mode) {
+    // クライアント（一般）画面は誰でも遷移可能
     if (mode === VIEWS.CLIENT) {
         showView(VIEWS.CLIENT);
         return;
     }
 
+    // 権限チェック (checkUserPermission)
     const hasPermission = await checkUserPermission(mode);
 
     if (hasPermission) {
+        // 権限があれば対象の画面を表示
         showView(mode);
-        return;
+    } else {
+        // 権限がなければパスワード入力は求めず拒否する
+        alert("この画面にアクセスする権限がありません。");
     }
-
-    if (mode === VIEWS.HOST) {
-        showPasswordModal("host", () => showView(VIEWS.HOST));
-    } 
 }
 
 /**
@@ -166,7 +167,13 @@ async function checkUserPermission(targetView) {
 
         const role = userSnap.data().role;
 
+        // 【変更点】管理者画面（HOST）の条件： "host" のみ
         if (targetView === VIEWS.HOST) {
+            return role === "host";
+        }
+
+        // 【追加点】業務設定画面（TASK_SETTINGS）の条件："host" または "manager"
+        if (targetView === VIEWS.TASK_SETTINGS) {
             return role === "host" || role === "manager";
         }
 
